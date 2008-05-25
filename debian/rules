@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE=1
+%:
+	dh $@
+
+include /usr/share/quilt/quilt.make
+
+build: patch build-stamp
+build-stamp:
+	dh build --before configure
+	libtoolize --force
+	aclocal
+	autoheader
+	autoconf
+	dh_auto_configure
+	dh_auto_build
+	dh build --after test
+	touch $@
+
+clean: unpatch
+	dh clean
+
+install: build
+	dh install
+	install -m 0644 doc/example.conf debian/unbound/etc/unbound/unbound.conf
+
+binary-arch: install
+	dh binary-arch
+
+binary: binary-arch binary-indep

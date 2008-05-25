@@ -1,0 +1,13 @@
+make realclean: remove test binaries
+Index: unbound-1.0.0/Makefile.in
+===================================================================
+--- unbound-1.0.0.orig/Makefile.in	2008-05-22 12:38:51.955492184 -0400
++++ unbound-1.0.0/Makefile.in	2008-05-22 12:39:04.720129984 -0400
+@@ -234,6 +234,7 @@
+ 	rm -f config.status config.log config.h.in config.h
+ 	rm -f configure config.sub config.guess ltmain.sh aclocal.m4 libtool
+ 	rm -f util/configlexer.c util/configparser.c util/configparser.h
++	rm -f asynclook harvest lock-verify memstats perf pktview signit streamtcp testbound unittest delayer
+ 	if test -d ldns-src; then rm -rf ldns-src; fi
+ 	rm -f Makefile 
+ 

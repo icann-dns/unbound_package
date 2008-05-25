@@ -1,0 +1,91 @@
+update paths in documentation
+Index: unbound-1.0.0/doc/example.conf
+===================================================================
+--- unbound-1.0.0.orig/doc/example.conf	2008-05-22 14:18:08.723462222 -0400
++++ unbound-1.0.0/doc/example.conf	2008-05-22 14:18:10.547461925 -0400
+@@ -162,7 +162,7 @@
+ 	# How to do this is specific to your OS.
+ 	#
+ 	# If you give "" no chroot is performed. The path must not end in a /.
+-	# chroot: "/usr/local/etc/unbound"
++	# chroot: "/var/lib/unbound"
+ 
+ 	# if given, user privileges are dropped (after binding port),
+ 	# and the given username is assumed. Default is user "unbound".
+@@ -172,7 +172,7 @@
+ 	# the working directory. The relative files in this config are 
+ 	# relative to this directory. If you give "" the working directory
+ 	# is not changed.
+-	# directory: "/usr/local/etc/unbound"
++	# directory: "/etc/unbound"
+ 
+ 	# the log file, "" means log to stderr. 
+ 	# Use of this option sets use-syslog to "no".
+@@ -183,7 +183,7 @@
+ 	# use-syslog: yes 
+ 
+ 	# the pid file.
+-	# pidfile: "/usr/local/etc/unbound/unbound.pid"
++	# pidfile: "/var/lib/unbound/unbound.pid"
+ 	
+ 	# file to read root hints from.
+ 	# get one from ftp://FTP.INTERNIC.NET/domain/named.cache
+Index: unbound-1.0.0/doc/unbound.conf.5
+===================================================================
+--- unbound-1.0.0.orig/doc/unbound.conf.5	2008-05-22 14:18:08.731462015 -0400
++++ unbound-1.0.0/doc/unbound.conf.5	2008-05-22 14:18:10.551461896 -0400
+@@ -50,9 +50,9 @@
+ server:
+ 	directory: "/etc/unbound"
+ 	username: unbound 	# make sure it can write to pidfile.
+-	chroot: "/etc/unbound"
++	chroot: "/var/lib/unbound"
+ 	# logfile: "/etc/unbound/unbound.log"  #uncomment to use logfile.
+-	pidfile: "/etc/unbound/unbound.pid"
++	pidfile: "/var/lib/unbound/unbound.pid"
+ 	# verbosity: 1		# uncomment and increase to get more logging.
+ 	# listen on all interfaces, answer queries from the local subnet.
+ 	interface: 0.0.0.0
+@@ -254,7 +254,7 @@
+ and to /dev/log (if you use syslog) from inside the chroot.
+ .IP
+ If given a chroot is done to the given directory. The default is 
+-"/usr/local/etc/unbound". If you give "" no chroot is performed.
++"/var/lib/unbound". If you give "" no chroot is performed.
+ .TP
+ .B username: \fI<name>
+ If given, after binding the port the user privileges are dropped. Default is
+@@ -286,14 +286,14 @@
+ The default is to log to syslog.
+ .TP
+ .B pidfile: \fI<filename>
+-The process id is written to the file. Default is "/usr/local/etc/unbound/unbound.pid". 
++The process id is written to the file. Default is "/var/lib/unbound/unbound.pid".
+ So,
+ .nf
+-kill \-HUP `cat /usr/local/etc/unbound/unbound.pid` 
++kill \-HUP `cat /var/lib/unbound/unbound.pid`
+ .fi
+ triggers a reload,
+ .nf
+-kill \-QUIT `cat /usr/local/etc/unbound/unbound.pid` 
++kill \-QUIT `cat /var/lib/unbound/unbound.pid`
+ .fi
+ gracefully terminates.
+ .TP
+@@ -663,10 +663,11 @@
+ .fi
+ .SH "FILES"
+ .TP
+-.I /usr/local/etc/unbound
+-default unbound working directory and default 
+-\fIchroot\fR(2)
+-location.
++.I /etc/unbound
++default unbound working directory.
++.TP
++.I /var/lib/unbound
++default \fIchroot\fR(2) location.
+ .TP
+ .I unbound.conf
+ unbound configuration file.
