@@ -13,15 +13,11 @@ test -x $DAEMON || exit 0
 test -f /etc/default/$NAME && . /etc/default/$NAME
 
 install_chroot() {
-    if [ "$CHROOT" != "no" ]; then
+    if [ "$CHROOT" = "yes" ]; then
         [ -d $CHROOT_DIR/etc ] || mkdir -p $CHROOT_DIR/etc
         [ -d $CHROOT_DIR/dev ] || mkdir -p $CHROOT_DIR/dev
         [ -c $CHROOT_DIR/dev/random ] || ( cd $CHROOT_DIR/dev && MAKEDEV random )
         [ -c $CHROOT_DIR/dev/urandom ] || ( cd $CHROOT_DIR/dev && MAKEDEV urandom )
-        if ! egrep -q '^/[^[:space:]]+[[:space:]]+'$CHROOT_DIR'/dev/log' /proc/mounts; then
-            [ -e $CHROOT_DIR/dev/log ] || touch $CHROOT_DIR/dev/log
-            mount --bind -n /dev/log $CHROOT_DIR/dev/log >/dev/null 2>&1
-        fi
         test -f /etc/localtime && cp -fp /etc/localtime $CHROOT_DIR/etc
         install_chroot_conf
     fi
@@ -34,11 +30,6 @@ install_chroot_conf() {
 
 uninstall_chroot() {
     test -d $CHROOT_DIR/etc/unbound && rm -rf $CHROOT_DIR/etc/unbound
-    if [ "$CHROOT" != "no" ]; then
-        while egrep -q '^[^[:space:]]+[[:space:]]+'$CHROOT_DIR'/dev/log' /proc/mounts; do
-            umount $CHROOT_DIR/dev/log >/dev/null 2>&1
-        done
-    fi
 }
 
 already_running() {

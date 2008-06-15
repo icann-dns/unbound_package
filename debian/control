@@ -4,11 +4,13 @@ Priority: optional
 Maintainer: Robert S. Edmonds <edmonds@debian.org>
 Build-Depends: dpkg-dev (>= 1.14.9), debhelper (>= 7), quilt, doxygen,
  autoconf, libtool, automake, libldns-dev, libssl-dev
-Standards-Version: 3.7.3
+Standards-Version: 3.8.0.0
+Homepage: http://www.unbound.net/
 
 Package: unbound
+Section: net
 Architecture: any
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, adduser
 Description: validating, recursive, caching DNS resolver
  Unbound is a recursive-only caching DNS server which can optionally
  perform DNSSEC validation of results. It implements only a minimum amount
@@ -22,6 +24,7 @@ Description: validating, recursive, caching DNS resolver
  This package contains the unbound daemon.
 
 Package: unbound-host
+Section: net
 Architecture: any
 Depends: ${shlibs:Depends}
 Description: reimplementation of the 'host' command
@@ -31,6 +34,7 @@ Description: reimplementation of the 'host' command
  and has a similar but different set of features/options.
 
 Package: libunbound0
+Section: libs
 Architecture: any
 Depends: ${shlibs:Depends}
 Description: library implementing DNS resolution and validation
@@ -39,6 +43,7 @@ Description: library implementing DNS resolution and validation
  DNS. Public-key validation of results is performed with DNSSEC.
 
 Package: libunbound-dev
+Section: libdevel
 Architecture: any
 Depends: libunbound0 (= ${binary:Version})
 Description: static library, header files, and docs for libunbound
