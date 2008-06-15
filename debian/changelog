@@ -1,3 +1,12 @@
+unbound (1.0.0-3) unstable; urgency=low
+
+  * Lintian clean; closes: #485438.
+  * Don't chroot by default; note manual syslog configuration in
+    README.Debian; closes: #486303.
+  * Update to policy 3.8.0.0.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 15 Jun 2008 17:25:04 -0400
+
 unbound (1.0.0-2) unstable; urgency=low
 
   * Fix Build-Deps.

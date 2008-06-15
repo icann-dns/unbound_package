@@ -2,5 +2,4 @@
 #DAEMON_OPTS="-c /etc/unbound/unbound.conf"
 
 # automatic chroot setup in the init script
-# for CHROOT=no, set chroot: "" in the unbound config file
 #CHROOT=yes

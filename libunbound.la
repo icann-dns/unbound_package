@@ -14,7 +14,7 @@ library_names='libunbound.so.0.12.0 libunbound.so.0 libunbound.so'
 old_library='libunbound.a'
 
 # Libraries that this one depends upon.
-dependency_libs=' -R/usr/lib  -L/usr/lib -lldns -lcrypto'
+dependency_libs=' -L/usr/lib -lldns -lcrypto'
 
 # Version information for libunbound.
 current=12

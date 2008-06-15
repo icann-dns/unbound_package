@@ -1,18 +1,19 @@
 update paths in documentation
 Index: unbound-1.0.0/doc/example.conf
 ===================================================================
---- unbound-1.0.0.orig/doc/example.conf	2008-05-22 14:18:08.723462222 -0400
-+++ unbound-1.0.0/doc/example.conf	2008-05-22 14:18:10.547461925 -0400
-@@ -162,7 +162,7 @@
+--- unbound-1.0.0.orig/doc/example.conf	2008-05-27 17:30:10.199461695 -0400
++++ unbound-1.0.0/doc/example.conf	2008-06-15 17:34:12.671323518 -0400
+@@ -162,7 +162,8 @@
  	# How to do this is specific to your OS.
  	#
  	# If you give "" no chroot is performed. The path must not end in a /.
 -	# chroot: "/usr/local/etc/unbound"
 +	# chroot: "/var/lib/unbound"
++	chroot: ""
  
  	# if given, user privileges are dropped (after binding port),
  	# and the given username is assumed. Default is user "unbound".
-@@ -172,7 +172,7 @@
+@@ -172,7 +173,7 @@
  	# the working directory. The relative files in this config are 
  	# relative to this directory. If you give "" the working directory
  	# is not changed.
@@ -21,7 +22,7 @@ Index: unbound-1.0.0/doc/example.conf
  
  	# the log file, "" means log to stderr. 
  	# Use of this option sets use-syslog to "no".
-@@ -183,7 +183,7 @@
+@@ -183,7 +184,7 @@
  	# use-syslog: yes 
  
  	# the pid file.
@@ -32,8 +33,8 @@ Index: unbound-1.0.0/doc/example.conf
  	# get one from ftp://FTP.INTERNIC.NET/domain/named.cache
 Index: unbound-1.0.0/doc/unbound.conf.5
 ===================================================================
---- unbound-1.0.0.orig/doc/unbound.conf.5	2008-05-22 14:18:08.731462015 -0400
-+++ unbound-1.0.0/doc/unbound.conf.5	2008-05-22 14:18:10.551461896 -0400
+--- unbound-1.0.0.orig/doc/unbound.conf.5	2008-05-27 17:30:10.207472067 -0400
++++ unbound-1.0.0/doc/unbound.conf.5	2008-06-15 17:33:57.431036898 -0400
 @@ -50,9 +50,9 @@
  server:
  	directory: "/etc/unbound"
