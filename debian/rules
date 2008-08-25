@@ -3,21 +3,22 @@
 %:
 	dh $@
 
-include /usr/share/quilt/quilt.make
-
-build: patch build-stamp
+build: build-stamp
 build-stamp:
 	dh build --before configure
 	libtoolize --force
 	aclocal
 	autoheader
 	autoconf
-	dh_auto_configure -- --disable-rpath
+	dh_auto_configure -- \
+		--disable-rpath \
+		--with-chroot-dir=/var/lib/unbound \
+		--with-pidfile=/var/lib/unbound/unbound.pid
 	dh_auto_build
 	dh build --after test
 	touch $@
 
-clean: unpatch
+clean:
 	dh clean
 
 install: build

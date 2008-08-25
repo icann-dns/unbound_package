@@ -7,10 +7,7 @@ configuration by the system administrator.
 
 to enabled a chrooted unbound on Debian, please
 
-1) tell the init script to populate the chroot at /var/lib/unbound by
-setting CHROOT=yes in /etc/default/unbound.
-
-2) configure your logging daemon to read additional log messages from the
+1) configure your logging daemon to read additional log messages from the
 unix socket /var/lib/unbound/dev/log.
 
 for sysklogd, add "-a /var/lib/unbound/dev/log" to the arguments passed to
@@ -25,9 +22,9 @@ for rsyslog, create a file in /etc/rsyslog.d:
 
 restart your logging daemon.
 
-3) remove the chroot: "" line from /etc/unbound/unbound.conf that ships in
-the default Debian unbound config file.
+2) comment out or remove the line chroot: "" and uncomment or add the line
+chroot: "/var/lib/unbound" in the config file /etc/unbound/unbound.conf.
 
-4) restart unbound.
+3) restart unbound.
 
- -- Robert S. Edmonds <edmonds@debian.org>  Sun, 15 Jun 2008 17:25:04 -0400
+ -- Robert S. Edmonds <edmonds@debian.org>  Sat, 02 Aug 2008 17:51:18 -0400

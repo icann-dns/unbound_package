@@ -82,7 +82,11 @@ config_create()
 	cfg->do_udp = 1;
 	cfg->do_tcp = 1;
 	cfg->use_syslog = 1;
+#ifndef USE_WINSOCK
 	cfg->outgoing_num_ports = 256;
+#else
+	cfg->outgoing_num_ports = 16; /* windows is limited in num fds */
+#endif
 	cfg->outgoing_num_tcp = 10;
 	cfg->incoming_num_tcp = 10;
 	cfg->msg_buffer_size = 65552; /* 64 k + a small margin */
@@ -101,8 +105,10 @@ config_create()
 	if(!(cfg->outgoing_avail_ports = (int*)calloc(65536, sizeof(int))))
 		goto error_exit;
 	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
-	if(!(cfg->username = strdup("unbound"))) goto error_exit;
+	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
+#ifdef HAVE_CHROOT
 	if(!(cfg->chrootdir = strdup(CHROOT_DIR))) goto error_exit;
+#endif
 	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
 	if(!(cfg->logfile = strdup(""))) goto error_exit;
 	if(!(cfg->pidfile = strdup(PIDFILE))) goto error_exit;

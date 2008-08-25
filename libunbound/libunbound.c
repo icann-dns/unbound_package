@@ -64,8 +64,20 @@ ub_ctx_create()
 {
 	struct ub_ctx* ctx;
 	unsigned int seed;
+#ifdef USE_WINSOCK
+	int r;
+	WSADATA wsa_data;
+#endif
+	
 	log_init(NULL, 0, NULL); /* logs to stderr */
 	log_ident_set("libunbound");
+#ifdef USE_WINSOCK
+	if((r = WSAStartup(MAKEWORD(2,2), &wsa_data)) != 0) {
+		log_err("could not init winsock. WSAStartup: %s",
+			wsa_strerror(r));
+		return NULL;
+	}
+#endif
 	verbosity = 0; /* errors only */
 	checklock_start();
 	ctx = (struct ub_ctx*)calloc(1, sizeof(*ctx));
@@ -97,6 +109,7 @@ ub_ctx_create()
 		errno = e;
 		return NULL;
 	}
+#ifndef USE_WINSOCK
 	if(!fd_set_nonblock(ctx->rrpipe[0]) ||
 	   !fd_set_nonblock(ctx->rrpipe[1]) ||
 	   !fd_set_nonblock(ctx->qqpipe[0]) ||
@@ -111,6 +124,7 @@ ub_ctx_create()
 		errno = e;
 		return NULL;
 	}
+#endif /* !USE_WINSOCK - it is a pipe(nonsocket) on windows) */
 	lock_basic_init(&ctx->qqpipe_lock);
 	lock_basic_init(&ctx->rrpipe_lock);
 	lock_basic_init(&ctx->cfglock);
@@ -231,6 +245,9 @@ ub_ctx_delete(struct ub_ctx* ctx)
 	alloc_clear(&ctx->superalloc);
 	traverse_postorder(&ctx->queries, delq, NULL);
 	free(ctx);
+#ifdef USE_WINSOCK
+	WSACleanup();
+#endif
 }
 
 int 
@@ -345,7 +362,7 @@ int ub_ctx_debugout(struct ub_ctx* ctx, void* out)
 int 
 ub_ctx_async(struct ub_ctx* ctx, int dothread)
 {
-#if !defined(HAVE_PTHREAD) && !defined(HAVE_SOLARIS_THREADS)
+#ifdef THREADS_DISABLED
 	if(dothread) /* cannot do threading */
 		return UB_NOERROR;
 #endif
@@ -366,7 +383,7 @@ pollit(struct ub_ctx* ctx, struct timeval* t)
 	fd_set r;
 #ifndef S_SPLINT_S
 	FD_ZERO(&r);
-	FD_SET(ctx->rrpipe[0], &r);
+	FD_SET(FD_SET_T ctx->rrpipe[0], &r);
 #endif
 	if(select(ctx->rrpipe[0]+1, &r, NULL, NULL, t) == -1) {
 		return 0;
@@ -559,6 +576,7 @@ ub_resolve(struct ub_ctx* ctx, char* name, int rrtype,
 {
 	struct ctx_query* q;
 	int r;
+	*result = NULL;
 
 	lock_basic_lock(&ctx->cfglock);
 	if(!ctx->finalized) {
@@ -574,7 +592,6 @@ ub_resolve(struct ub_ctx* ctx, char* name, int rrtype,
 	if(!q)
 		return UB_NOMEM;
 	/* become a resolver thread for a bit */
-	*result = NULL;
 
 	r = libworker_fg(ctx, q);
 	if(r) {

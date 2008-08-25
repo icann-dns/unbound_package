@@ -42,7 +42,7 @@
 
 #include "config.h"
 
-#ifdef USE_MINI_EVENT
+#if defined(USE_MINI_EVENT) && !defined(USE_WINSOCK)
 #include <signal.h>
 #include "util/mini_event.h"
 #include "util/fptr_wlist.h"
@@ -295,10 +295,12 @@ int event_add(struct event* ev, struct timeval* tv)
 		return -1;
 	if( (ev->ev_events&(EV_READ|EV_WRITE)) && ev->ev_fd != -1) {
 		ev->ev_base->fds[ev->ev_fd] = ev;
-		if(ev->ev_events&EV_READ)
-			FD_SET(ev->ev_fd, &ev->ev_base->reads);
-		if(ev->ev_events&EV_WRITE)
-			FD_SET(ev->ev_fd, &ev->ev_base->writes);
+		if(ev->ev_events&EV_READ) {
+			FD_SET(FD_SET_T ev->ev_fd, &ev->ev_base->reads);
+		}
+		if(ev->ev_events&EV_WRITE) {
+			FD_SET(FD_SET_T ev->ev_fd, &ev->ev_base->writes);
+		}
 		if(ev->ev_fd > ev->ev_base->maxfd)
 			ev->ev_base->maxfd = ev->ev_fd;
 	}
@@ -327,8 +329,8 @@ int event_del(struct event* ev)
 		(void)rbtree_delete(ev->ev_base->times, &ev->node);
 	if((ev->ev_events&(EV_READ|EV_WRITE)) && ev->ev_fd != -1) {
 		ev->ev_base->fds[ev->ev_fd] = NULL;
-		FD_CLR(ev->ev_fd, &ev->ev_base->reads);
-		FD_CLR(ev->ev_fd, &ev->ev_base->writes);
+		FD_CLR(FD_SET_T ev->ev_fd, &ev->ev_base->reads);
+		FD_CLR(FD_SET_T ev->ev_fd, &ev->ev_base->writes);
 	}
 	ev->added = 0;
 	return 0;
@@ -374,8 +376,10 @@ int signal_del(struct event* ev)
 }
 
 #else /* USE_MINI_EVENT */
+#ifndef USE_WINSOCK
 int mini_ev_cmp(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
 {
 	return 0;
 }
+#endif /* not USE_WINSOCK */
 #endif /* USE_MINI_EVENT */

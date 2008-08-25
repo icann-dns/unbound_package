@@ -13,7 +13,8 @@ test -x $DAEMON || exit 0
 test -f /etc/default/$NAME && . /etc/default/$NAME
 
 install_chroot() {
-    if [ "$CHROOT" = "yes" ]; then
+    if [ "$CHROOT" != "no" ]; then
+        uninstall_chroot
         [ -d $CHROOT_DIR/etc ] || mkdir -p $CHROOT_DIR/etc
         [ -d $CHROOT_DIR/dev ] || mkdir -p $CHROOT_DIR/dev
         [ -c $CHROOT_DIR/dev/random ] || ( cd $CHROOT_DIR/dev && MAKEDEV random )
@@ -32,15 +33,15 @@ uninstall_chroot() {
     test -d $CHROOT_DIR/etc/unbound && rm -rf $CHROOT_DIR/etc/unbound
 }
 
-already_running() {
-    return start-stop-daemon --start --pidfile $PIDFILE \
+daemon_stopped() {
+    start-stop-daemon --start --pidfile $PIDFILE \
         --startas $DAEMON --test >/dev/null 2>&1
 }
 
 case "$1" in
     start)
         log_daemon_msg "Starting $DESC" "$NAME"
-        if ! already_running; then
+        if daemon_stopped; then
             install_chroot
         fi
         if start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --name $NAME --startas $DAEMON -- $DAEMON_OPTS; then
@@ -57,7 +58,6 @@ case "$1" in
         else
             log_end_msg 1
         fi
-        uninstall_chroot
         ;;
 
     restart|force-reload)

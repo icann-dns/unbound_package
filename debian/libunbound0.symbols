@@ -509,6 +509,7 @@ libunbound.so.0 libunbound0 #MINVER#
  sockaddr_cmp_addr@Base 1.0.0
  str_is_ip6@Base 1.0.0
  strextstate@Base 1.0.0
+ strlcpy_unbound@Base 1.0.1
  strmodulevent@Base 1.0.0
  stub_cmp@Base 1.0.0
  table_grow@Base 1.0.0
@@ -633,7 +634,6 @@ libunbound.so.0 libunbound0 #MINVER#
  worker_send_query@Base 1.0.0
  worker_sighandler@Base 1.0.0
  worker_stat_timer_cb@Base 1.0.0
- write_iov_buffer@Base 1.0.0
  write_socket@Base 1.0.0
  yyleng@Base 1.0.0
  yytext@Base 1.0.0

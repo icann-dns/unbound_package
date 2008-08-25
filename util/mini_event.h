@@ -52,7 +52,7 @@
 #ifndef MINI_EVENT_H
 #define MINI_EVENT_H
 
-#ifdef USE_MINI_EVENT
+#if defined(USE_MINI_EVENT) && !defined(USE_WINSOCK)
 
 #ifndef HAVE_EVENT_BASE_FREE
 #define HAVE_EVENT_BASE_FREE
@@ -124,7 +124,7 @@ struct event {
 	void *ev_arg;
 };
 
-/* function prototypes as they appear in event.h */
+/* function prototypes (some are as they appear in event.h) */
 /** create event base */
 void *event_init(uint32_t* time_secs, struct timeval* time_tv);
 /** get version */
@@ -159,7 +159,7 @@ int signal_add(struct event *, struct timeval *);
 /** remove signal handler */
 int signal_del(struct event *);
 
-#endif /* USE_MINI_EVENT */
+#endif /* USE_MINI_EVENT and not USE_WINSOCK */
 
 /** compare events in tree, based on timevalue, ptr for uniqueness */
 int mini_ev_cmp(const void* a, const void* b);
