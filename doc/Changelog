@@ -1,3 +1,183 @@
+6 August 2008: Wouter
+	- patch for scrubber that removes ends of CNAMEs, no more DNAMEs
+	  from cache. Remove more irrelevant rrsets from the message.
+	- 1.0.2 svn tag created.
+
+5 August 2008: Wouter
+	- fixup DS test so apex nodata works again (from trunk).
+
+4 August 2008: Wouter
+	- Bug #201 fixup from trunk; fixes segfault on exit cleanup
+	- iana port nrs updated.
+
+30 July 2008: Wouter
+	- fixup DS qtype validation bug. (fix taken from trunk).
+
+21 July 2008: Wouter
+	- #198: nicer entropy warning message. manpage OS hints.
+
+19 July 2008: Wouter
+	- #198: fixup manpage to suggest entropy chroot fix.
+
+18 July 2008: Wouter
+	- branch for 1.0 support.
+
+17 July 2008: Wouter
+	- fix bug #196, compile outside source tree.
+	- fix bug #195, add --with-username=user configure option.
+	- print error and exit if started with config that requires more
+	  fds than the builtin minievent can handle.
+
+16 July 2008: Wouter
+	- made svn tag 1.0.1, trunk now 1.0.2
+	- sha256 checksums enabled in makedist.sh
+
+15 July 2008: Wouter
+	- Follow draft-ietf-dnsop-default-local-zones-06 added reverse
+	  IPv6 example prefix to AS112 default blocklist.
+	- fixup lookup of DS records by client with trustanchor for same.
+	- libunbound ub_resolve, fix handling of error condition during setup.
+	- lowered log_hex blocksize to fit through BSD syslog linesize.
+	- no useless initialisation if getpwnam not available.
+	- iana, ldns snapshot updated.
+
+3 July 2008: Wouter
+	- Matthijs fixed memory leaks in root hints file reading.
+
+26 June 2008: Wouter
+	- fixup streamtcp bounds setting for udp mode, in the test framework.
+	- contrib item for updating trust anchors.
+
+25 June 2008: Wouter
+	- fixup fwd_ancil test typos.
+	- Fix for newegg lameness : ok for qtype=A, but lame for others.
+	- fixup unit test for infra cache, test lame merging.
+	- porting to mingw, bind, listen, getsockopt and setsockopt error
+	  handling.
+
+24 June 2008: Wouter
+	- removed testcode/checklocks from production code compilation path.
+	- streamtcp can use UDP mode (connected UDP socket), for testing IPv6
+	  on windows.
+	- fwd_ancil test fails if platform support is lacking.
+
+23 June 2008: Wouter
+	- fixup minitpkg to cleanup on windows with its file locking troubles.
+	- minitpkg shows skipped tests in report.
+	- skip ipv6 tests on ipv4 only hosts (requires only ipv6 localhost not
+	  ipv6 connectivity).
+	- winsock event handler keeps track of sticky TCP events, that have
+	  not been fully handled yet. when interest in the event(s) resumes,
+	  they are sent again. When WOULDBLOCK is returned events are cleared.
+	- skip tests that need signals when testing on mingw.
+
+18 June 2008: Wouter
+	- open testbound replay files in binary mode, because fseek/ftell
+	  do not work in ascii-mode on windows. The b does nothing on unix.
+	  unittest and testbound tests work on windows (xp too).
+	- ioctlsocket prints nicer error message.
+	- fixed up some TCP porting for winsock.
+	- lack of IPv6 gives a warning, no fatal error.
+	- use WSAGetLastError() on windows instead of errno for some errors.
+
+17 June 2008: Wouter
+	- outgoing num fds 32 by default on windows ; it supports less
+	  fds for waiting on than unixes.
+	- winsock_event minievent handler for windows. (you could also
+	  attempt to link with libevent/libev ports for windows).
+	- neater crypto check and gdi32 detection.
+	- unbound.exe works to resolve and validate www.nlnetlabs.nl on vista.
+
+16 June 2008: Wouter
+	- on windows, use windows threads, mutex and thread-local-storage(Tls).
+	- detect if openssl needs gdi32.
+	- if no threading, THREADS_DISABLED is defined for use in the code.
+	- sets USE_WINSOCK if using ws2_32 on windows.
+	- wsa_strerror() function for more readable errors.
+	- WSA Startup and Cleanup called in unbound.exe.
+
+13 June 2008: Wouter
+	- port mingw32, more signal ifdefs, detect sleep, usleep, 
+	  random, srandom (used inside the tests).
+	- signed or unsigned FD_SET is cast.
+
+10 June 2008: Wouter
+	- fixup warnings compiling on eeepc xandros linux.
+
+9 June 2008: Wouter
+	- in iteration response type code
+	  * first check for SOA record (negative answer) before NS record
+	    and lameness.
+	  * check if no AA bit for non-forwarder, and thus lame zone.
+	    In response to error report by Richard Doty for mail.opusnet.com.
+	- fixup unput warning from lexer on freeBSD.
+	- bug#183. pidfile, rundir, and chroot configure options. Also the
+	  example.conf and manual pages get the configured defaults.
+	  You can use: (or accept the defaults to /usr/local/etc/unbound/)
+	  --with-conf-file=filename
+	  --with-pidfile=filename
+	  --with-run-dir=path
+	  --with-chroot-dir=path
+
+8 June 2008: Wouter
+	- if multiple CNAMEs, use the first one. Fixup akamai CNAME bug.
+	  Reported by Robert Edmonds.
+	- iana port updated.
+
+4 June 2008: Wouter
+	- updated libtool files with newer version.
+	- iana portlist updated.
+
+3 June 2008: Wouter
+	- fixup local-zone: "30.172.in-addr.arpa." nodefault, so that the
+	  trailing dot is not used during comparison.
+
+2 June 2008: Wouter
+	- Jelte fixed bugs in my absence
+	  - bug 178: fixed unportable shell usage in configure (relied on 
+	    bash shell).
+	  - bug 180: fixed buffer overflow in unbound-checkconf use of strncat.
+	  - bug 181: fixed buffer overflow in ldns (called by unbound to parse
+	    config file parts).
+	- fixes by Wouter
+	  - bug 177: fixed compilation failure on opensuse, the 
+	    --disable-static configure flag caused problems.  (Patch from 
+	    Klaus Singvogel)
+	  - bug 179: same fix as 177.
+	  - bug 185: --disable-shared not passed along to ldns included with 
+	    unbound. Fixed so that configure parameters are passed to the
+	    subdir configure script.
+	    fixed that ./libtool is used always, you can still override
+	    manually with ./configure libtool=mylibtool or set $libtool in
+	    the environment.
+	- update of the ldns tarball to current ldns svn version (fix 181).
+	- bug 184: -r option for unbound-host, read resolv.conf for 
+	  forwarder. (Note that forwarder must support DNSSEC for validation
+	  to succeed).
+
+23 May 2008: Wouter
+	- mingw32 porting.
+	  - test for sys/wait.h
+	  - WSAEWOULDBLOCK test after nonblocking TCP connect.
+	  - write_iov_buffer removed: unused and no struct iov on windows.
+	  - signed/unsigned warning fixup mini_event.
+	  - use ioctlsocket to set nonblocking I/O if fnctl is unavailable.
+	  - skip signals that are not defined
+	  - detect pwd.h.
+	  - detect getpwnam, getrlimit, setsid, sbrk, chroot.
+	  - default config has no chroot if chroot() unavailable.
+	  - if no kill() then no pidfile is read or written.
+	  - gmtime_r is replaced by nonthreadsafe alternative if unavail.
+	    used in rrsig time validation errors.
+
+22 May 2008: Wouter
+	- contrib unbound.spec from Patrick Vande Walle.
+	- fixup bug#175: call tzset before chroot to have correct timestamps
+	  in system log.
+	- do not generate lex input and lex unput functions.
+	- mingw port. replacement functions labelled _unbound.
+	- fix bug 174 - check for tcp_sigpipe that ldns-testns is installed.
+
 19 May 2008: Wouter
 	- fedora 9, check in6_pktinfo define in configure.
 	- CREDITS fixup of history.
@@ -6,6 +186,7 @@
 16 May 2008: Wouter
 	- fixup for MacOSX hosts file reading (reported by John Dickinson).
 	- created 1.0.0 svn tag.
+	- trunk version 1.0.1.
 
 14 May 2008: Wouter
 	- accepted patch from Ondrej Sury for library version libtool option.

@@ -1,13 +1,15 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
-AC_PREREQ(2.57)
+AC_PREREQ(2.56)
 
-AC_INIT(unbound,1.0.0, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound,1.0.2, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=0
-LIBUNBOUND_REVISION=12
+LIBUNBOUND_REVISION=14
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
+# 1.0.1 had 0:13:0
+# 1.0.2 had 0:14:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -45,21 +47,49 @@ esac
 
 #
 # Determine configuration file
-ub_conf_file=${sysconfdir}/unbound/unbound.conf
+# the eval is to evaluate shell expansion twice
+ub_conf_file=`eval echo "${sysconfdir}/unbound/unbound.conf"`
 AC_ARG_WITH([conf_file],
-        AC_HELP_STRING([--with-conf-file=path], [Pathname to the Unbound configuration file]),
-	[ub_conf_file=$withval])
+        AC_HELP_STRING([--with-conf-file=path], 
+	[Pathname to the Unbound configuration file]),
+	[ub_conf_file="$withval"])
 AC_SUBST(ub_conf_file)
-# the eval is to evaluate shell expansion twice, once
-# for $nsd_conf_file and once for the ${prefix} within it.
-AC_DEFINE_UNQUOTED(CONFIGFILE, ["`eval echo $ub_conf_file`"], [Pathname to the Unbound configuration file])
+AC_DEFINE_UNQUOTED(CONFIGFILE, ["$ub_conf_file"], [Pathname to the Unbound configuration file])
 
 # Determine run, chroot directory and pidfile locations
-ub_cfg=`eval echo $ub_conf_file`
-ub_dir=`dirname $ub_cfg`
-AC_DEFINE_UNQUOTED(RUN_DIR, ["$ub_dir"], [Directory to chdir to])
-AC_DEFINE_UNQUOTED(CHROOT_DIR, ["$ub_dir"], [Directory to chroot to])
-AC_DEFINE_UNQUOTED(PIDFILE, ["$ub_dir/unbound.pid"], [Pathname to unbound process id file])
+AC_ARG_WITH(run-dir, 
+    AC_HELP_STRING([--with-run-dir=path], 
+    [set default directory to chdir to (by default dir part of cfg file)]), 
+    UNBOUND_RUN_DIR="$withval", 
+    UNBOUND_RUN_DIR=`dirname "$ub_conf_file"`)
+AC_SUBST(UNBOUND_RUN_DIR)
+AC_DEFINE_UNQUOTED(RUN_DIR, ["$UNBOUND_RUN_DIR"], [Directory to chdir to])
+
+AC_ARG_WITH(chroot-dir, 
+    AC_HELP_STRING([--with-chroot-dir=path], 
+    [set default directory to chroot to (by default same as run-dir)]), 
+    UNBOUND_CHROOT_DIR="$withval", 
+    UNBOUND_CHROOT_DIR="$UNBOUND_RUN_DIR")
+AC_SUBST(UNBOUND_CHROOT_DIR)
+AC_DEFINE_UNQUOTED(CHROOT_DIR, ["$UNBOUND_CHROOT_DIR"], [Directory to chroot to])
+
+AC_ARG_WITH(pidfile, 
+    AC_HELP_STRING([--with-pidfile=filename], 
+    [set default pathname to unbound pidfile (default run-dir/unbound.pid)]), 
+    UNBOUND_PIDFILE="$withval", 
+    UNBOUND_PIDFILE="$UNBOUND_RUN_DIR/unbound.pid")
+AC_SUBST(UNBOUND_PIDFILE)
+AC_DEFINE_UNQUOTED(PIDFILE, ["$UNBOUND_PIDFILE"], [default pidfile location])
+
+AC_ARG_WITH(username, 
+    AC_HELP_STRING([--with-username=user], 
+    [set default user that unbound changes to (default user is unbound)]), 
+    UNBOUND_USERNAME="$withval", 
+    UNBOUND_USERNAME="unbound")
+AC_SUBST(UNBOUND_USERNAME)
+AC_DEFINE_UNQUOTED(UB_USERNAME, ["$UNBOUND_USERNAME"], [default username])
+
+AC_DEFINE(WINVER, 0x0502, [the version of the windows API enabled])
 
 dnl routine to help check for compiler flags.
 AC_DEFUN([CHECK_COMPILER_FLAG],
@@ -143,6 +173,10 @@ CHECK_COMPILER_FLAG(g, [CFLAGS="$CFLAGS -g"])
 CHECK_COMPILER_FLAG(O2, [CFLAGS="$CFLAGS -O2"])
 
 AC_CHECK_HEADERS([getopt.h time.h],,, [AC_INCLUDES_DEFAULT])
+
+# MinGW32 tests
+AC_CHECK_HEADERS([winsock2.h ws2tcpip.h],,, [AC_INCLUDES_DEFAULT])
+# end mingw32 tests
 
 CHECK_COMPILER_FLAG_NEEDED(-std=c99 -D__EXTENSIONS__ -D_BSD_SOURCE -D_POSIX_C_SOURCE=200112 -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D_ALL_SOURCE,
 [
@@ -237,7 +271,7 @@ CHECK_COMPILER_FLAG_NEEDED(-D_GNU_SOURCE,
 
 int test() {
         struct in6_pktinfo inf;
-        int a = (int)sizeof(inf);
+	int a = (int)sizeof(inf);
         return a;
 }
 ], [CFLAGS="$CFLAGS -D_GNU_SOURCE"])
@@ -369,7 +403,11 @@ AC_DEFUN([AC_PROG_OBJC], [:])
 AC_DEFUN([AC_PROG_OBJCCPP], [:])
 AC_DEFUN([AC_LIBTOOL_CXX], [:])
 AC_DEFUN([AC_LIBTOOL_F77], [:])
-AC_CHECK_PROGS(libtool, [glibtool libtool15 libtool], [./libtool])
+# always use ./libtool unless override from commandline (libtool=mylibtool)
+if test -z "$libtool"; then
+	libtool="./libtool"
+fi
+AC_SUBST(libtool)
 AC_PATH_TOOL(AR, ar, [false])
 if test $AR = false; then
 	AC_MSG_ERROR([Cannot find 'ar', please extend PATH to include it])
@@ -386,7 +424,7 @@ AC_PROG_LIBTOOL
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/uio.h sys/resource.h arpa/inet.h syslog.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h],,, [AC_INCLUDES_DEFAULT])
 
 # check for types
 AC_CHECK_TYPE(int8_t, char)
@@ -437,26 +475,6 @@ AC_INCLUDES_DEFAULT
 #endif
 ])
 
-# Check for yyunput
-AC_DEFUN([CHECK_YYUNPUT],
-[AC_MSG_CHECKING(whether lex can not generate yyunput)
-AC_CACHE_VAL(ac_cv_c_yy_unput,
-[ac_cv_c_yy_unput=no
-if $LEX --nounput -h 2>&1 | grep "do not generate" 2>&1 >/dev/null; then
-   ac_cv_c_yy_unput="yes"
-else
-   ac_cv_c_yy_unput="no"
-fi
-])
-
-AC_MSG_RESULT($ac_cv_c_yy_unput)
-if test $ac_cv_c_yy_unput = yes; then
-	LEX="$LEX --nounput"
-fi
-])dnl
-
-CHECK_YYUNPUT
-
 # add option to disable the evil rpath
 dnl Check whether to use rpath or not
 AC_ARG_ENABLE(rpath,
@@ -501,9 +519,34 @@ AC_ARG_WITH(ssl, AC_HELP_STRING([--with-ssl=pathname],
 	    if test "x$enable_rpath" = xyes; then
 	        RUNTIME_PATH="$RUNTIME_PATH -R$ssldir/lib"
 	    fi
-            AC_CHECK_LIB(crypto, HMAC_CTX_init,, [
+	
+	    AC_MSG_CHECKING([for HMAC_CTX_init in -lcrypto])
+	    ORIGLIBS="$LIBS"
+	    LIBS="$LIBS -lcrypto"
+	    AC_TRY_LINK(, [
+		int HMAC_CTX_init(void);
+		(void)HMAC_CTX_init();
+	      ], [
+		AC_MSG_RESULT(yes)
+		AC_DEFINE([HAVE_HMAC_CTX_INIT], 1, 
+			[If you have HMAC_CTX_init])
+	      ], [
+		AC_MSG_RESULT(no)
+	    	# check if -lwsock32 or -lgdi32 are needed.	
+		LIBS="$LIBS -lgdi32"
+		AC_MSG_CHECKING([if -lcrypto needs -lgdi32])
+		AC_TRY_LINK([], [
+		    int HMAC_CTX_init(void);
+		    (void)HMAC_CTX_init();
+		  ],[
+		    AC_DEFINE([HAVE_HMAC_CTX_INIT], 1, 
+			[If you have HMAC_CTX_init])
+		    AC_MSG_RESULT(yes) 
+		  ],[
+		    AC_MSG_RESULT(no)
                     AC_MSG_ERROR([OpenSSL found in $ssldir, but version 0.9.7 or higher is required])
-                ])
+		])
+            ])
         fi
         AC_SUBST(HAVE_SSL)
 	AC_SUBST(RUNTIME_PATH)
@@ -532,6 +575,7 @@ fi
 # check solaris thread library 
 AC_ARG_WITH(solaris-threads, AC_HELP_STRING([--with-solaris-threads], 
 	[use solaris native thread library.]), [ ],[ withval="no" ])
+ub_have_sol_threads=no
 if test x_$withval != x_no; then
 	if test x_$ub_have_pthreads != x_no; then
 	    AC_WARN([Have pthreads already, ignoring --with-solaris-threads])
@@ -542,10 +586,29 @@ if test x_$withval != x_no; then
 
 		CHECK_COMPILER_FLAG(mt, [CFLAGS="$CFLAGS -mt"],
 			[CFLAGS="$CFLAGS -D_REENTRANT"])
+		ub_have_sol_threads=yes
 	] , [ 
 		AC_ERROR([no solaris threads found.]) 
 	])
 	fi
+fi
+
+# check windows threads
+if test x_$ub_have_pthreads = x_no -a x_$ub_have_sol_threads = x_no; then
+	AC_CHECK_HEADERS([windows.h],,, [AC_INCLUDES_DEFAULT])
+	AC_MSG_CHECKING([for CreateThread])
+	AC_TRY_COMPILE([
+#ifdef HAVE_WINDOWS_H
+#include <windows.h>
+#endif
+], [
+	HANDLE t = CreateThread(NULL, 0, NULL, NULL, 0, NULL);
+],
+	AC_MSG_RESULT(yes)
+	AC_DEFINE(HAVE_WINDOWS_THREADS, 1, [Using Windows threads])
+,	
+	AC_MSG_RESULT(no)
+)
 fi
 
 # check to see if libraries are needed for these functions.
@@ -556,7 +619,7 @@ AC_SEARCH_LIBS([socket], [socket])
 AC_ARG_WITH(libevent, AC_HELP_STRING([--with-libevent=pathname],
     [use libevent (will check /usr/local /opt/local /usr/lib /usr/pkg /usr/sfw /usr  or you can specify an explicit path). Slower, but allows use of large outgoing port ranges.]),
     [ ],[ withval="no" ])
-if test x_$withval == x_yes -o x_$withval != x_no; then
+if test x_$withval = x_yes -o x_$withval != x_no; then
         AC_MSG_CHECKING(for libevent)
         if test x_$withval = x_ -o x_$withval = x_yes; then
             withval="/usr/local /opt/local /usr/lib /usr/pkg /usr/sfw /usr"
@@ -632,6 +695,8 @@ AC_ARG_ENABLE(lock_checks, AC_HELP_STRING([--enable-lock-checks],
 	, )
 if test x_$enable_lock_checks = x_yes; then
 	AC_DEFINE(ENABLE_LOCK_CHECKS, 1, [Define if you want to use debug lock checking (slow).])
+	CHECKLOCK_SRC="testcode/checklocks.c"
+	AC_SUBST(CHECKLOCK_SRC)
 fi
 
 # set memory allocation checking if requested
@@ -649,6 +714,116 @@ AC_FUNC_FORK
 AC_TYPE_SIGNAL
 AC_FUNC_FSEEKO
 AC_SYS_LARGEFILE
+dnl try to see if an additional _LARGEFILE_SOURCE 1 is needed to get fseeko
+CHECK_COMPILER_FLAG_NEEDED(-D_LARGEFILE_SOURCE=1,
+[
+#include <stdio.h>
+int test() {
+        int a = fseeko(stdin, 0, 0);
+        return a;
+}
+], [CFLAGS="$CFLAGS -D_LARGEFILE_SOURCE=1"])
+
+AC_DEFUN([AC_CHECK_GETADDRINFO_WITH_INCLUDES],
+[AC_REQUIRE([AC_PROG_CC])
+AC_MSG_CHECKING(for getaddrinfo)
+ac_cv_func_getaddrinfo=no
+AC_LINK_IFELSE(
+[
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+char* getaddrinfo();
+char* (*f) () = getaddrinfo;
+#ifdef __cplusplus
+}
+#endif
+int main() {
+        ;
+        return 0;
+}
+],
+dnl this case on linux, solaris, bsd
+[ac_cv_func_getaddrinfo="yes"],
+dnl no quick getaddrinfo, try mingw32 and winsock2 library.
+ORIGLIBS="$LIBS"
+LIBS="$LIBS -lws2_32"
+AC_LINK_IFELSE(
+AC_LANG_PROGRAM(
+[
+#ifdef HAVE_WS2TCPIP_H
+#include <ws2tcpip.h>
+#endif
+],
+[
+        (void)getaddrinfo(NULL, NULL, NULL, NULL);
+]
+),
+[
+ac_cv_func_getaddrinfo="yes"
+dnl already: LIBS="$LIBS -lws2_32"
+AC_DEFINE(USE_WINSOCK, 1, [Whether the windows socket API is used])
+],
+[
+ac_cv_func_getaddrinfo="no"
+LIBS="$ORIGLIBS"
+])
+)
+
+AC_MSG_RESULT($ac_cv_func_getaddrinfo)
+if test $ac_cv_func_getaddrinfo = yes; then
+  AC_DEFINE(HAVE_GETADDRINFO, 1, [Whether getaddrinfo is available])
+fi
+])dnl
+
+AC_CHECK_GETADDRINFO_WITH_INCLUDES
+if test $ac_cv_func_getaddrinfo = no; then
+AC_LIBOBJ([fake-rfc2553])
+fi
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev])
+
+# check mkdir
+AC_MSG_CHECKING([whether mkdir has one arg])
+AC_TRY_COMPILE([
+#include <stdio.h>
+#include <unistd.h>
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+], [
+	(void)mkdir("directory");
+],
+AC_MSG_RESULT(yes)
+AC_DEFINE(MKDIR_HAS_ONE_ARG, 1, [Define if mkdir has one argument.])
+,
+AC_MSG_RESULT(no)
+)
+
+# check ioctlsocket
+AC_MSG_CHECKING(for ioctlsocket)
+AC_LINK_IFELSE(AC_LANG_PROGRAM([
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#endif
+], [
+	(void)ioctlsocket(0, 0, NULL);
+]), [
+AC_MSG_RESULT(yes)
+AC_DEFINE(HAVE_IOCTLSOCKET, 1, [if the function 'ioctlsocket' is available])
+],[AC_MSG_RESULT(no)])
+
+AC_REPLACE_FUNCS(inet_aton)
+AC_REPLACE_FUNCS(inet_pton)
+AC_REPLACE_FUNCS(inet_ntop)
+AC_REPLACE_FUNCS(snprintf)
+AC_REPLACE_FUNCS(strlcpy)
+AC_REPLACE_FUNCS(memmove)
+AC_REPLACE_FUNCS(gmtime_r)
+AC_REPLACE_FUNCS(socketpair) dnl for mingw32
 
 # check this after all other compilation checks, since the linking of the lib
 # may break checks after this.
@@ -664,18 +839,6 @@ AC_ARG_WITH(ldns,
 AC_CHECK_LIB(ldns, ldns_buffer_copy, [
 dnl ldns was found, check compat functions
 AC_CHECK_LIB(ldns, [ldns_rr_free])
-AC_REPLACE_FUNCS(inet_aton)
-AC_REPLACE_FUNCS(inet_pton)
-AC_REPLACE_FUNCS(inet_ntop)
-AC_REPLACE_FUNCS(snprintf)
-AC_REPLACE_FUNCS(strlcpy)
-AC_REPLACE_FUNCS(memmove)
-
-AC_CHECK_FUNCS([getaddrinfo])
-if test $ac_cv_func_getaddrinfo = no; then
-AC_LIBOBJ([fake-rfc2553])
-fi
-
 ] , [
 dnl use the builtin ldns-src.tar.gz file to build ldns.
 if test ! -f $srcdir/ldns-src.tar.gz; then
@@ -687,24 +850,14 @@ echo "*** ldns library not found (--with-ldns= to specify by hand) ***"
 echo "*** Building ldns library from package included in this one. ***"
 echo "***                                                          ***"
 echo "****************************************************************"
-if test -d ldns-src; then rm -rf ldns-src; fi
-mkdir ldns-src; cp $srcdir/ldns-src.tar.gz ldns-src/ldns-src.tar.gz; (cd ldns-src; gzip -cd ldns-src.tar.gz | tar xf -); rm -f ldns-src/ldns-src.tar.gz
-ldnsdir=`ls -d ldns-src/ldns*`
-AC_MSG_NOTICE([Configure $ldnsdir])
-echo "(cd $ldnsdir && ./configure)"
-(cd $ldnsdir && ./configure)
-AC_MSG_NOTICE([Finished $ldnsdir configure])
+if test -d $srcdir/ldns-src; then rm -rf $srcdir/ldns-src; fi
+mkdir $srcdir/ldns-src; cp $srcdir/ldns-src.tar.gz $srcdir/ldns-src/ldns-src.tar.gz; (cd $srcdir/ldns-src; gzip -cd ldns-src.tar.gz | tar xf -); rm -f $srcdir/ldns-src/ldns-src.tar.gz; mv $srcdir/ldns-src $srcdir/ldns-srcb; mv $srcdir/ldns-srcb/ldns* $srcdir/ldns-src; rmdir $srcdir/ldns-srcb
+ldnsdir="ldns-src"
+AC_MSG_NOTICE([Configure $ldnsdir scheduled after config.status])
+AC_CONFIG_SUBDIRS([ldns-src])
 CPPFLAGS="-I$ldnsdir/include $CPPFLAGS"
 LDFLAGS="$LDFLAGS $ldnsdir/*.lo"
 AC_SUBST(ldnsdir)
-dnl use ldns compat functions
-AC_DEFINE(HAVE_INET_ATON)
-AC_DEFINE(HAVE_INET_PTON)
-AC_DEFINE(HAVE_INET_NTOP)
-AC_DEFINE(HAVE_SNPRINTF)
-AC_DEFINE(HAVE_STRLCPY)
-AC_DEFINE(HAVE_MEMMOVE)
-AC_DEFINE(HAVE_GETADDRINFO)
 ])
 LDFLAGS="$LATE_LDFLAGS $LDFLAGS"
 
@@ -751,6 +904,14 @@ AH_BOTTOM([
 #include <arpa/inet.h>
 #endif
 
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#endif
+
+#ifdef HAVE_WS2TCPIP_H
+#include <ws2tcpip.h>
+#endif
+
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
@@ -791,6 +952,10 @@ AH_BOTTOM([
 #define RAND_MAX	2147483647
 #endif
 
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN 256
+#endif
+
 #ifndef IPV6_MIN_MTU
 #define IPV6_MIN_MTU 1280
 #endif /* IPV6_MIN_MTU */
@@ -808,28 +973,66 @@ AH_BOTTOM([
 #define MAXINCLUDES 10
 
 #ifndef HAVE_SNPRINTF
+#define snprintf snprintf_unbound
+#define vsnprintf vsnprintf_unbound
 #include <stdarg.h>
 int snprintf (char *str, size_t count, const char *fmt, ...);
 int vsnprintf (char *str, size_t count, const char *fmt, va_list arg);
 #endif /* HAVE_SNPRINTF */
 #ifndef HAVE_INET_PTON
+#define inet_pton inet_pton_unbound
 int inet_pton(int af, const char* src, void* dst);
 #endif /* HAVE_INET_PTON */
 #ifndef HAVE_INET_NTOP
+#define inet_ntop inet_ntop_unbound
 const char *inet_ntop(int af, const void *src, char *dst, size_t size);
 #endif
 #ifndef HAVE_INET_ATON
+#define inet_aton inet_aton_unbound
 int inet_aton(const char *cp, struct in_addr *addr);
 #endif
 #ifndef HAVE_MEMMOVE
+#define memmove memmove_unbound
 void *memmove(void *dest, const void *src, size_t n);
 #endif
 #ifndef HAVE_STRLCPY
+#define strlcpy strlcpy_unbound
 size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
+#ifndef HAVE_GMTIME_R
+#define gmtime_r gmtime_r_unbound
+struct tm *gmtime_r(const time_t *timep, struct tm *result);
+#endif
 #ifndef HAVE_GETADDRINFO
+#define getaddrinfo getaddrinfo_unbound
+#define gai_strerror gai_strerror_unbound
+#define freeaddrinfo freeaddrinfo_unbound
+#define getnameinfo getnameinfo_unbound
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
+#endif
+
+#ifndef HAVE_SLEEP
+#define sleep(x) Sleep((x)*1000) /* on win32 */
+#endif /* HAVE_SLEEP */
+#ifndef HAVE_USLEEP
+#define usleep(x) Sleep((x)/1000 + 1) /* on win32 */
+#endif /* HAVE_USLEEP */
+#ifndef HAVE_RANDOM
+#define random rand /* on win32, for tests only (bad random) */
+#endif /* HAVE_RANDOM */
+#ifndef HAVE_SRANDOM
+#define srandom(x) srand(x) /* on win32, for tests only (bad random) */
+#endif /* HAVE_SRANDOM */
+#ifndef HAVE_SOCKETPAIR
+int socketpair(int d, int type, int protocol, int *sv);
+#endif
+
+/* detect if we need to cast to unsigned int for FD_SET to avoid warnings */
+#ifdef HAVE_WINSOCK2_H
+#define FD_SET_T (u_int)
+#else
+#define FD_SET_T 
 #endif
 
 #include "ldns/ldns.h"
@@ -857,6 +1060,6 @@ void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 #define UNBOUND_DNS_PORT 53
 ])
 
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-checkconf.8 doc/unbound.conf.5])
 AC_CONFIG_HEADER([config.h])
 AC_OUTPUT

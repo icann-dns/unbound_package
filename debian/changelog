@@ -1,3 +1,24 @@
+unbound (1.0.2-1) unstable; urgency=low
+
+  * New upstream release;
+    + stricter filtering of DNS messages to combat cache poisoning
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Mon, 25 Aug 2008 01:03:59 -0400
+
+unbound (1.0.1-2) unstable; urgency=low
+
+  * unbound tries too hard to chroot(); ship a default config that doesn't
+    fail to start on new installs; closes: #492243.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sat, 02 Aug 2008 17:46:24 -0400
+
+unbound (1.0.1-1) unstable; urgency=low
+
+  * New upstream release.
+  * Drop 'return' from init script; closes: #488650.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Wed, 16 Jul 2008 12:38:55 -0400
+
 unbound (1.0.0-3) unstable; urgency=low
 
   * Lintian clean; closes: #485438.

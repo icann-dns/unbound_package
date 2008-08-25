@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "May 20, 2008" "NLnet Labs" "unbound 1.0.0"
+.TH "unbound.conf" "5" "Aug  7, 2008" "NLnet Labs" "unbound 1.0.2"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -50,6 +50,10 @@ example.conf file with all the options.
 server:
 	directory: "/etc/unbound"
 	username: unbound 	# make sure it can write to pidfile.
+	# make sure unbound can access entropy from inside the chroot.
+	# e.g. on linux the use these commands (on BSD, devfs(8) is used):
+	#      mount --bind -n /dev/random /etc/unbound/dev/random
+	# and  mount --bind -n /dev/log /etc/unbound/dev/log
 	chroot: "/etc/unbound"
 	# logfile: "/etc/unbound/unbound.log"  #uncomment to use logfile.
 	pidfile: "/etc/unbound/unbound.pid"
@@ -254,11 +258,11 @@ Additionally, unbound may need to access /dev/random (for entropy)
 and to /dev/log (if you use syslog) from inside the chroot.
 .IP
 If given a chroot is done to the given directory. The default is 
-"/usr/local/etc/unbound". If you give "" no chroot is performed.
+"@UNBOUND_CHROOT_DIR@". If you give "" no chroot is performed.
 .TP
 .B username: \fI<name>
 If given, after binding the port the user privileges are dropped. Default is
-"unbound". If you give username: "" no user change is performed. 
+"@UNBOUND_USERNAME@". If you give username: "" no user change is performed. 
 .IP
 If this user is not capable of binding the
 port, reloads (by signal HUP) will still retain the opened ports.
@@ -266,7 +270,7 @@ If you change the port number in the config file, and that new port number
 requires privileges, then a reload will fail; a restart is needed.
 .TP
 .B directory: \fI<directory>
-Sets the working directory for the program.
+Sets the working directory for the program. Default is "@UNBOUND_RUN_DIR@".
 .TP
 .B logfile: \fI<filename>
 If "" is given, logging goes to stderr, or nowhere once daemonized.
@@ -286,14 +290,14 @@ The logfile setting is overridden when use\-syslog is turned on.
 The default is to log to syslog.
 .TP
 .B pidfile: \fI<filename>
-The process id is written to the file. Default is "/usr/local/etc/unbound/unbound.pid". 
+The process id is written to the file. Default is "@UNBOUND_PIDFILE@". 
 So,
 .nf
-kill \-HUP `cat /usr/local/etc/unbound/unbound.pid` 
+kill \-HUP `cat @UNBOUND_PIDFILE@` 
 .fi
 triggers a reload,
 .nf
-kill \-QUIT `cat /usr/local/etc/unbound/unbound.pid` 
+kill \-QUIT `cat @UNBOUND_PIDFILE@` 
 .fi
 gracefully terminates.
 .TP
@@ -563,6 +567,14 @@ Reverse data for zone D.F.ip6.arpa.
 .TP 10
 \h'5'\fIreverse RFC4291 IPv6 Link Local Addresses\fR
 Reverse data for zones 8.E.F.ip6.arpa to B.E.F.ip6.arpa.
+.TP 10
+\h'5'\fIreverse IPv6 Example Prefix\fR
+Reverse data for zone 8.B.D.0.1.0.0.2.ip6.arpa. This zone is used for
+tutorials and examples. You can remove the block on this zone with:
+.nf
+  local-zone: 8.B.D.0.1.0.0.2.ip6.arpa. nodefault
+.fi
+This also works with the other default zones.
 .\" End of local-zone listing.
 .TP 5
 .B local\-data: \fI"<resource record string>"
@@ -663,15 +675,18 @@ server:
 .fi
 .SH "FILES"
 .TP
-.I /usr/local/etc/unbound
-default unbound working directory and default 
+.I @UNBOUND_RUN_DIR@
+default unbound working directory.
+.TP
+.I @UNBOUND_CHROOT_DIR@
+default
 \fIchroot\fR(2)
 location.
 .TP
-.I unbound.conf
+.I @ub_conf_file@
 unbound configuration file.
 .TP
-.I unbound.pid
+.I @UNBOUND_PIDFILE@
 default unbound pidfile with process ID of the running daemon.
 .TP
 .I unbound.log

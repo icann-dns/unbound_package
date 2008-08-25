@@ -1,4 +1,4 @@
-README for Unbound 1.0.0
+README for Unbound 1.0.2
 Copyright 2007 NLnet Labs
 http://unbound.net
 
@@ -43,6 +43,21 @@ This software is under BSD license, see LICENSE for details.
 	The server periodically checks if the amount of memory used fits with
 	the amount of memory it thinks it should be using, and reports 
 	memory usage in detail.
+  * --with-conf-file=filename
+  	Set default location of config file, 
+	the default is /usr/local/etc/unbound/unbound.conf.
+  * --with-pidfile=filename
+  	Set default location of pidfile,
+	the default is /usr/local/etc/unbound/unbound.pid.
+  * --with-run-dir=path
+  	Set default working directory,
+	the default is /usr/local/etc/unbound.
+  * --with-chroot-dir=path
+  	Set default chroot directory,
+	the default is /usr/local/etc/unbound.
+  * --with-username=user
+  	Set default user name to change to,
+	the default is the "unbound" user.
 
 * 'make test' attempts to run a series of tests, depending on the support
   programs that are installed.

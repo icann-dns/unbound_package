@@ -51,7 +51,9 @@
 #include "iterator/iterator.h"
 #include "validator/validator.h"
 #include "services/localzone.h"
+#ifdef HAVE_PWD_H
 #include <pwd.h>
+#endif
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
@@ -246,18 +248,18 @@ fname_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
 	} else if(cfg->directory && cfg->directory[0]) {
 		/* prepend chdir */
 		if(slashit && cfg->directory[0] != '/')
-			strncat(buf, "/", sizeof(buf)-1);
+			strncat(buf, "/", sizeof(buf)-strlen(buf)-1);
 		if(strncmp(cfg->chrootdir, cfg->directory, 
 			strlen(cfg->chrootdir)) == 0)
 			strncat(buf, cfg->directory+strlen(cfg->chrootdir), 
-				sizeof(buf)-1);
-		else strncat(buf, cfg->directory, sizeof(buf)-1);
+				   sizeof(buf)-strlen(buf)-1);
+		else strncat(buf, cfg->directory, sizeof(buf)-strlen(buf)-1);
 		slashit = 1;
 	}
 	/* fname */
 	if(slashit && fname[0] != '/')
-		strncat(buf, "/", sizeof(buf)-1);
-	strncat(buf, fname, sizeof(buf)-1);
+		strncat(buf, "/", sizeof(buf)-strlen(buf)-1);
+	strncat(buf, fname, sizeof(buf)-strlen(buf)-1);
 	buf[sizeof(buf)-1] = 0;
 	return buf;
 }
@@ -321,19 +323,21 @@ morechecks(struct config_file* cfg, char* fname)
 		!is_dir(cfg->chrootdir)) {
 		fatal_exit("bad chroot directory");
 	}
+	/*
 	if(cfg->chrootdir && cfg->chrootdir[0]) {
 		char buf[10240];
 		buf[0] = 0;
 		if(fname[0] != '/') {
 			if(getcwd(buf, sizeof(buf)) == NULL)
 				fatal_exit("getcwd: %s", strerror(errno));
-			strncat(buf, "/", sizeof(buf));
+			strncat(buf, "/", sizeof(buf)-strlen(buf)-1);
 		}
-		strncat(buf, fname, sizeof(buf));
+		strncat(buf, fname, sizeof(buf)-strlen(buf)-1);
 		if(strncmp(buf, cfg->chrootdir, strlen(cfg->chrootdir)) != 0)
 			fatal_exit("config file %s is not inside chroot %s",
 				buf, cfg->chrootdir);
 	}
+	*/
 	if(cfg->directory && cfg->directory[0] && !is_dir(
 		fname_after_chroot(cfg->directory, cfg, 0))) {
 		fatal_exit("bad chdir directory");
@@ -352,12 +356,14 @@ morechecks(struct config_file* cfg, char* fname)
 		}
 	}
 
+	/*
 	check_chroot_filelist("file with root-hints", 
 		cfg->root_hints, cfg->chrootdir, cfg);
 	check_chroot_filelist("trust-anchor-file", 
 		cfg->trust_anchor_file_list, cfg->chrootdir, cfg);
 	check_chroot_filelist("trusted-keys-file", 
 		cfg->trusted_keys_file_list, cfg->chrootdir, cfg);
+	*/
 	/* remove chroot setting so that modules are not stripping pathnames*/
 	free(cfg->chrootdir);
 	cfg->chrootdir = NULL;
@@ -368,11 +374,13 @@ morechecks(struct config_file* cfg, char* fname)
 			cfg->module_conf);
 	}
 
+#ifdef HAVE_GETPWNAM
 	if(cfg->username && cfg->username[0]) {
 		if(getpwnam(cfg->username) == NULL)
 			fatal_exit("user '%s' does not exist.", cfg->username);
 		endpwent();
 	}
+#endif
 
 	localzonechecks(cfg);
 }
