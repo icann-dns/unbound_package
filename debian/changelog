@@ -1,3 +1,10 @@
+unbound (1.0.2-1ubuntu1) jaunty; urgency=low
+
+  * Add --install to the libtoolize call in debian/rules so that all the
+    necessary files get installed. Fixes build error.
+
+ -- James Westby <james.westby@canonical.com>  Sat, 29 Nov 2008 03:46:12 +0000
+
 unbound (1.0.2-1) unstable; urgency=low
 
   * New upstream release;
