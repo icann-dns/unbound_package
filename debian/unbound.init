@@ -1,6 +1,28 @@
 #!/bin/sh
 
+### BEGIN INIT INFO
+# Provides:          unbound
+# Required-Start:    $network $remote_fs $syslog
+# Required-Stop:     $network $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: validating, recursive, caching DNS resolver
+# Description:       Unbound is a recursive-only caching DNS server which can
+#                    optionally perform DNSSEC validation of results. It 
+#                    implements only a minimum amount of authoritative service
+#                    to prevent leakage to the root nameservers: forward lookups
+#                    for localhost, reverse for 127.0.0.1 and ::1, and NXDOMAIN
+#                    for zones served by AS112. Stub and forward zones are 
+#                    supported.
+#                    Unbound implements a number of security features, including
+#                    chrooting and privilege dropping. The Debian init script
+#                    will populate a chroot by default.
+#                    
+### END INIT INFO
+
+
 NAME=unbound
+UNBOUND_ENABLE=false
 DESC="recursive DNS server"
 DAEMON=/usr/sbin/unbound
 CHROOT_DIR=/var/lib/unbound
@@ -10,7 +32,18 @@ test -x $DAEMON || exit 0
 
 . /lib/lsb/init-functions
 
-test -f /etc/default/$NAME && . /etc/default/$NAME
+if [ -f /etc/default/$NAME ]; then
+  . /etc/default/$NAME
+  case "x$UNBOUND_ENABLE" in 
+       xtrue|xfalse) ;;
+       *) log_failure_msg \
+           "Value of UNBOUND_ENABLE in /etc/default/$NAME must be either 'true' or 'false';"
+          log_failure_msg \
+           "not starting unbound daemon."
+          exit 1;
+          ;;
+   esac
+fi
 
 install_chroot() {
     if [ "$CHROOT" != "no" ]; then
@@ -40,14 +73,20 @@ daemon_stopped() {
 
 case "$1" in
     start)
-        log_daemon_msg "Starting $DESC" "$NAME"
-        if daemon_stopped; then
-            install_chroot
-        fi
-        if start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --name $NAME --startas $DAEMON -- $DAEMON_OPTS; then
-            log_end_msg 0
+        if "$UNBOUND_ENABLE"; then
+          log_daemon_msg "Starting $DESC" "$NAME"
+          if daemon_stopped; then
+              install_chroot
+          fi
+          if start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE \
+             --name $NAME --startas $DAEMON -- $DAEMON_OPTS; then
+              log_end_msg 0
+          else
+              log_end_msg 1
+          fi
         else
-            log_end_msg 1
+         log_warning_msg \
+          "$NAME daemon is not enabled in /etc/default/$NAME, not starting..."
         fi
         ;;
 
@@ -61,14 +100,17 @@ case "$1" in
         ;;
 
     restart|force-reload)
-        log_daemon_msg "Restarting $DESC" "$NAME"
-        start-stop-daemon --stop --quiet --pidfile $PIDFILE --name $NAME --retry 5
-        uninstall_chroot
-        install_chroot
-        if start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --name $NAME --startas $DAEMON -- $DAEMON_OPTS; then
-            log_end_msg 0
-        else
-            log_end_msg 1
+        if $UNBOUND_ENABLE; then
+          log_daemon_msg "Restarting $DESC" "$NAME"
+          start-stop-daemon --stop --quiet --pidfile $PIDFILE --name $NAME --retry 5
+          uninstall_chroot
+          install_chroot
+          if start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE \
+             --name $NAME --startas $DAEMON -- $DAEMON_OPTS; then
+              log_end_msg 0
+          else
+              log_end_msg 1
+          fi
         fi
         ;;
 
@@ -79,10 +121,5 @@ case "$1" in
         ;;
 esac
 
-### BEGIN INIT INFO
-# Provides:          unbound
-# Required-Start:    $network $remote_fs $syslog
-# Required-Stop:     $network $remote_fs $syslog
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-### END INIT INFO
+exit 0;
+

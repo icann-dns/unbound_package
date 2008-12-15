@@ -1,3 +1,11 @@
+# Do you want to start unbound?
+#  only allowed values are "true" and "false".
+#  if you already use other DNS server, they would listen port 53,
+#  so unbound fails to start. Please adjust, then set "true".
+
+UNBOUND_ENABLE=false
+
+
 # config file path
 #DAEMON_OPTS="-c /etc/unbound/unbound.conf"
 
