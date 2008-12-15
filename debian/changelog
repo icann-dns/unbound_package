@@ -1,3 +1,18 @@
+unbound (1.0.2-1.1) unstable; urgency=low
+
+  [ Hideki Yamane (Debian-JP) ]
+  * debian/{unbound.init,unbound.default}
+    + set not start by default, to avoid that port 53 blocking by other name
+      servers will cause install problems
+  * debian/unbound.prerm
+    + fix lintian "unbound: maintainer-script-hides-init-failure prerm:5" error
+
+  [ Ondřej Surý ]
+  * Non-maintainer upload.
+  * Minor tweaks to patched init.d file to make it work.
+
+ -- Ondřej Surý <ondrej@debian.org>  Mon, 15 Dec 2008 19:54:44 +0100
+
 unbound (1.0.2-1) unstable; urgency=low
 
   * New upstream release;

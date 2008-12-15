@@ -2,8 +2,8 @@
 set -e
 if [ -x "/etc/init.d/unbound" ]; then
 	if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
-		invoke-rc.d unbound stop || exit 0
+		invoke-rc.d unbound stop
 	else
-		/etc/init.d/unbound stop || exit 0
+		/etc/init.d/unbound stop
 	fi
 fi
