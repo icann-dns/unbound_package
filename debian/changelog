@@ -1,3 +1,10 @@
+unbound (1.0.2-1.2) unstable; urgency=low
+
+  * Enable unbound by default (Closes: #508884)
+  * Call dh_installinit with --error-handler=true (Closes: #500176)
+
+ -- Ondřej Surý <ondrej@debian.org>  Tue, 16 Dec 2008 11:54:15 +0100
+
 unbound (1.0.2-1.1) unstable; urgency=low
 
   [ Hideki Yamane (Debian-JP) ]
