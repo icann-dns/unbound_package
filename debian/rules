@@ -22,7 +22,9 @@ clean:
 	dh clean
 
 install: build
-	dh install
+	dh install --before dh_installinit
+	dh_installinit --error-handler=true
+	dh install --after dh_installinit
 	install -m 0644 doc/example.conf debian/unbound/etc/unbound/unbound.conf
 
 binary-arch: install
