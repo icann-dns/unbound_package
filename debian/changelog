@@ -1,3 +1,11 @@
+unbound (1.0.2-1.2ubuntu1) jaunty; urgency=low
+
+  * Merge from debian unstable, remaining changes (LP: #310779):
+    - Add --install to the libtoolize call in debian/rules so that all the
+      necessary files get installed.
+
+ -- Nick Ellery <nick.ellery@ubuntu.com>  Mon, 22 Dec 2008 18:17:55 -0800
+
 unbound (1.0.2-1.2) unstable; urgency=low
 
   * Enable unbound by default (Closes: #508884)
@@ -19,6 +27,13 @@ unbound (1.0.2-1.1) unstable; urgency=low
   * Minor tweaks to patched init.d file to make it work.
 
  -- Ondřej Surý <ondrej@debian.org>  Mon, 15 Dec 2008 19:54:44 +0100
+
+unbound (1.0.2-1ubuntu1) jaunty; urgency=low
+
+  * Add --install to the libtoolize call in debian/rules so that all the
+    necessary files get installed. Fixes build error.
+
+ -- James Westby <james.westby@canonical.com>  Sat, 29 Nov 2008 03:46:12 +0000
 
 unbound (1.0.2-1) unstable; urgency=low
 
