@@ -1,3 +1,10 @@
+unbound (1.0.2-1.2ubuntu1~hardy2) hardy-backports; urgency=low
+
+  * Source backport to fix FTBFS (LP: #315701)
+    - Drop --install flag for libtoolize so it works with Hardy
+
+ -- Scott Kitterman <scott@kitterman.com>  Fri, 09 Jan 2009 23:51:17 -0500
+
 unbound (1.0.2-1.2ubuntu1~hardy1) hardy-backports; urgency=low
 
   * Automated backport upload; no source changes.
