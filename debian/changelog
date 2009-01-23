@@ -1,3 +1,9 @@
+unbound (1.0.2-1.2ubuntu1~intrepid1) intrepid-backports; urgency=low
+
+  * Automated backport upload; no source changes.
+
+ -- Scott Kitterman <ubuntu@kitterman.com>  Fri, 23 Jan 2009 17:45:27 +0000
+
 unbound (1.0.2-1.2ubuntu1) jaunty; urgency=low
 
   * Merge from debian unstable, remaining changes (LP: #310779):
