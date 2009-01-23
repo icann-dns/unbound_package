@@ -46,6 +46,10 @@ static void config_start_include(const char* filename)
 		ub_c_error_msg("includes nested too deeply, skipped (>%d)", MAXINCLUDES);
 		return;
 	}
+	if(cfg_parser->chroot && strncmp(filename, cfg_parser->chroot,
+		strlen(cfg_parser->chroot)) == 0) {
+		filename += strlen(cfg_parser->chroot);
+	}
 	input = fopen(filename, "r");
 	if(!input) {
 		ub_c_error_msg("cannot open include file '%s': %s",
@@ -142,16 +146,22 @@ infra-cache-slabs{COLON}	{ YDOUT; return VAR_INFRA_CACHE_SLABS;}
 infra-cache-numhosts{COLON}	{ YDOUT; return VAR_INFRA_CACHE_NUMHOSTS;}
 infra-cache-lame-size{COLON}	{ YDOUT; return VAR_INFRA_CACHE_LAME_SIZE;}
 num-queries-per-thread{COLON}	{ YDOUT; return VAR_NUM_QUERIES_PER_THREAD;}
+jostle-timeout{COLON}	{ YDOUT; return VAR_JOSTLE_TIMEOUT;}
 target-fetch-policy{COLON}	{ YDOUT; return VAR_TARGET_FETCH_POLICY;}
 harden-short-bufsize{COLON}	{ YDOUT; return VAR_HARDEN_SHORT_BUFSIZE;}
 harden-large-queries{COLON}	{ YDOUT; return VAR_HARDEN_LARGE_QUERIES;}
 harden-glue{COLON}	{ YDOUT; return VAR_HARDEN_GLUE;}
 harden-dnssec-stripped{COLON}	{ YDOUT; return VAR_HARDEN_DNNSEC_STRIPPED;}
+harden-referral-path{COLON}	{ YDOUT; return VAR_HARDEN_REFERRAL_PATH;}
 use-caps-for-id{COLON}	{ YDOUT; return VAR_USE_CAPS_FOR_ID;}
+unwanted-reply-threshold{COLON}	{ YDOUT; return VAR_UNWANTED_REPLY_THRESHOLD;}
+private-address{COLON}	{ YDOUT; return VAR_PRIVATE_ADDRESS;}
+private-domain{COLON}	{ YDOUT; return VAR_PRIVATE_DOMAIN;}
 stub-zone{COLON}	{ YDOUT; return VAR_STUB_ZONE;}
 name{COLON}		{ YDOUT; return VAR_NAME;}
 stub-addr{COLON}	{ YDOUT; return VAR_STUB_ADDR;}
 stub-host{COLON}	{ YDOUT; return VAR_STUB_HOST;}
+stub-prime{COLON}	{ YDOUT; return VAR_STUB_PRIME;}
 forward-zone{COLON}	{ YDOUT; return VAR_FORWARD_ZONE;}
 forward-addr{COLON}	{ YDOUT; return VAR_FORWARD_ADDR;}
 forward-host{COLON}	{ YDOUT; return VAR_FORWARD_HOST;}
@@ -163,6 +173,8 @@ hide-version{COLON}     { YDOUT; return VAR_HIDE_VERSION;}
 identity{COLON}		{ YDOUT; return VAR_IDENTITY;}
 version{COLON}     	{ YDOUT; return VAR_VERSION;}
 module-config{COLON}     	{ YDOUT; return VAR_MODULE_CONF;}
+dlv-anchor{COLON}	{ YDOUT; return VAR_DLV_ANCHOR;}
+dlv-anchor-file{COLON}	{ YDOUT; return VAR_DLV_ANCHOR_FILE;}
 trust-anchor-file{COLON}	{ YDOUT; return VAR_TRUST_ANCHOR_FILE;}
 trusted-keys-file{COLON}	{ YDOUT; return VAR_TRUSTED_KEYS_FILE;}
 trust-anchor{COLON}	{ YDOUT; return VAR_TRUST_ANCHOR;}
@@ -172,12 +184,23 @@ val-clean-additional{COLON}	{ YDOUT; return VAR_VAL_CLEAN_ADDITIONAL;}
 val-permissive-mode{COLON}	{ YDOUT; return VAR_VAL_PERMISSIVE_MODE;}
 key-cache-size{COLON}	{ YDOUT; return VAR_KEY_CACHE_SIZE;}
 key-cache-slabs{COLON}	{ YDOUT; return VAR_KEY_CACHE_SLABS;}
+neg-cache-size{COLON}	{ YDOUT; return VAR_NEG_CACHE_SIZE;}
 val-nsec3-keysize-iterations{COLON}	{ YDOUT; return VAR_VAL_NSEC3_KEYSIZE_ITERATIONS;}
 use-syslog{COLON}	{ YDOUT; return VAR_USE_SYSLOG;}
 local-zone{COLON}	{ YDOUT; return VAR_LOCAL_ZONE;}
 local-data{COLON}	{ YDOUT; return VAR_LOCAL_DATA;}
+local-data-ptr{COLON}	{ YDOUT; return VAR_LOCAL_DATA_PTR;}
 statistics-interval{COLON}	{ YDOUT; return VAR_STATISTICS_INTERVAL;}
 statistics-cumulative{COLON}	{ YDOUT; return VAR_STATISTICS_CUMULATIVE;}
+extended-statistics{COLON}	{ YDOUT; return VAR_EXTENDED_STATISTICS;}
+remote-control{COLON}	{ YDOUT; return VAR_REMOTE_CONTROL; }
+control-enable{COLON}	{ YDOUT; return VAR_CONTROL_ENABLE; }
+control-interface{COLON}	{ YDOUT; return VAR_CONTROL_INTERFACE; }
+control-port{COLON}	{ YDOUT; return VAR_CONTROL_PORT; }
+server-key-file{COLON}	{ YDOUT; return VAR_SERVER_KEY_FILE; }
+server-cert-file{COLON}	{ YDOUT; return VAR_SERVER_CERT_FILE; }
+control-key-file{COLON}	{ YDOUT; return VAR_CONTROL_KEY_FILE; }
+control-cert-file{COLON}	{ YDOUT; return VAR_CONTROL_CERT_FILE; }
 {NEWLINE}		{ LEXOUT(("NL\n")); cfg_parser->line++;}
 
 	/* Quoted strings. Strip leading and ending quotes */

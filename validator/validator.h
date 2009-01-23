@@ -48,6 +48,7 @@
 struct val_anchors;
 struct key_cache;
 struct key_entry_key;
+struct val_neg_cache;
 
 /**
  * This is the TTL to use when a trust anchor fails to prime. A trust anchor
@@ -62,6 +63,9 @@ struct val_env {
 	/** key cache; these are validated keys. trusted keys only
 	 * end up here after being primed. */
 	struct key_cache* kcache;
+
+	/** aggressive negative cache. index into NSECs in rrset cache. */
+	struct val_neg_cache* neg_cache;
 
 	/** for debug testing a fixed validation date can be entered.
 	 * if 0, current time is used for rrsig validation */
@@ -103,6 +107,11 @@ struct val_env {
 	 * in the keysize array.
 	 */
 	size_t* nsec3_maxiter;
+
+	/** lock on bogus counter */
+	lock_basic_t bogus_lock;
+	/** number of times rrsets marked bogus */
+	size_t num_rrset_bogus;
 };
 
 /**
@@ -116,7 +125,9 @@ enum val_state {
 	/** validate the answer, using found key entry */
 	VAL_VALIDATE_STATE,
 	/** finish up */
-	VAL_FINISHED_STATE
+	VAL_FINISHED_STATE,
+	/** DLV lookup state, processing DLV queries */
+	VAL_DLVLOOKUP_STATE
 };
 
 /**
@@ -184,6 +195,27 @@ struct val_qstate {
 
 	/** true if this state is waiting to prime a trust anchor */
 	int wait_prime_ta;
+
+	/** have we already checked the DLV? */
+	int dlv_checked;
+	/** The name for which the DLV is looked up. For the current message
+	 * or for the current RRset (for CNAME, REFERRAL types).
+	 * If there is signer name, that may be it, else a domain name */
+	uint8_t* dlv_lookup_name;
+	/** length of dlv lookup name */
+	size_t dlv_lookup_name_len;
+	/** Name at which chain of trust stopped with insecure, starting DLV
+	 * DLV must result in chain going further down */
+	uint8_t* dlv_insecure_at;
+	/** length of dlv insecure point name */
+	size_t dlv_insecure_at_len;
+	/** status of DLV lookup. Indication to VAL_DLV_STATE what to do */
+	enum dlv_status {
+		dlv_error, /* server failure */
+		dlv_success, /* got a DLV */
+		dlv_ask_higher, /* ask again */
+		dlv_there_is_no_dlv /* got no DLV, sure of it */
+	} dlv_status;
 };
 
 /**

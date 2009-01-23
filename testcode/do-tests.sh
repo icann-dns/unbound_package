@@ -2,26 +2,26 @@
 
 NEED_SPLINT='00-lint.tpkg'
 NEED_DOXYGEN='01-doc.tpkg'
-NEED_LDNS_TESTNS='fwd_no_edns.tpkg fwd_tcp_tc.tpkg fwd_tcp.tpkg fwd_three_service.tpkg fwd_three.tpkg fwd_ttlexpire.tpkg fwd_udp.tpkg fwd_tcp_tc6.tpkg fwd_compress_c00c.tpkg fwd_ancil.tpkg stat_timer.tpkg 05-asynclook.tpkg stream_tcp.tpkg speed_cache.tpkg fwd_oneport.tpkg fwd_udptmout.tpkg fwd_waitudp.tpkg tcp_sigpipe.tpkg hostsfileosx.tpkg local_nodefault.tpkg'
-NEED_XXD='fwd_compress_c00c.tpkg'
-NEED_NC='fwd_compress_c00c.tpkg'
+NEED_LDNS_TESTNS='fwd_no_edns.tpkg fwd_tcp_tc.tpkg fwd_tcp.tpkg fwd_three_service.tpkg fwd_three.tpkg fwd_ttlexpire.tpkg fwd_udp.tpkg fwd_tcp_tc6.tpkg fwd_compress_c00c.tpkg fwd_ancil.tpkg stat_timer.tpkg 05-asynclook.tpkg stream_tcp.tpkg speed_cache.tpkg fwd_oneport.tpkg fwd_udptmout.tpkg fwd_waitudp.tpkg tcp_sigpipe.tpkg hostsfileosx.tpkg local_nodefault.tpkg fwd_zero.tpkg'
+NEED_XXD='fwd_compress_c00c.tpkg fwd_zero.tpkg'
+NEED_NC='fwd_compress_c00c.tpkg fwd_zero.tpkg'
 NEED_CURL='06-ianaports.tpkg'
 NEED_WHOAMI='07-confroot.tpkg'
 NEED_IPV6='fwd_ancil.tpkg fwd_tcp_tc6.tpkg'
-NEED_JOBCONTROL='tcp_sigpipe.tpkg'
-
-# test if job control - and also signals - are available (not on mingw).
-if wait %% 2>&1 | grep "job control not enabled" >/dev/null 2>&1; then
-	JOBCONTROL=no
-else
-	JOBCONTROL=yes
-fi
+NEED_NOMINGW='tcp_sigpipe.tpkg 07-confroot.tpkg 08-host-lib.tpkg fwd_ancil.tpkg'
 
 # test for ipv6, uses streamptcp peculiarity.
 if ./streamtcp -f ::1 2>&1 | grep "not supported" >/dev/null 2>&1; then
 	HAVE_IPV6=no
 else
 	HAVE_IPV6=yes
+fi
+
+# test mingw. no signals and so on.
+if uname | grep MINGW >/dev/null; then
+	HAVE_MINGW=yes
+else
+	HAVE_MINGW=no
 fi
 
 cd testdata;
@@ -69,8 +69,8 @@ for test in `ls *.tpkg`; do
 			SKIP=1;
 		fi
 	fi
-	if echo $NEED_JOBCONTROL | grep $test >/dev/null; then
-		if test "$JOBCONTROL" = no; then
+	if echo $NEED_NOMINGW | grep $test >/dev/null; then
+		if test "$HAVE_MINGW" = yes; then
 			SKIP=1;
 		fi
 	fi

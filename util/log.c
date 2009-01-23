@@ -67,7 +67,7 @@ static ub_thread_key_t logkey;
 static const char* ident="unbound";
 #ifdef HAVE_SYSLOG_H
 /** are we using syslog(3) to log to */
-static int log_to_syslog = 0;
+static int logging_to_syslog = 0;
 #endif /* HAVE_SYSLOG_H */
 /** time to print in log, if NULL, use time(2) */
 static uint32_t* log_now = NULL;
@@ -82,7 +82,7 @@ log_init(const char* filename, int use_syslog, const char* chrootdir)
 	}
 	if(logfile 
 #ifdef HAVE_SYSLOG_H
-	|| log_to_syslog
+	|| logging_to_syslog
 #endif
 	)
 	verbose(VERB_QUERY, "switching log to %s", 
@@ -90,13 +90,15 @@ log_init(const char* filename, int use_syslog, const char* chrootdir)
 	if(logfile && logfile != stderr)
 		fclose(logfile);
 #ifdef HAVE_SYSLOG_H
-	if(log_to_syslog) {
+	if(logging_to_syslog) {
 		closelog();
-		log_to_syslog = 0;
+		logging_to_syslog = 0;
 	}
 	if(use_syslog) {
-		openlog(ident, 0, LOG_DAEMON);
-		log_to_syslog = 1;
+		/* do not delay opening until first write, because we may
+		 * chroot and no longer be able to access dev/log and so on */
+		openlog(ident, LOG_NDELAY, LOG_DAEMON);
+		logging_to_syslog = 1;
 		return;
 	}
 #endif /* HAVE_SYSLOG_H */
@@ -147,7 +149,7 @@ log_vmsg(int pri, const char* type,
 	(void)pri;
 	vsnprintf(message, sizeof(message), format, args);
 #ifdef HAVE_SYSLOG_H
-	if(log_to_syslog) {
+	if(logging_to_syslog) {
 		syslog(pri, "[%d:%x] %s: %s", 
 			(int)getpid(), tid?*tid:0, type, message);
 		return;
@@ -235,8 +237,9 @@ verbose(enum verbosity_value level, const char* format, ...)
 	va_end(args);
 }
 
-void 
-log_hex(const char* msg, void* data, size_t length)
+/** log hex data */
+static void 
+log_hex_f(enum verbosity_value v, const char* msg, void* data, size_t length)
 {
 	size_t i, j;
 	uint8_t* data8 = (uint8_t*)data;
@@ -246,7 +249,7 @@ log_hex(const char* msg, void* data, size_t length)
 	size_t len;
 
 	if(length == 0) {
-		log_info("%s[%u]", msg, (unsigned)length);
+		verbose(v, "%s[%u]", msg, (unsigned)length);
 		return;
 	}
 
@@ -259,16 +262,22 @@ log_hex(const char* msg, void* data, size_t length)
 			buf[j*2 + 1] = hexchar[ data8[i+j] & 0xF ];
 		}
 		buf[len*2] = 0;
-		log_info("%s[%u:%u] %.*s", msg, (unsigned)length, 
+		verbose(v, "%s[%u:%u] %.*s", msg, (unsigned)length, 
 			(unsigned)i, (int)len*2, buf);
 	}
+}
+
+void 
+log_hex(const char* msg, void* data, size_t length)
+{
+	log_hex_f(verbosity, msg, data, length);
 }
 
 void log_buf(enum verbosity_value level, const char* msg, ldns_buffer* buf)
 {
 	if(verbosity < level)
 		return;
-	log_hex(msg, ldns_buffer_begin(buf), ldns_buffer_limit(buf));
+	log_hex_f(level, msg, ldns_buffer_begin(buf), ldns_buffer_limit(buf));
 }
 
 #ifdef USE_WINSOCK

@@ -60,6 +60,7 @@
 #include "util/data/dname.h"
 #include "util/data/msgreply.h"
 #include "util/data/msgencode.h"
+#include "util/tube.h"
 
 /** handle new query command for bg worker */
 static void handle_newq(struct libworker* w, uint8_t* buf, uint32_t len);
@@ -78,10 +79,7 @@ libworker_delete(struct libworker* w)
 		ub_randfree(w->env->rnd);
 		free(w->env);
 	}
-	free(w->cmd_msg);
 	outside_network_delete(w->back);
-	comm_point_delete(w->cmd_com);
-	comm_point_delete(w->res_com);
 	comm_base_delete(w->base);
 	free(w);
 }
@@ -143,7 +141,7 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 	}
 	seed = 0;
 
-	w->base = comm_base_create();
+	w->base = comm_base_create(0);
 	if(!w->base) {
 		libworker_delete(w);
 		return NULL;
@@ -161,7 +159,8 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 		cfg->num_out_ifs, cfg->do_ip4, cfg->do_ip6, 
 		cfg->do_tcp?cfg->outgoing_num_tcp:0,
 		w->env->infra_cache, w->env->rnd, cfg->use_caps_bits_for_id,
-		ports, numports);
+		ports, numports, cfg->unwanted_threshold,
+		&libworker_alloc_cleanup, w);
 	if(!w->is_bg || w->is_bg_thread) {
 		lock_basic_unlock(&ctx->cfglock);
 	}
@@ -230,130 +229,19 @@ libworker_do_cmd(struct libworker* w, uint8_t* msg, uint32_t len)
 }
 
 /** handle control command coming into server */
-int 
-libworker_handle_control_cmd(struct comm_point* c, void* arg, 
-	int ATTR_UNUSED(err), struct comm_reply* ATTR_UNUSED(rep))
+void 
+libworker_handle_control_cmd(struct tube* ATTR_UNUSED(tube), 
+	uint8_t* msg, size_t len, int err, void* arg)
 {
 	struct libworker* w = (struct libworker*)arg;
-	ssize_t r;
 
-	if(w->cmd_read < sizeof(w->cmd_len)) {
-		/* complete reading the length of control msg */
-		r = read(c->fd, ((uint8_t*)&w->cmd_len) + w->cmd_read,
-			sizeof(w->cmd_len) - w->cmd_read);
-		if(r==0) {
-			/* error has happened or */
-			/* parent closed pipe, must have exited somehow */
-			/* it is of no use to go on, exit */
-			comm_base_exit(w->base);
-			return 0;
-		}
-		if(r==-1) {
-			if(errno != EAGAIN && errno != EINTR) {
-				log_err("rpipe error: %s", strerror(errno));
-			}
-			/* nothing to read now, try later */
-			return 0;
-		}
-		w->cmd_read += r;
-		if(w->cmd_read < sizeof(w->cmd_len)) {
-			/* not complete, try later */
-			return 0;
-		}
-		w->cmd_msg = (uint8_t*)calloc(1, w->cmd_len);
-		if(!w->cmd_msg) {
-			log_err("malloc failure");
-			w->cmd_read = 0;
-			return 0;
-		}
-	}
-	/* cmd_len has been read, read remainder */
-	r = read(c->fd, w->cmd_msg + w->cmd_read - sizeof(w->cmd_len),
-		w->cmd_len - (w->cmd_read - sizeof(w->cmd_len)));
-	if(r==0) {
-		/* error has happened or */
-		/* parent closed pipe, must have exited somehow */
+	if(err != 0) {
+		free(msg);
 		/* it is of no use to go on, exit */
 		comm_base_exit(w->base);
-		return 0;
+		return;
 	}
-	if(r==-1) {
-		/* nothing to read now, try later */
-		if(errno != EAGAIN && errno != EINTR) {
-			log_err("rpipe error: %s", strerror(errno));
-		}
-		return 0;
-	}
-	w->cmd_read += r;
-	if(w->cmd_read < sizeof(w->cmd_len) + w->cmd_len) {
-		/* not complete, try later */
-		return 0;
-	}
-	w->cmd_read = 0;
-	libworker_do_cmd(w, w->cmd_msg, w->cmd_len); /* also frees the buf */
-	w->cmd_msg = NULL;
-	return 0;
-}
-
-/** handle opportunity to write result back */
-int 
-libworker_handle_result_write(struct comm_point* c, void* arg, 
-	int ATTR_UNUSED(err), struct comm_reply* ATTR_UNUSED(rep))
-{
-	struct libworker* w = (struct libworker*)arg;
-	struct libworker_res_list* item = w->res_list;
-	ssize_t r;
-	if(!item) {
-		comm_point_stop_listening(c);
-		return 0;
-	}
-	if(w->res_write < sizeof(item->len)) {
-		r = write(c->fd, ((uint8_t*)&item->len) + w->res_write,
-			sizeof(item->len) - w->res_write);
-		if(r == -1) {
-			if(errno != EAGAIN && errno != EINTR) {
-				log_err("wpipe error: %s", strerror(errno));
-			}
-			return 0; /* try again later */
-		}
-		if(r == 0) {
-			/* error on pipe, must have exited somehow */
-			/* it is of no use to go on, exit */
-			comm_base_exit(w->base);
-			return 0;
-		}
-		w->res_write += r;
-		if(w->res_write < sizeof(item->len))
-			return 0;
-	}
-	r = write(c->fd, item->buf + w->res_write - sizeof(item->len),
-		item->len - (w->res_write - sizeof(item->len)));
-	if(r == -1) {
-		if(errno != EAGAIN && errno != EINTR) {
-			log_err("wpipe error: %s", strerror(errno));
-		}
-		return 0; /* try again later */
-	}
-	if(r == 0) {
-		/* error on pipe, must have exited somehow */
-		/* it is of no use to go on, exit */
-		comm_base_exit(w->base);
-		return 0;
-	}
-	w->res_write += r;
-	if(w->res_write < sizeof(item->len) + item->len)
-		return 0;
-	/* done this result, remove it */
-	free(item->buf);
-	item->buf = NULL;
-	w->res_list = w->res_list->next;
-	free(item);
-	if(!w->res_list) {
-		w->res_last = NULL;
-		comm_point_stop_listening(c);
-	}
-	w->res_write = 0;
-	return 0;
+	libworker_do_cmd(w, msg, len); /* also frees the buf */
 }
 
 /** the background thread func */
@@ -362,7 +250,6 @@ libworker_dobg(void* arg)
 {
 	/* setup */
 	uint32_t m;
-	int fd;
 	struct libworker* w = (struct libworker*)arg;
 	struct ub_ctx* ctx = w->ctx;
 	log_thread_set(&w->thread_num);
@@ -370,27 +257,20 @@ libworker_dobg(void* arg)
 	/* we are forked */
 	w->is_bg_thread = 0;
 	/* close non-used parts of the pipes */
-	if(ctx->qqpipe[1] != -1) {
-		close(ctx->qqpipe[1]);
-		ctx->qqpipe[1] = -1;
-	}
-	if(ctx->rrpipe[0] != -1) {
-		close(ctx->rrpipe[0]);
-		ctx->rrpipe[0] = -1;
-	}
+	tube_close_write(ctx->qq_pipe);
+	tube_close_read(ctx->rr_pipe);
 #endif
 	if(!w) {
 		log_err("libunbound bg worker init failed, nomem");
 		return NULL;
 	}
-	if(!(w->cmd_com=comm_point_create_raw(w->base, ctx->qqpipe[0], 0, 
-		libworker_handle_control_cmd, w))) {
-		log_err("libunbound bg worker init failed, no cmdcom");
+	if(!tube_setup_bg_listen(ctx->qq_pipe, w->base, 
+		libworker_handle_control_cmd, w)) {
+		log_err("libunbound bg worker init failed, no bglisten");
 		return NULL;
 	}
-	if(!(w->res_com=comm_point_create_raw(w->base, ctx->rrpipe[1], 1,
-		libworker_handle_result_write, w))) {
-		log_err("libunbound bg worker init failed, no rescom");
+	if(!tube_setup_bg_write(ctx->rr_pipe, w->base)) {
+		log_err("libunbound bg worker init failed, no bgwrite");
 		return NULL;
 	}
 
@@ -398,14 +278,17 @@ libworker_dobg(void* arg)
 	comm_base_dispatch(w->base);
 
 	/* cleanup */
-	fd = ctx->rrpipe[1];
-	ctx->rrpipe[1] = -1;
 	m = UB_LIBCMD_QUIT;
+	tube_remove_bg_listen(w->ctx->qq_pipe);
+	tube_remove_bg_write(w->ctx->rr_pipe);
 	libworker_delete(w);
-	close(ctx->qqpipe[0]);
-	ctx->qqpipe[0] = -1;
-	(void)libworker_write_msg(fd, (uint8_t*)&m, (uint32_t)sizeof(m), 0);
-	close(fd);
+	(void)tube_write_msg(ctx->rr_pipe, (uint8_t*)&m, 
+		(uint32_t)sizeof(m), 0);
+#ifdef THREADS_DISABLED
+	/* close pipes from forked process before exit */
+	tube_close_read(ctx->qq_pipe);
+	tube_close_write(ctx->rr_pipe);
+#endif
 	return NULL;
 }
 
@@ -434,10 +317,8 @@ int libworker_bg(struct ub_ctx* ctx)
 				w = libworker_setup(ctx, 1);
 				if(!w) fatal_exit("out of memory");
 				/* close non-used parts of the pipes */
-				close(ctx->qqpipe[1]);
-				close(ctx->rrpipe[0]);
-				ctx->qqpipe[1] = -1;
-				ctx->rrpipe[0] = -1;
+				tube_close_write(ctx->qq_pipe);
+				tube_close_read(ctx->rr_pipe);
 				(void)libworker_dobg(w);
 				exit(0);
 				break;
@@ -654,16 +535,19 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 {
 	uint8_t* msg = NULL;
 	uint32_t len = 0;
-	struct libworker_res_list* item;
 
 	/* serialize and delete unneeded q */
 	if(w->is_bg_thread) {
 		lock_basic_lock(&w->ctx->cfglock);
-		q->msg_len = ldns_buffer_remaining(pkt);
-		q->msg = memdup(ldns_buffer_begin(pkt), q->msg_len);
-		if(!q->msg)
-			msg = context_serialize_answer(q, UB_NOMEM, NULL, &len);
-		else	msg = context_serialize_answer(q, err, NULL, &len);
+		if(pkt) {
+			q->msg_len = ldns_buffer_remaining(pkt);
+			q->msg = memdup(ldns_buffer_begin(pkt), q->msg_len);
+			if(!q->msg)
+				msg = context_serialize_answer(q, UB_NOMEM, 
+				NULL, &len);
+			else	msg = context_serialize_answer(q, err, 
+				NULL, &len);
+		} else msg = context_serialize_answer(q, err, NULL, &len);
 		lock_basic_unlock(&w->ctx->cfglock);
 	} else {
 		msg = context_serialize_answer(q, err, pkt, &len);
@@ -676,23 +560,9 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 		log_err("out of memory for async answer");
 		return;
 	}
-	item = (struct libworker_res_list*)malloc(sizeof(*item));
-	if(!item) {
-		free(msg);
+	if(!tube_queue_item(w->ctx->rr_pipe, msg, len)) {
 		log_err("out of memory for async answer");
 		return;
-	}
-	item->buf = msg;
-	item->len = len;
-	item->next = NULL;
-	/* add at back of list, since the first one may be partially written */
-	if(w->res_last)
-		w->res_last->next = item;
-	else	w->res_list = item;
-	w->res_last = item;
-	if(w->res_list == w->res_last) {
-		/* first added item, start the write process */
-		comm_point_start_listening(w->res_com, -1, -1);
 	}
 }
 
@@ -830,7 +700,7 @@ libworker_handle_reply(struct comm_point* c, void* arg, int error,
 	e.qsent = NULL;
 
 	if(error != 0) {
-		mesh_report_reply(lw->env->mesh, &e, 0, reply_info);
+		mesh_report_reply(lw->env->mesh, &e, reply_info, error);
 		return 0;
 	}
 	/* sanity check. */
@@ -840,10 +710,11 @@ libworker_handle_reply(struct comm_point* c, void* arg, int error,
 		|| LDNS_QDCOUNT(ldns_buffer_begin(c->buffer)) > 1) {
 		/* error becomes timeout for the module as if this reply
 		 * never arrived. */
-		mesh_report_reply(lw->env->mesh, &e, 0, reply_info);
+		mesh_report_reply(lw->env->mesh, &e, reply_info, 
+			NETEVENT_TIMEOUT);
 		return 0;
 	}
-	mesh_report_reply(lw->env->mesh, &e, 1, reply_info);
+	mesh_report_reply(lw->env->mesh, &e, reply_info, NETEVENT_NOERROR);
 	return 0;
 }
 
@@ -855,7 +726,7 @@ libworker_handle_service_reply(struct comm_point* c, void* arg, int error,
 	struct libworker* lw = (struct libworker*)e->qstate->env->worker;
 
 	if(error != 0) {
-		mesh_report_reply(lw->env->mesh, e, 0, reply_info);
+		mesh_report_reply(lw->env->mesh, e, reply_info, error);
 		return 0;
 	}
 	/* sanity check. */
@@ -865,110 +736,20 @@ libworker_handle_service_reply(struct comm_point* c, void* arg, int error,
 		|| LDNS_QDCOUNT(ldns_buffer_begin(c->buffer)) > 1) {
 		/* error becomes timeout for the module as if this reply
 		 * never arrived. */
-		mesh_report_reply(lw->env->mesh, e, 0, reply_info);
+		mesh_report_reply(lw->env->mesh, e, reply_info, 
+			NETEVENT_TIMEOUT);
 		return 0;
 	}
-	mesh_report_reply(lw->env->mesh,  e, 1, reply_info);
+	mesh_report_reply(lw->env->mesh,  e, reply_info, NETEVENT_NOERROR);
 	return 0;
-}
-
-int 
-libworker_write_msg(int fd, uint8_t* buf, uint32_t len, int nonblock)
-{
-	ssize_t r;
-	/* test */
-	if(nonblock) {
-		r = write(fd, &len, sizeof(len));
-		if(r == -1) {
-			if(errno==EINTR || errno==EAGAIN)
-				return -1;
-			log_err("msg write failed: %s", strerror(errno));
-			return -1; /* can still continue, perhaps */
-		}
-	} else r = 0;
-	if(!fd_set_block(fd))
-		return 0;
-	/* write remainder */
-	if(r != (ssize_t)sizeof(len)) {
-		if(write(fd, (char*)(&len)+r, sizeof(len)-r) == -1) {
-			log_err("msg write failed: %s", strerror(errno));
-			(void)fd_set_nonblock(fd);
-			return 0;
-		}
-	}
-	if(write(fd, buf, len) == -1) {
-		log_err("msg write failed: %s", strerror(errno));
-		(void)fd_set_nonblock(fd);
-		return 0;
-	}
-	if(!fd_set_nonblock(fd))
-		return 0;
-	return 1;
-}
-
-int 
-libworker_read_msg(int fd, uint8_t** buf, uint32_t* len, int nonblock)
-{
-	ssize_t r;
-
-	/* test */
-	*len = 0;
-	if(nonblock) {
-		r = read(fd, len, sizeof(*len));
-		if(r == -1) {
-			if(errno==EINTR || errno==EAGAIN)
-				return -1;
-			log_err("msg read failed: %s", strerror(errno));
-			return -1; /* we can still continue, perhaps */
-		}
-		if(r == 0) /* EOF */
-			return 0;
-	} else r = 0;
-	if(!fd_set_block(fd))
-		return 0;
-	/* read remainder */
-	if(r != (ssize_t)sizeof(*len)) {
-		if((r=read(fd, (char*)(len)+r, sizeof(*len)-r)) == -1) {
-			log_err("msg read failed: %s", strerror(errno));
-			(void)fd_set_nonblock(fd);
-			return 0;
-		}
-		if(r == 0) /* EOF */ {
-			(void)fd_set_nonblock(fd);
-			return 0;
-		}
-	}
-	*buf = (uint8_t*)malloc(*len);
-	if(!*buf) {
-		log_err("out of memory");
-		(void)fd_set_nonblock(fd);
-		return 0;
-	}
-	if((r=read(fd, *buf, *len)) == -1) {
-		log_err("msg read failed: %s", strerror(errno));
-		(void)fd_set_nonblock(fd);
-		free(*buf);
-		return 0;
-	}
-	if(r == 0) { /* EOF */
-		(void)fd_set_nonblock(fd);
-		free(*buf);
-		return 0;
-	}
-	if(!fd_set_nonblock(fd)) {
-		free(*buf);
-		return 0;
-	}
-	return 1;
 }
 
 /* --- fake callbacks for fptr_wlist to work --- */
-int worker_handle_control_cmd(struct comm_point* ATTR_UNUSED(c), 
-	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
-        struct comm_reply* ATTR_UNUSED(reply_info))
+void worker_handle_control_cmd(struct tube* ATTR_UNUSED(tube), 
+	uint8_t* ATTR_UNUSED(buffer), size_t ATTR_UNUSED(len),
+	int ATTR_UNUSED(error), void* ATTR_UNUSED(arg))
 {
 	log_assert(0);
-	return 0;
 }
 
 int worker_handle_request(struct comm_point* ATTR_UNUSED(c), 
@@ -990,6 +771,22 @@ int worker_handle_reply(struct comm_point* ATTR_UNUSED(c),
 int worker_handle_service_reply(struct comm_point* ATTR_UNUSED(c), 
 	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
         struct comm_reply* ATTR_UNUSED(reply_info))
+{
+	log_assert(0);
+	return 0;
+}
+
+int remote_accept_callback(struct comm_point* ATTR_UNUSED(c), 
+	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
+        struct comm_reply* ATTR_UNUSED(repinfo))
+{
+	log_assert(0);
+	return 0;
+}
+
+int remote_control_callback(struct comm_point* ATTR_UNUSED(c), 
+	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
+        struct comm_reply* ATTR_UNUSED(repinfo))
 {
 	log_assert(0);
 	return 0;
@@ -1023,13 +820,6 @@ void
 worker_alloc_cleanup(void* ATTR_UNUSED(arg))
 {
 	log_assert(0);
-}
-
-int
-acl_list_cmp(const void* ATTR_UNUSED(k1), const void* ATTR_UNUSED(k2))
-{
-	log_assert(0);
-	return 0;
 }
 
 void worker_stat_timer_cb(void* ATTR_UNUSED(arg))

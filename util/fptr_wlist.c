@@ -47,27 +47,28 @@
 #include "util/fptr_wlist.h"
 #include "util/mini_event.h"
 #include "daemon/worker.h"
+#include "daemon/remote.h"
 #include "services/outside_network.h"
 #include "services/mesh.h"
 #include "services/localzone.h"
 #include "services/cache/infra.h"
 #include "services/cache/rrset.h"
 #include "iterator/iterator.h"
-#include "iterator/iter_donotq.h"
 #include "iterator/iter_fwd.h"
-#include "iterator/iter_hints.h"
 #include "validator/validator.h"
 #include "validator/val_anchor.h"
 #include "validator/val_nsec3.h"
 #include "validator/val_sigcrypt.h"
 #include "validator/val_kentry.h"
+#include "validator/val_neg.h"
 #include "util/data/msgreply.h"
 #include "util/data/packed_rrset.h"
 #include "util/storage/slabhash.h"
+#include "util/storage/dnstree.h"
 #include "util/locks.h"
-#include "daemon/acl_list.h"
 #include "libunbound/libworker.h"
 #include "libunbound/context.h"
+#include "util/tube.h"
 
 int 
 fptr_whitelist_comm_point(comm_point_callback_t *fptr)
@@ -75,7 +76,17 @@ fptr_whitelist_comm_point(comm_point_callback_t *fptr)
 	if(fptr == &worker_handle_request) return 1;
 	else if(fptr == &outnet_udp_cb) return 1;
 	else if(fptr == &outnet_tcp_cb) return 1;
-	else if(fptr == &worker_handle_control_cmd) return 1;
+	else if(fptr == &tube_handle_listen) return 1;
+	return 0;
+}
+
+int 
+fptr_whitelist_comm_point_raw(comm_point_callback_t *fptr)
+{
+	if(fptr == &tube_handle_listen) return 1;
+	else if(fptr == &tube_handle_write) return 1;
+	else if(fptr == &remote_accept_callback) return 1;
+	else if(fptr == &remote_control_callback) return 1;
 	return 0;
 }
 
@@ -106,6 +117,7 @@ fptr_whitelist_event(void (*fptr)(int, short, void *))
 	else if(fptr == &comm_signal_callback) return 1;
 	else if(fptr == &comm_point_local_handle_callback) return 1;
 	else if(fptr == &comm_point_raw_handle_callback) return 1;
+	else if(fptr == &tube_handle_signal) return 1;
 	return 0;
 }
 
@@ -140,14 +152,13 @@ fptr_whitelist_rbtree_cmp(int (*fptr) (const void *, const void *))
 {
 	if(fptr == &mesh_state_compare) return 1;
 	else if(fptr == &mesh_state_ref_compare) return 1;
-	else if(fptr == &acl_list_cmp) return 1;
+	else if(fptr == &addr_tree_compare) return 1;
 	else if(fptr == &local_zone_cmp) return 1;
 	else if(fptr == &local_data_cmp) return 1;
-	else if(fptr == &donotq_cmp) return 1;
 	else if(fptr == &fwd_cmp) return 1;
-	else if(fptr == &stub_cmp) return 1;
 	else if(fptr == &pending_cmp) return 1;
 	else if(fptr == &serviced_cmp) return 1;
+	else if(fptr == &name_tree_compare) return 1;
 	else if(fptr == &order_lock_cmp) return 1;
 	else if(fptr == &codeline_cmp) return 1;
 	else if(fptr == &nsec3_hash_cmp) return 1;
@@ -155,6 +166,8 @@ fptr_whitelist_rbtree_cmp(int (*fptr) (const void *, const void *))
 	else if(fptr == &anchor_cmp) return 1;
 	else if(fptr == &canonical_tree_compare) return 1;
 	else if(fptr == &context_query_cmp) return 1;
+	else if(fptr == &val_neg_data_compare) return 1;
+	else if(fptr == &val_neg_zone_compare) return 1;
 	return 0;
 }
 
@@ -323,5 +336,12 @@ int
 fptr_whitelist_alloc_cleanup(void (*fptr)(void*))
 {
 	if(fptr == &worker_alloc_cleanup) return 1;
+	return 0;
+}
+
+int fptr_whitelist_tube_listen(tube_callback_t* fptr)
+{
+	if(fptr == &worker_handle_control_cmd) return 1;
+	else if(fptr == &libworker_handle_control_cmd) return 1;
 	return 0;
 }

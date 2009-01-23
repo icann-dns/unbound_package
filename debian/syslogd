@@ -1,0 +1,2 @@
+SYSLOGD="-a /var/lib/unbound/dev/log"
+

@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Ubuntu MOTU Developers <ubuntu-motu@lists.ubuntu.com>
 XSBC-Original-Maintainer: Robert S. Edmonds <edmonds@debian.org>
 Build-Depends: dpkg-dev (>= 1.14.9), debhelper (>= 7), doxygen,
- autoconf, libtool, automake, libldns-dev, libssl-dev
+ autoconf, libtool, automake, libldns-dev (>=1.4.0), libssl-dev
 Standards-Version: 3.8.0.0
 Homepage: http://www.unbound.net/
 

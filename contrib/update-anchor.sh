@@ -1,11 +1,12 @@
 #!/bin/sh
 # update-anchor.sh, update a trust anchor.
-# this file is BSD licensed.
+# Copyright 2008, W.C.A. Wijngaards
+# This file is BSD licensed, see doc/LICENSE.
 
 # which validating lookup to use.
 ubhost=unbound-host
 
-function usage()
+usage ( )
 {
 	echo "usage: update-anchor [-b] <zone name> <trust anchor file>"
 	echo "    performs an update of trust anchor file"
@@ -21,7 +22,9 @@ function usage()
 	echo "    name the files br.anchor se.anchor ..., and include them in"
 	echo "    the validating resolver config file."
 	echo "    put keys for the root in a file with the name root.anchor."
-	exit 1
+	echo ""
+	echo "Exit code 0 means anchors updated, 1 no changes, others are errors."
+	exit 2
 }
 
 if test $# -eq 0; then
@@ -39,10 +42,11 @@ if test $# -ne 2; then
 	usage
 fi
 
-function do_update() {
+do_update ( ) {
 	# arguments: <zonename> <keyfile>
 	zonename="$1"
 	keyfile="$2"
+	tmp2=$tmpfile.2
 
 	tmpfile="/tmp/update-anchor.$$"
 	$ubhost -v $filearg "$keyfile" -t DNSKEY "$zonename" >$tmpfile
@@ -67,22 +71,22 @@ function do_update() {
 
 	if test $bindformat = "yes"; then
 		# are there any KSK keys on board?
-		echo 'trusted-keys {' > "$keyfile"
+		echo 'trusted-keys {' > "$tmp2"
 		if grep ' has DNSKEY record 257' $tmpfile >/dev/null 2>&1; then
 			# store KSK keys in anchor file
 			grep '(secure)$' $tmpfile | \
 			grep ' has DNSKEY record 257' | \
 			sed -e 's/ (secure)$/";/' | \
 			sed -e 's/ has DNSKEY record \([0-9]*\) \([0-9]*\) \([0-9]*\) /. \1 \2 \3 "/' | \
-			sed -e 's/^\.\././' >> "$keyfile"
+			sed -e 's/^\.\././' | sort >> "$tmp2"
 		else
 			# store all keys in the anchor file
 			grep '(secure)$' $tmpfile | \
 			sed -e 's/ (secure)$/";/' | \
 			sed -e 's/ has DNSKEY record \([0-9]*\) \([0-9]*\) \([0-9]*\) /. \1 \2 \3 "/' | \
-			sed -e 's/^\.\././' >> "$keyfile"
+			sed -e 's/^\.\././' | sort >> "$tmp2"
 		fi
-		echo '};' >> "$keyfile"
+		echo '};' >> "$tmp2"
 	else #not bindformat
 		# are there any KSK keys on board?
 		if grep ' has DNSKEY record 257' $tmpfile >/dev/null 2>&1; then
@@ -91,21 +95,30 @@ function do_update() {
 			grep ' has DNSKEY record 257' | \
 			sed -e 's/ (secure)$//' | \
 			sed -e 's/ has DNSKEY record /. IN DNSKEY /' | \
-			sed -e 's/^\.\././' > "$keyfile"
+			sed -e 's/^\.\././' | sort > "$tmp2"
 		else
 			# store all keys in the anchor file
 			grep '(secure)$' $tmpfile | \
 			sed -e 's/ (secure)$//' | \
 			sed -e 's/ has DNSKEY record /. IN DNSKEY /' | \
-			sed -e 's/^\.\././' > "$keyfile"
+			sed -e 's/^\.\././' | sort > "$tmp2"
 		fi
 	fi # endif-bindformat
 
-	echo "$zonename key file $keyfile updated."
+	# copy over if changed
+	diff $tmp2 $keyfile >/dev/null 2>&1
+	if test $? -eq 1; then   # 0 means no change, 2 means trouble.
+		cat $tmp2 > $keyfile
+		no_updated=0
+		echo "$zonename key file $keyfile updated."
+	else
+		echo "$zonename key file $keyfile unchanged."
+	fi
 
-	rm -f $tmpfile
+	rm -f $tmpfile $tmp2
 }
 
+no_updated=1
 if test X"$1" = "X-d"; then
 	tdir="$2"
 	echo "start updating in $2"
@@ -128,7 +141,5 @@ else
 	fi
 	kfile="$2"
 	do_update $zname $kfile
-	exit $?
 fi
-
-exit 0
+exit $no_updated

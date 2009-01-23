@@ -175,3 +175,18 @@ License: GPL-2+ | other
  make and distribute a modified version of the Autoconf Macro, you
  may extend this special exception to the GPL to apply to your
  modified version as well.
+
+Files: util/configparser.h, util/configparser.c
+Copyright:  (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006
+ Free Software Foundation, Inc.
+License: GPL-2+
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License as
+ published by the Free Software Foundation; either version 2 of the
+ License, or (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ General Public License for more details.
+
