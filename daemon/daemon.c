@@ -42,6 +42,7 @@
 #include "config.h"
 #include "daemon/daemon.h"
 #include "daemon/worker.h"
+#include "daemon/remote.h"
 #include "daemon/acl_list.h"
 #include "util/log.h"
 #include "util/config_file.h"
@@ -54,6 +55,7 @@
 #include "services/modstack.h"
 #include "util/module.h"
 #include "util/random.h"
+#include "util/tube.h"
 #include <signal.h>
 
 /** How many quit requests happened. */
@@ -162,6 +164,9 @@ daemon_init()
 	signal_handling_record();
 	checklock_start();
 	ERR_load_crypto_strings();
+	ERR_load_SSL_strings();
+	OpenSSL_add_all_algorithms();
+	(void)SSL_library_init();
 #ifdef HAVE_TZSET
 	/* init timezone info while we are not chrooted yet */
 	tzset();
@@ -180,6 +185,9 @@ daemon_init()
 		free(daemon);
 		return NULL;
 	}
+	if(gettimeofday(&daemon->time_boot, NULL) < 0)
+		log_err("gettimeofday: %s", strerror(errno));
+	daemon->time_last_stat = daemon->time_boot;
 	return daemon;	
 }
 
@@ -187,12 +195,24 @@ int
 daemon_open_shared_ports(struct daemon* daemon)
 {
 	log_assert(daemon);
-	if(daemon->cfg->port == daemon->listening_port)
-		return 1;
-	listening_ports_free(daemon->ports);
-	if(!(daemon->ports=listening_ports_open(daemon->cfg)))
-		return 0;
-	daemon->listening_port = daemon->cfg->port;
+	if(daemon->cfg->port != daemon->listening_port) {
+		listening_ports_free(daemon->ports);
+		if(!(daemon->ports=listening_ports_open(daemon->cfg)))
+			return 0;
+		daemon->listening_port = daemon->cfg->port;
+	}
+	if(!daemon->cfg->remote_control_enable && daemon->rc_port) {
+		listening_ports_free(daemon->rc_ports);
+		daemon->rc_ports = NULL;
+		daemon->rc_port = 0;
+	}
+	if(daemon->cfg->remote_control_enable && 
+		daemon->cfg->control_port != daemon->rc_port) {
+		listening_ports_free(daemon->rc_ports);
+		if(!(daemon->rc_ports=daemon_remote_open_ports(daemon->cfg)))
+			return 0;
+		daemon->rc_port = daemon->cfg->control_port;
+	}
 	return 1;
 }
 
@@ -292,13 +312,13 @@ void close_other_pipes(struct daemon* daemon, int thr)
 	int i;
 	for(i=0; i<daemon->num; i++)
 		if(i!=thr) {
-			if(daemon->workers[i]->cmd_send_fd != -1) {
-				close(daemon->workers[i]->cmd_send_fd);
-				daemon->workers[i]->cmd_send_fd = -1;
-			}
-			if(daemon->workers[i]->cmd_recv_fd != -1) {
-				close(daemon->workers[i]->cmd_recv_fd);
-				daemon->workers[i]->cmd_recv_fd = -1;
+			if(i==0) {
+				/* only close read part, need to write stats */
+				tube_close_read(daemon->workers[i]->cmd);
+			} else {
+				/* complete close channel to others */
+				tube_delete(daemon->workers[i]->cmd);
+				daemon->workers[i]->cmd = NULL;
 			}
 		}
 }
@@ -316,8 +336,7 @@ thread_start(void* arg)
 	ub_thread_blocksigs();
 #ifdef THREADS_DISABLED
 	/* close pipe ends used by main */
-	close(worker->cmd_send_fd);
-	worker->cmd_send_fd = -1;
+	tube_close_write(worker->cmd);
 	close_other_pipes(worker->daemon, worker->thread_num);
 #endif
 	if(!worker_init(worker, worker->daemon->cfg, worker->daemon->ports, 0))
@@ -343,8 +362,7 @@ daemon_start_others(struct daemon* daemon)
 			thread_start, daemon->workers[i]);
 #ifdef THREADS_DISABLED
 		/* close pipe end of child */
-		close(daemon->workers[i]->cmd_recv_fd);
-		daemon->workers[i]->cmd_recv_fd = -1;
+		tube_close_read(daemon->workers[i]->cmd);
 #endif /* no threads */
 	}
 }
@@ -362,8 +380,7 @@ daemon_stop_others(struct daemon* daemon)
 	/* skip i=0, is this thread */
 	/* use i=0 buffer for sending cmds; because we are #0 */
 	for(i=1; i<daemon->num; i++) {
-		worker_send_cmd(daemon->workers[i], 
-			daemon->workers[0]->front->udp_buff, worker_cmd_quit);
+		worker_send_cmd(daemon->workers[i], worker_cmd_quit);
 	}
 	/* wait for them to quit */
 	for(i=1; i<daemon->num; i++) {
@@ -392,6 +409,12 @@ daemon_fork(struct daemon* daemon)
 	 * them to the newly created threads. 
 	 */
 	daemon_create_workers(daemon);
+
+#ifdef HAVE_EV_LOOP
+	/* in libev the first inited base gets signals */
+	if(!worker_init(daemon->workers[0], daemon->cfg, daemon->ports, 1))
+		fatal_exit("Could not initialize main thread");
+#endif
 	
 	/* Now create the threads and init the workers.
 	 * By the way, this is thread #0 (the main thread).
@@ -399,10 +422,13 @@ daemon_fork(struct daemon* daemon)
 	daemon_start_others(daemon);
 
 	/* Special handling for the main thread. This is the thread
-	 * that handles signals.
+	 * that handles signals and remote control.
 	 */
+#ifndef HAVE_EV_LOOP
+	/* libevent has the last inited base get signals (or any base) */
 	if(!worker_init(daemon->workers[0], daemon->cfg, daemon->ports, 1))
 		fatal_exit("Could not initialize main thread");
+#endif
 	signal_handling_playback(daemon->workers[0]);
 
 	/* Start resolver service on main thread. */
@@ -449,6 +475,7 @@ daemon_delete(struct daemon* daemon)
 		return;
 	modstack_desetup(&daemon->mods, daemon->env);
 	listening_ports_free(daemon->ports);
+	listening_ports_free(daemon->rc_ports);
 	if(daemon->env) {
 		slabhash_delete(daemon->env->msg_cache);
 		rrset_cache_delete(daemon->env->rrset_cache);
@@ -457,6 +484,7 @@ daemon_delete(struct daemon* daemon)
 	ub_randfree(daemon->rand);
 	alloc_clear(&daemon->superalloc);
 	acl_list_delete(daemon->acl);
+	free(daemon->chroot);
 	free(daemon->pidfile);
 	free(daemon->env);
 	free(daemon);

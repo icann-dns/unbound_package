@@ -2,14 +2,17 @@
 # Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.56)
 
-AC_INIT(unbound,1.0.2, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.2.0, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=0
-LIBUNBOUND_REVISION=14
+LIBUNBOUND_REVISION=17
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
 # 1.0.2 had 0:14:0
+# 1.1.0 had 0:15:0
+# 1.1.1 had 0:16:0
+# 1.2.0 had 0:17:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -33,7 +36,7 @@ AC_SUBST(LIBUNBOUND_CURRENT)
 AC_SUBST(LIBUNBOUND_REVISION)
 AC_SUBST(LIBUNBOUND_AGE)
 
-CFLAGS=
+CFLAGS="$CFLAGS"
 AC_AIX
 
 dnl
@@ -276,6 +279,20 @@ int test() {
 }
 ], [CFLAGS="$CFLAGS -D_GNU_SOURCE"])
 
+# check again for GNU_SOURCE for setresgid. May fail if setresgid
+# is not available at all. -D_FRSRESGID is to make this check unique.
+# otherwise we would get the previous cached result.
+CHECK_COMPILER_FLAG_NEEDED(-D_GNU_SOURCE -D_FRSRESGID,
+[
+#include <unistd.h>
+
+int test() {
+	int a = setresgid(0,0,0);
+	a = setresuid(0,0,0);
+        return a;
+}
+], [CFLAGS="$CFLAGS -D_GNU_SOURCE"])
+
 CHECK_COMPILER_FLAG_NEEDED(-D_POSIX_C_SOURCE=200112,
 [
 #include "confdefs.h"
@@ -424,7 +441,7 @@ AC_PROG_LIBTOOL
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h glob.h],,, [AC_INCLUDES_DEFAULT])
 
 # check for types
 AC_CHECK_TYPE(int8_t, char)
@@ -496,6 +513,9 @@ AC_ARG_WITH(ssl, AC_HELP_STRING([--with-ssl=pathname],
         ],[
             withval="yes"
         ])
+    if test x_$withval = x_no; then
+	AC_MSG_ERROR([Need SSL library to do digital signature cryptography])
+    fi
     if test x_$withval != x_no; then
         AC_MSG_CHECKING(for SSL)
         if test x_$withval = x_ -o x_$withval = x_yes; then
@@ -521,7 +541,6 @@ AC_ARG_WITH(ssl, AC_HELP_STRING([--with-ssl=pathname],
 	    fi
 	
 	    AC_MSG_CHECKING([for HMAC_CTX_init in -lcrypto])
-	    ORIGLIBS="$LIBS"
 	    LIBS="$LIBS -lcrypto"
 	    AC_TRY_LINK(, [
 		int HMAC_CTX_init(void);
@@ -554,6 +573,20 @@ AC_ARG_WITH(ssl, AC_HELP_STRING([--with-ssl=pathname],
 AC_CHECK_HEADERS([openssl/ssl.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/err.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/rand.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_FUNCS([EVP_sha1 EVP_sha256 EVP_sha512])
+
+# check if libssl needs libdl
+BAKLIBS="$LIBS"
+LIBS="-lssl $LIBS"
+AC_MSG_CHECKING([if libssl needs libdl])
+AC_TRY_LINK_FUNC([SSL_CTX_new], [
+	AC_MSG_RESULT([no])
+	LIBS="$BAKLIBS"
+] , [
+	AC_MSG_RESULT([yes])
+	LIBS="$BAKLIBS"
+	AC_SEARCH_LIBS([dlopen], [dl])
+])
 
 # check for thread library.
 AC_ARG_WITH(pthreads, AC_HELP_STRING([--with-pthreads], 
@@ -672,6 +705,7 @@ large outgoing port ranges.  ])
 	AC_CHECK_FUNCS([event_base_free]) # only in libevent 1.2 and later
 	AC_CHECK_FUNCS([event_base_once]) # only in libevent 1.4? and later
 	AC_CHECK_FUNCS([event_base_get_method]) # only in libevent 1.4.3 and later
+	AC_CHECK_FUNCS([ev_loop]) # only in libev. (tested on 3.51)
 	if test -n "$BAK_LDFLAGS"; then
 		LDFLAGS="$BAK_LDFLAGS"
 	fi
@@ -781,7 +815,140 @@ AC_CHECK_GETADDRINFO_WITH_INCLUDES
 if test $ac_cv_func_getaddrinfo = no; then
 AC_LIBOBJ([fake-rfc2553])
 fi
-AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev])
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev setresuid setreuid setresgid setregid glob])
+
+# check if setreuid en setregid fail, on MacOSX10.4(darwin8).
+if echo $build_os | grep darwin8 > /dev/null; then
+	AC_DEFINE(DARWIN_BROKEN_SETREUID, 1, [Define this if on macOSX10.4-darwin8 and setreuid and setregid do not work])
+fi
+
+# check if select and nonblocking sockets actually work.
+AC_MSG_CHECKING([if nonblocking sockets work])
+AC_RUN_IFELSE(AC_LANG_PROGRAM([
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <errno.h>
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_TIME_H
+#include <time.h>
+#endif
+],[[
+	int port;
+	int sfd, cfd;
+	int num = 10;
+	int i, p;
+	struct sockaddr_in a;
+	/* test if select and nonblocking reads work well together */
+	/* open port.
+	   fork child to send 10 messages.
+	   select to read.
+	   then try to nonblocking read the 10 messages
+	   then, nonblocking read must give EAGAIN
+	*/
+
+	port = 12345 + (time(0)%32);
+	sfd = socket(PF_INET, SOCK_DGRAM, 0);
+	if(sfd == -1) {
+		perror("socket");
+		return 1;
+	}
+	memset(&a, 0, sizeof(a));
+	a.sin_family = AF_INET;
+	a.sin_port = htons(port);
+	a.sin_addr.s_addr = inet_addr("127.0.0.1");
+	if(bind(sfd, (struct sockaddr*)&a, sizeof(a)) < 0) {
+		perror("bind");
+		return 1;
+	}
+	if(fcntl(sfd, F_SETFL, O_NONBLOCK) == -1) {
+		perror("fcntl");
+		return 1;
+	}
+
+	cfd = socket(PF_INET, SOCK_DGRAM, 0);
+	if(cfd == -1) {
+		perror("client socket");
+		return 1;
+	}
+	a.sin_port = 0;
+	if(bind(cfd, (struct sockaddr*)&a, sizeof(a)) < 0) {
+		perror("client bind");
+		return 1;
+	}
+	a.sin_port = htons(port);
+
+	/* no handler, causes exit in 10 seconds */
+	alarm(10);
+
+	/* send and receive on the socket */
+	if((p=fork()) == 0) {
+		for(i=0; i<num; i++) {
+			if(sendto(cfd, &i, sizeof(i), 0, 
+				(struct sockaddr*)&a, sizeof(a)) < 0) {
+				perror("sendto");
+				return 1;
+			}
+		}
+	} else {
+		/* parent */
+		fd_set rset;
+		int x;
+		if(p == -1) {
+			perror("fork");
+			return 1;
+		}
+		FD_ZERO(&rset);
+		FD_SET(sfd, &rset);
+		if(select(sfd+1, &rset, NULL, NULL, NULL) < 1) {
+			perror("select");
+			return 1;
+		}
+		i = 0;
+		while(i < num) {
+			if(recv(sfd, &x, sizeof(x), 0) != sizeof(x)) {
+				if(errno == EAGAIN)
+					continue;
+				perror("recv");
+				return 1;
+			}
+			i++;
+		}
+		/* now we want to get EAGAIN: nonblocking goodness */
+		errno = 0;
+		recv(sfd, &x, sizeof(x), 0);
+		if(errno != EAGAIN) {
+			perror("trying to recv again");
+			return 1;
+		}
+		/* EAGAIN encountered */
+	}
+
+	close(sfd);
+	close(cfd);
+]]), [
+	AC_MSG_RESULT([yes])
+], [
+	AC_MSG_RESULT([no])
+	AC_DEFINE([NONBLOCKING_IS_BROKEN], 1, [Define if the network stack does not fully support nonblocking io (causes lower performance).])
+], [
+	AC_MSG_RESULT([crosscompile(yes)])
+])
 
 # check mkdir
 AC_MSG_CHECKING([whether mkdir has one arg])
@@ -823,7 +990,6 @@ AC_REPLACE_FUNCS(snprintf)
 AC_REPLACE_FUNCS(strlcpy)
 AC_REPLACE_FUNCS(memmove)
 AC_REPLACE_FUNCS(gmtime_r)
-AC_REPLACE_FUNCS(socketpair) dnl for mingw32
 
 # check this after all other compilation checks, since the linking of the lib
 # may break checks after this.
@@ -839,6 +1005,8 @@ AC_ARG_WITH(ldns,
 AC_CHECK_LIB(ldns, ldns_buffer_copy, [
 dnl ldns was found, check compat functions
 AC_CHECK_LIB(ldns, [ldns_rr_free])
+AC_CHECK_FUNC([ldns_b32_ntop_extended_hex],, [
+	AC_MSG_ERROR([ldns version too old, need >=1.4.0])])
 ] , [
 dnl use the builtin ldns-src.tar.gz file to build ldns.
 if test ! -f $srcdir/ldns-src.tar.gz; then
@@ -1004,14 +1172,9 @@ size_t strlcpy(char *dst, const char *src, size_t siz);
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 #endif
 #ifndef HAVE_GETADDRINFO
-#define getaddrinfo getaddrinfo_unbound
-#define gai_strerror gai_strerror_unbound
-#define freeaddrinfo freeaddrinfo_unbound
-#define getnameinfo getnameinfo_unbound
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
 #endif
-
 #ifndef HAVE_SLEEP
 #define sleep(x) Sleep((x)*1000) /* on win32 */
 #endif /* HAVE_SLEEP */
@@ -1024,9 +1187,6 @@ struct sockaddr_storage;
 #ifndef HAVE_SRANDOM
 #define srandom(x) srand(x) /* on win32, for tests only (bad random) */
 #endif /* HAVE_SRANDOM */
-#ifndef HAVE_SOCKETPAIR
-int socketpair(int d, int type, int protocol, int *sv);
-#endif
 
 /* detect if we need to cast to unsigned int for FD_SET to avoid warnings */
 #ifdef HAVE_WINSOCK2_H
@@ -1060,6 +1220,6 @@ void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 #define UNBOUND_DNS_PORT 53
 ])
 
-AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-checkconf.8 doc/unbound.conf.5])
+AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8])
 AC_CONFIG_HEADER([config.h])
 AC_OUTPUT

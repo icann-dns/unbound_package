@@ -56,6 +56,8 @@ struct module_qstate;
 struct ub_randstate;
 struct mesh_area;
 struct mesh_state;
+struct val_anchors;
+struct val_neg_cache;
 
 /** Maximum number of modules in operation */
 #define MAX_MODULE 5
@@ -203,6 +205,9 @@ struct module_env {
 	 * and are not primed and ready for validation, but on the bright
 	 * side, they are read only memory, thus no locks and fast. */
 	struct val_anchors* anchors;
+	/** negative cache, configured by the validator. if not NULL,
+	 * contains NSEC record lookup trees. */
+	struct val_neg_cache* neg_cache;
 	/** module specific data. indexed by module id. */
 	void* modinfo[MAX_MODULE];
 };
@@ -239,6 +244,8 @@ enum module_ev {
 	module_event_reply,
 	/** no reply, timeout or other error */
 	module_event_noreply,
+	/** reply is there, but capitalisation check failed */
+	module_event_capsfail,
 	/** next module is done, and its reply is awaiting you */
 	module_event_moddone,
 	/** error */
@@ -282,7 +289,7 @@ struct module_qstate {
  */
 struct module_func_block {
 	/** text string name of module */
-	char* name;
+	const char* name;
 
 	/** 
 	 * init the module. Called once for the global state.

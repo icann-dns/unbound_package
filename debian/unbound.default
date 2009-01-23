@@ -11,4 +11,4 @@ UNBOUND_ENABLE=true
 # automatic chroot setup in the init script
 # set to 'no' to disable
 # see /usr/share/doc/unbound/README.Debian
-#CHROOT=yes
+CHROOT=yes

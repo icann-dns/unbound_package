@@ -46,6 +46,7 @@
 #include "iterator/iter_fwd.h"
 #include "iterator/iter_donotq.h"
 #include "iterator/iter_delegpt.h"
+#include "iterator/iter_priv.h"
 #include "services/cache/infra.h"
 #include "services/cache/dns.h"
 #include "services/cache/rrset.h"
@@ -123,19 +124,61 @@ iter_apply_cfg(struct iter_env* iter_env, struct config_file* cfg)
 		log_err("Could not set donotqueryaddresses");
 		return 0;
 	}
+	if(!iter_env->priv)
+		iter_env->priv = priv_create();
+	if(!iter_env->priv || !priv_apply_cfg(iter_env->priv, cfg)) {
+		log_err("Could not set private addresses");
+		return 0;
+	}
 	iter_env->supports_ipv6 = cfg->do_ip6;
 	return 1;
 }
 
-/** filter out unsuitable targets, return rtt or -1 */
+/** filter out unsuitable targets
+ * @param iter_env: iterator environment with ipv6-support flag.
+ * @param env: module environment with infra cache.
+ * @param name: zone name
+ * @param namelen: length of name
+ * @param qtype: query type (host order).
+ * @param now: current time
+ * @param a: address in delegation point we are examining.
+ * @return an integer that signals the target suitability.
+ *	as follows:
+ *	-1: The address should be omitted from the list.
+ *	    Because:
+ *		o The address is bogus (DNSSEC validation failure).
+ *		o Listed as donotquery
+ *		o is ipv6 but no ipv6 support (in operating system).
+ *		o is lame
+ *	Otherwise, an rtt in milliseconds.
+ *	0 .. USEFUL_SERVER_TOP_TIMEOUT-1
+ *		The roundtrip time timeout estimate. less than 2 minutes.
+ *		Note that util/rtt.c has a MIN_TIMEOUT of 50 msec, thus
+ *		values 0 .. 49 are not used, unless that is changed.
+ *	USEFUL_SERVER_TOP_TIMEOUT
+ *		This value exactly is given for unresponsive blacklisted.
+ *	USEFUL_SERVER_TOP_TIMEOUT ..
+ *		dnsseclame servers get penalty
+ *	USEFUL_SERVER_TOP_TIMEOUT*2 ..
+ *		recursion lame servers get penalty
+ *	UNKNOWN_SERVER_NICENESS 
+ *		If no information is known about the server, this is
+ *		returned. 376 msec or so.
+ *
+ * When a final value is chosen that is dnsseclame ; dnsseclameness checking
+ * is turned off (so we do not discard the reply).
+ * When a final value is chosen that is recursionlame; RD bit is set on query.
+ * Because of the numbers this means recursionlame also have dnssec lameness
+ * checking turned off. 
+ */
 static int
 iter_filter_unsuitable(struct iter_env* iter_env, struct module_env* env,
 	uint8_t* name, size_t namelen, uint16_t qtype, uint32_t now, 
 	struct delegpt_addr* a)
 {
-	int rtt;
-	int lame;
-	int dnsseclame;
+	int rtt, lame, reclame, dnsseclame;
+	if(a->bogus)
+		return -1; /* address of server is bogus */
 	if(donotq_lookup(iter_env->donotq, &a->addr, a->addrlen)) {
 		return -1; /* server is on the donotquery list */
 	}
@@ -144,12 +187,21 @@ iter_filter_unsuitable(struct iter_env* iter_env, struct module_env* env,
 	}
 	/* check lameness - need zone , class info */
 	if(infra_get_lame_rtt(env->infra_cache, &a->addr, a->addrlen, 
-		name, namelen, qtype, &lame, &dnsseclame, &rtt, now)) {
+		name, namelen, qtype, &lame, &dnsseclame, &reclame, 
+		&rtt, now)) {
+		log_addr(VERB_ALGO, "servselect", &a->addr, a->addrlen);
+		verbose(VERB_ALGO, "   rtt=%d%s%s%s", rtt,
+			lame?" LAME":"",
+			dnsseclame?" DNSSEC_LAME":"",
+			reclame?" REC_LAME":"");
 		if(lame)
 			return -1; /* server is lame */
 		else if(rtt >= USEFUL_SERVER_TOP_TIMEOUT)
-			return -1; /* server is unresponsive */
-		else if(dnsseclame)
+				/* server is unresponsive */
+			return USEFUL_SERVER_TOP_TIMEOUT; 
+		else if(reclame)
+			return rtt+USEFUL_SERVER_TOP_TIMEOUT*2; /* nonpref */
+		else if(dnsseclame )
 			return rtt+USEFUL_SERVER_TOP_TIMEOUT; /* nonpref */
 		else	return rtt;
 	}
@@ -165,6 +217,8 @@ iter_fill_rtt(struct iter_env* iter_env, struct module_env* env,
 {
 	int got_it = 0;
 	struct delegpt_addr* a;
+	if(dp->bogus)
+		return 0; /* NS bogus, all bogus, nothing found */
 	for(a=dp->result_list; a; a = a->next_result) {
 		a->sel_rtt = iter_filter_unsuitable(iter_env, env, 
 			name, namelen, qtype, now, a);
@@ -195,6 +249,10 @@ iter_filter_order(struct iter_env* iter_env, struct module_env* env,
 		&low_rtt);
 	if(got_num == 0) 
 		return 0;
+	if(low_rtt >= USEFUL_SERVER_TOP_TIMEOUT &&
+		delegpt_count_missing_targets(dp) > 0)
+		return 0; /* we want more choice. The best choice is a bad one.
+			     return 0 to force the caller to fetch more */
 
 	got_num = 0;
 	a = dp->result_list;
@@ -233,7 +291,8 @@ iter_filter_order(struct iter_env* iter_env, struct module_env* env,
 struct delegpt_addr* 
 iter_server_selection(struct iter_env* iter_env, 
 	struct module_env* env, struct delegpt* dp, 
-	uint8_t* name, size_t namelen, uint16_t qtype, int* dnssec_expected)
+	uint8_t* name, size_t namelen, uint16_t qtype, int* dnssec_expected,
+	int* chase_to_rd)
 {
 	int sel;
 	int selrtt;
@@ -243,8 +302,25 @@ iter_server_selection(struct iter_env* iter_env,
 
 	if(num == 0)
 		return NULL;
-	if(selrtt >= USEFUL_SERVER_TOP_TIMEOUT)
+	verbose(VERB_ALGO, "selrtt %d", selrtt);
+	if(selrtt > USEFUL_SERVER_TOP_TIMEOUT*2) {
+		verbose(VERB_ALGO, "chase to recursion lame server");
+		*chase_to_rd = 1;
+	}
+	if(selrtt > USEFUL_SERVER_TOP_TIMEOUT) {
+		verbose(VERB_ALGO, "chase to dnssec lame server");
 		*dnssec_expected = 0;
+	}
+	if(selrtt == USEFUL_SERVER_TOP_TIMEOUT) {
+		verbose(VERB_ALGO, "chase to blacklisted lame server");
+		/* the best choice is a blacklisted, unresponsive server,
+		 * we need to throttle down our traffic towards it */
+		if(ub_random(env->rnd) % 100 != 1) {
+			/* 99% of the time, drop query */
+			return NULL;
+		}
+	}
+
 	if(num == 1) {
 		a = dp->result_list;
 		if(++a->attempts < OUTBOUND_MSG_RETRY)
@@ -252,6 +328,7 @@ iter_server_selection(struct iter_env* iter_env,
 		dp->result_list = a->next_result;
 		return a;
 	}
+
 	/* randomly select a target from the list */
 	log_assert(num > 1);
 	/* we do not need secure random numbers here, but
@@ -365,7 +442,8 @@ iter_mark_cycle_targets(struct module_qstate* qstate, struct delegpt* dp)
 }
 
 int 
-iter_dp_is_useless(struct module_qstate* qstate, struct delegpt* dp)
+iter_dp_is_useless(struct query_info* qinfo, uint16_t qflags, 
+	struct delegpt* dp)
 {
 	struct delegpt_ns* ns;
 	/* check:
@@ -378,18 +456,17 @@ iter_dp_is_useless(struct module_qstate* qstate, struct delegpt* dp)
 	 *      o the query is for one of the nameservers in dp,
 	 *        and that nameserver is a glue-name for this dp.
 	 */
-	if(!(qstate->query_flags&BIT_RD))
+	if(!(qflags&BIT_RD))
 		return 0;
 	/* either available or unused targets */
 	if(dp->usable_list || dp->result_list) 
 		return 0;
 	
 	/* see if query is for one of the nameservers, which is glue */
-	if( (qstate->qinfo.qtype == LDNS_RR_TYPE_A ||
-		qstate->qinfo.qtype == LDNS_RR_TYPE_AAAA) &&
-		dname_subdomain_c(qstate->qinfo.qname, dp->name) &&
-		delegpt_find_ns(dp, qstate->qinfo.qname, 
-			qstate->qinfo.qname_len))
+	if( (qinfo->qtype == LDNS_RR_TYPE_A ||
+		qinfo->qtype == LDNS_RR_TYPE_AAAA) &&
+		dname_subdomain_c(qinfo->qname, dp->name) &&
+		delegpt_find_ns(dp, qinfo->qname, qinfo->qname_len))
 		return 1;
 	
 	for(ns = dp->nslist; ns; ns = ns->next) {
@@ -406,14 +483,15 @@ iter_indicates_dnssec(struct module_env* env, struct delegpt* dp,
         struct dns_msg* msg, uint16_t dclass)
 {
 	/* information not available, !env->anchors can be common */
-	if(!env || !env->anchors || !dp || !dp->name || !msg || !msg->rep)
+	if(!env || !env->anchors || !dp || !dp->name)
 		return 0;
 	/* a trust anchor exists with this name, RRSIGs expected */
 	if(anchor_find(env->anchors, dp->name, dp->namelabs, dp->namelen,
 		dclass))
 		return 1;
 	/* see if DS rrset was given, in AUTH section */
-	if(reply_find_rrset_section_ns(msg->rep, dp->name, dp->namelen,
+	if(msg && msg->rep &&
+		reply_find_rrset_section_ns(msg->rep, dp->name, dp->namelen,
 		LDNS_RR_TYPE_DS, dclass))
 		return 1;
 	return 0;
@@ -475,4 +553,61 @@ int iter_msg_from_zone(struct dns_msg* msg, struct delegpt* dp,
 		LDNS_RR_TYPE_NS, dclass))
 		return 1;
 	return 0;
+}
+
+/**
+ * check equality of two rrsets 
+ * @param k1: rrset
+ * @param k2: rrset
+ * @return true if equal
+ */
+static int
+rrset_equal(struct ub_packed_rrset_key* k1, struct ub_packed_rrset_key* k2)
+{
+	struct packed_rrset_data* d1 = (struct packed_rrset_data*)
+		k1->entry.data;
+	struct packed_rrset_data* d2 = (struct packed_rrset_data*)
+		k2->entry.data;
+	size_t i, t;
+	if(k1->rk.dname_len != k2->rk.dname_len ||
+		k1->rk.flags != k2->rk.flags ||
+		k1->rk.type != k2->rk.type ||
+		k1->rk.rrset_class != k2->rk.rrset_class ||
+		query_dname_compare(k1->rk.dname, k2->rk.dname) != 0)
+		return 0;
+	if(d1->ttl != d2->ttl ||
+		d1->count != d2->count ||
+		d1->rrsig_count != d2->rrsig_count ||
+		d1->trust != d2->trust ||
+		d1->security != d2->security)
+		return 0;
+	t = d1->count + d1->rrsig_count;
+	for(i=0; i<t; i++) {
+		if(d1->rr_len[i] != d2->rr_len[i] ||
+			d1->rr_ttl[i] != d2->rr_ttl[i] ||
+			memcmp(d1->rr_data[i], d2->rr_data[i], 
+				d1->rr_len[i]) != 0)
+			return 0;
+	}
+	return 1;
+}
+
+int 
+reply_equal(struct reply_info* p, struct reply_info* q)
+{
+	size_t i;
+	if(p->flags != q->flags ||
+		p->qdcount != q->qdcount ||
+		p->ttl != q->ttl ||
+		p->security != q->security ||
+		p->an_numrrsets != q->an_numrrsets ||
+		p->ns_numrrsets != q->ns_numrrsets ||
+		p->ar_numrrsets != q->ar_numrrsets ||
+		p->rrset_count != q->rrset_count)
+		return 0;
+	for(i=0; i<p->rrset_count; i++) {
+		if(!rrset_equal(p->rrsets[i], q->rrsets[i]))
+			return 0;
+	}
+	return 1;
 }

@@ -190,14 +190,7 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 	return s;
 }
 
-/**
- * Create and bind TCP listening socket
- * @param addr: address info ready to make socket.
- * @param v6only: enable ip6 only flag on ip6 sockets.
- * @param noproto: if error caused by lack of protocol support.
- * @return: the socket. -1 on error.
- */
-static int
+int
 create_tcp_accept_sock(struct addrinfo *addr, int v6only, int* noproto)
 {
 	int s;
@@ -532,19 +525,24 @@ listen_create(struct comm_base* base, struct listen_port* ports,
 	return front;
 }
 
-void 
-listen_delete(struct listen_dnsport* front)
+void
+listen_list_delete(struct listen_list* list)
 {
-	struct listen_list *p, *pn;
-	if(!front) 
-		return;
-	p = front->cps;
+	struct listen_list *p = list, *pn;
 	while(p) {
 		pn = p->next;
 		comm_point_delete(p->com);
 		free(p);
 		p = pn;
 	}
+}
+
+void 
+listen_delete(struct listen_dnsport* front)
+{
+	if(!front) 
+		return;
+	listen_list_delete(front->cps);
 	ldns_buffer_free(front->udp_buff);
 	free(front);
 }
@@ -605,7 +603,7 @@ listening_ports_open(struct config_file* cfg)
 		return NULL;
 	}
 	if(do_auto && (!do_ip4 || !do_ip6)) {
-		log_warn("interface_automatic option does not work when IP4 or IP6 is not enabled. Disabling option.");
+		log_warn("interface_automatic option does not work when either do-ip4 or do-ip6 is not enabled. Disabling option.");
 		do_auto = 0;
 	}
 	/* create ip4 and ip6 ports so that return addresses are nice. */

@@ -45,6 +45,7 @@
 #include "validator/val_utils.h"
 #include "util/data/msgreply.h"
 #include "util/data/dname.h"
+#include "util/net_help.h"
 
 /** get ttl of rrset */
 static uint32_t 
@@ -90,15 +91,7 @@ nsecbitmap_has_type_rdata(uint8_t* bitmap, size_t len, uint16_t type)
 	return 0;
 }
 
-/**
- * Check if type is present in the NSEC typemap
- * @param nsec: the nsec RRset.
- *	If there are multiple RRs, then each must have the same typemap,
- *	since the typemap represents the types at this domain node.
- * @param type: type to check for, host order.
- * @return true if present
- */
-static int
+int
 nsec_has_type(struct ub_packed_rrset_key* nsec, uint16_t type)
 {
 	struct packed_rrset_data* d = (struct packed_rrset_data*)nsec->
@@ -343,11 +336,11 @@ int nsec_proves_nodata(struct ub_packed_rrset_key* nsec,
 
 	/* If an NS set exists at this name, and NOT a SOA (so this is a 
 	 * zone cut, not a zone apex), then we should have gotten a 
-	 * referral (or we just got the wrong NSEC).
+	 * referral (or we just got the wrong NSEC). 
 	 * The reverse of this check is used when qtype is DS, since that
 	 * must use the NSEC from above the zone cut. */
 	if(qinfo->qtype != LDNS_RR_TYPE_DS &&
-		nsec_has_type(nsec, LDNS_RR_TYPE_NS) &&
+		nsec_has_type(nsec, LDNS_RR_TYPE_NS) && 
 		!nsec_has_type(nsec, LDNS_RR_TYPE_SOA)) {
 		return 0;
 	} else if(qinfo->qtype == LDNS_RR_TYPE_DS &&
@@ -476,6 +469,89 @@ val_nsec_proves_no_wc(struct ub_packed_rrset_key* nsec, uint8_t* qname,
 		if(val_nsec_proves_name_error(nsec, buf)) {
 			return 1;
 		}
+	}
+	return 0;
+}
+
+/**
+ * Find shared topdomain that exists
+ */
+static void
+dlv_topdomain(struct ub_packed_rrset_key* nsec, uint8_t* qname,
+	uint8_t** nm, size_t* nm_len)
+{
+	/* make sure reply is part of nm */
+	/* take shared topdomain with left of NSEC. */
+
+	/* because, if empty nonterminal, then right is subdomain of qname.
+	 * and any shared topdomain would be empty nonterminals.
+	 * 
+	 * If nxdomain, then the right is bigger, and could have an 
+	 * interesting shared topdomain, but if it does have one, it is
+	 * an empty nonterminal. An empty nonterminal shared with the left
+	 * one. */
+	int n;
+	uint8_t* common = dname_get_shared_topdomain(qname, nsec->rk.dname);
+	n = dname_count_labels(*nm) - dname_count_labels(common);
+	dname_remove_labels(nm, nm_len, n);
+}
+
+int val_nsec_check_dlv(struct query_info* qinfo,
+        struct reply_info* rep, uint8_t** nm, size_t* nm_len)
+{
+	uint8_t* next;
+	size_t i, nlen;
+	int c;
+	/* we should now have a NOERROR/NODATA or NXDOMAIN message */
+	if(rep->an_numrrsets != 0) {
+		return 0;
+	}
+	/* is this NOERROR ? */
+	if(FLAGS_GET_RCODE(rep->flags) == LDNS_RCODE_NOERROR) {
+		/* it can be a plain NSEC match - go up one more level. */
+		/* or its an empty nonterminal - go up to nonempty level */
+		for(i=0; i<rep->ns_numrrsets; i++) {
+			if(htons(rep->rrsets[i]->rk.type)!=LDNS_RR_TYPE_NSEC ||
+				!nsec_get_next(rep->rrsets[i], &next, &nlen))
+				continue;
+			c = dname_canonical_compare(
+				rep->rrsets[i]->rk.dname, qinfo->qname);
+			if(c == 0) {
+				/* plain match */
+				if(nsec_has_type(rep->rrsets[i],
+					LDNS_RR_TYPE_DLV))
+					return 0;
+				dname_remove_label(nm, nm_len);
+				return 1;
+			} else if(c < 0 && 
+				dname_strict_subdomain_c(next, qinfo->qname)) {
+				/* ENT */
+				dlv_topdomain(rep->rrsets[i], qinfo->qname,
+					nm, nm_len);
+				return 1;
+			}
+		}
+		return 0;
+	}
+
+	/* is this NXDOMAIN ? */
+	if(FLAGS_GET_RCODE(rep->flags) == LDNS_RCODE_NXDOMAIN) {
+		/* find the qname denial NSEC record. It can tell us
+		 * a closest encloser name; or that we not need bother */
+		for(i=0; i<rep->ns_numrrsets; i++) {
+			if(htons(rep->rrsets[i]->rk.type) != LDNS_RR_TYPE_NSEC)
+				continue;
+			if(val_nsec_proves_name_error(rep->rrsets[i], 
+				qinfo->qname)) {
+				log_nametypeclass(VERB_ALGO, "topdomain on",
+					rep->rrsets[i]->rk.dname, 
+					ntohs(rep->rrsets[i]->rk.type), 0);
+				dlv_topdomain(rep->rrsets[i], qinfo->qname,
+					nm, nm_len);
+				return 1;
+			}
+		}
+		return 0;
 	}
 	return 0;
 }

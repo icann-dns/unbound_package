@@ -466,7 +466,10 @@ packed_rrset_encode(struct ub_packed_rrset_key* key, ldns_buffer* pkt,
 				return r;
 			ldns_buffer_write(pkt, &key->rk.type, 2);
 			ldns_buffer_write(pkt, &key->rk.rrset_class, 2);
-			ldns_buffer_write_u32(pkt, data->rr_ttl[i]-timenow);
+			if(data->rr_ttl[i] < timenow)
+				ldns_buffer_write_u32(pkt, 0);
+			else 	ldns_buffer_write_u32(pkt, 
+					data->rr_ttl[i]-timenow);
 			if(c) {
 				if((r=compress_rdata(pkt, data->rr_data[i],
 					data->rr_len[i], region, tree, c))
@@ -500,7 +503,10 @@ packed_rrset_encode(struct ub_packed_rrset_key* key, ldns_buffer* pkt,
 			}
 			ldns_buffer_write_u16(pkt, LDNS_RR_TYPE_RRSIG);
 			ldns_buffer_write(pkt, &key->rk.rrset_class, 2);
-			ldns_buffer_write_u32(pkt, data->rr_ttl[i]-timenow);
+			if(data->rr_ttl[i] < timenow)
+				ldns_buffer_write_u32(pkt, 0);
+			else 	ldns_buffer_write_u32(pkt, 
+					data->rr_ttl[i]-timenow);
 			/* rrsig rdata cannot be compressed, perform 100+ byte
 			 * memcopy. */
 			ldns_buffer_write(pkt, data->rr_data[i],
@@ -580,7 +586,9 @@ insert_query(struct query_info* qinfo, struct compress_tree_node** tree,
 		dname_count_labels(qinfo->qname), 
 		ldns_buffer_position(buffer), region, NULL, tree))
 		return RETVAL_OUTMEM;
-	ldns_buffer_write(buffer, qinfo->qname, qinfo->qname_len);
+	if(ldns_buffer_current(buffer) == qinfo->qname)
+		ldns_buffer_skip(buffer, (ssize_t)qinfo->qname_len);
+	else	ldns_buffer_write(buffer, qinfo->qname, qinfo->qname_len);
 	ldns_buffer_write_u16(buffer, qinfo->qtype);
 	ldns_buffer_write_u16(buffer, qinfo->qclass);
 	return RETVAL_OK;
@@ -776,7 +784,9 @@ error_encode(ldns_buffer* buf, int r, struct query_info* qinfo,
 	ldns_buffer_write(buf, &flags, sizeof(uint16_t));
 	ldns_buffer_write(buf, &flags, sizeof(uint16_t));
 	if(qinfo) {
-		ldns_buffer_write(buf, qinfo->qname, qinfo->qname_len);
+		if(ldns_buffer_current(buf) == qinfo->qname)
+			ldns_buffer_skip(buf, (ssize_t)qinfo->qname_len);
+		else	ldns_buffer_write(buf, qinfo->qname, qinfo->qname_len);
 		ldns_buffer_write_u16(buf, qinfo->qtype);
 		ldns_buffer_write_u16(buf, qinfo->qclass);
 	}

@@ -329,6 +329,18 @@ outnet_udp_cb(struct comm_point* c, void* arg, int error,
 	if(!p) {
 		verbose(VERB_QUERY, "received unwanted or unsolicited udp reply dropped.");
 		log_buf(VERB_ALGO, "dropped message", c->buffer);
+		outnet->unwanted_replies++;
+		if(outnet->unwanted_threshold && ++outnet->unwanted_total 
+			>= outnet->unwanted_threshold) {
+			log_warn("unwanted reply total reached threshold (%u)"
+				" you may be under attack."
+				" defensive action: clearing the cache",
+				(unsigned)outnet->unwanted_threshold);
+			fptr_ok(fptr_whitelist_alloc_cleanup(
+				outnet->unwanted_action));
+			(*outnet->unwanted_action)(outnet->unwanted_param);
+			outnet->unwanted_total = 0;
+		}
 		return 0;
 	}
 
@@ -337,6 +349,18 @@ outnet_udp_cb(struct comm_point* c, void* arg, int error,
 	if(p->pc->cp != c) {
 		verbose(VERB_QUERY, "received reply id,addr on wrong port. "
 			"dropped.");
+		outnet->unwanted_replies++;
+		if(outnet->unwanted_threshold && ++outnet->unwanted_total 
+			>= outnet->unwanted_threshold) {
+			log_warn("unwanted reply total reached threshold (%u)"
+				" you may be under attack."
+				" defensive action: clearing the cache",
+				(unsigned)outnet->unwanted_threshold);
+			fptr_ok(fptr_whitelist_alloc_cleanup(
+				outnet->unwanted_action));
+			(*outnet->unwanted_action)(outnet->unwanted_param);
+			outnet->unwanted_total = 0;
+		}
 		return 0;
 	}
 	comm_timer_disable(p->timer);
@@ -442,7 +466,8 @@ outside_network_create(struct comm_base *base, size_t bufsize,
 	size_t num_ports, char** ifs, int num_ifs, int do_ip4, 
 	int do_ip6, size_t num_tcp, struct infra_cache* infra,
 	struct ub_randstate* rnd, int use_caps_for_id, int* availports, 
-	int numavailports)
+	int numavailports, size_t unwanted_threshold,
+	void (*unwanted_action)(void*), void* unwanted_param)
 {
 	struct outside_network* outnet = (struct outside_network*)
 		calloc(1, sizeof(struct outside_network));
@@ -457,6 +482,9 @@ outside_network_create(struct comm_base *base, size_t bufsize,
 	outnet->infra = infra;
 	outnet->rnd = rnd;
 	outnet->svcd_overhead = 0;
+	outnet->unwanted_threshold = unwanted_threshold;
+	outnet->unwanted_action = unwanted_action;
+	outnet->unwanted_param = unwanted_param;
 	outnet->use_caps_for_id = use_caps_for_id;
 	if(numavailports == 0) {
 		log_err("no outgoing ports available");
@@ -669,22 +697,22 @@ pending_delete(struct outside_network* outnet, struct pending* p)
 	if(!p)
 		return;
 	if(outnet && outnet->udp_wait_first &&
-                (p->next_waiting || p == outnet->udp_wait_last) ) {
-                /* delete from waiting list, if it is in the waiting list */
-                struct pending* prev = NULL, *x = outnet->udp_wait_first;
-                while(x && x != p) {
-                        prev = x;
-                        x = x->next_waiting;
-                }
-                if(x) {
-                        log_assert(x == p);
-                        if(prev)
-                                prev->next_waiting = p->next_waiting;
-                        else    outnet->udp_wait_first = p->next_waiting;
-                        if(outnet->udp_wait_last == p)
-                                outnet->udp_wait_last = prev;
-                }
-        }
+		(p->next_waiting || p == outnet->udp_wait_last) ) {
+		/* delete from waiting list, if it is in the waiting list */
+		struct pending* prev = NULL, *x = outnet->udp_wait_first;
+		while(x && x != p) {
+			prev = x;
+			x = x->next_waiting;
+		}
+		if(x) {
+			log_assert(x == p);
+			if(prev)
+				prev->next_waiting = p->next_waiting;
+			else	outnet->udp_wait_first = p->next_waiting;
+			if(outnet->udp_wait_last == p)
+				outnet->udp_wait_last = prev;
+		}
+	}
 	if(outnet) {
 		(void)rbtree_delete(outnet->pending, p->node.key);
 	}
@@ -1082,7 +1110,8 @@ serviced_delete(struct serviced_query* sq)
 	if(sq->pending) {
 		/* clear up the pending query */
 		if(sq->status == serviced_query_UDP_EDNS ||
-			sq->status == serviced_query_UDP) {
+			sq->status == serviced_query_UDP ||
+			sq->status == serviced_query_PROBE_EDNS) {
 			struct pending* p = (struct pending*)sq->pending;
 			if(p->pc)
 				portcomm_loweruse(sq->outnet, p->pc);
@@ -1182,18 +1211,30 @@ static int
 serviced_udp_send(struct serviced_query* sq, ldns_buffer* buff)
 {
 	int rtt, vs;
+	uint8_t edns_lame_known;
 	uint32_t now = *sq->outnet->now_secs;
 
 	if(!infra_host(sq->outnet->infra, &sq->addr, sq->addrlen, now, &vs,
-		&rtt))
+		&edns_lame_known, &rtt))
 		return 0;
 	if(sq->status == serviced_initial) {
-		if(vs != -1)
+		if(edns_lame_known == 0 && rtt > 5000) {
+			/* perform EDNS lame probe - check if server is
+			 * EDNS lame (EDNS queries to it are dropped) */
+			verbose(VERB_ALGO, "serviced query: send probe to see "
+				" if use of EDNS causes timeouts");
+			rtt /= 10;
+			sq->status = serviced_query_PROBE_EDNS;
+		} else if(vs != -1) {
 			sq->status = serviced_query_UDP_EDNS;
-		else 	sq->status = serviced_query_UDP;
+		} else { 	
+			sq->status = serviced_query_UDP; 
+		}
 	}
 	serviced_encode(sq, buff, sq->status == serviced_query_UDP_EDNS);
 	sq->last_sent_time = *sq->outnet->now_tv;
+	sq->last_rtt = rtt;
+	sq->edns_lame_known = (int)edns_lame_known;
 	verbose(VERB_ALGO, "serviced query UDP timeout=%d msec", rtt);
 	sq->pending = pending_udp_query(sq->outnet, buff, &sq->addr, 
 		sq->addrlen, rtt, serviced_udp_callback, sq);
@@ -1269,22 +1310,23 @@ serviced_callbacks(struct serviced_query* sq, int error, struct comm_point* c,
 				== LDNS_RCODE_NOERROR || 
 			 LDNS_RCODE_WIRE(ldns_buffer_begin(c->buffer))
 				== LDNS_RCODE_NXDOMAIN)) {
-			verbose(VERB_OPS, "no qname in reply to check 0x20ID");
-			log_addr(VERB_OPS, "from server", 
+			verbose(VERB_DETAIL, "no qname in reply to check 0x20ID");
+			log_addr(VERB_DETAIL, "from server", 
 				&sq->addr, sq->addrlen);
-			log_buf(VERB_OPS, "for packet", c->buffer);
+			log_buf(VERB_DETAIL, "for packet", c->buffer);
 			error = NETEVENT_CLOSED;
 			c = NULL;
 		} else if(ldns_buffer_read_u16_at(c->buffer, 4) > 0 &&
 			!serviced_check_qname(c->buffer, sq->qbuf, 
 			sq->qbuflen)) {
-			verbose(VERB_OPS, "wrong 0x20-ID in reply qname, "
-				"answer dropped");
-			log_addr(VERB_OPS, "from server", 
+			verbose(VERB_DETAIL, "wrong 0x20-ID in reply qname");
+			log_addr(VERB_DETAIL, "from server", 
 				&sq->addr, sq->addrlen);
-			log_buf(VERB_OPS, "for packet", c->buffer);
-			error = NETEVENT_CLOSED;
-			c = NULL;
+			log_buf(VERB_DETAIL, "for packet", c->buffer);
+			error = NETEVENT_CAPSFAIL;
+			/* and cleanup too */
+			pkt_dname_tolower(c->buffer, 
+				ldns_buffer_at(c->buffer, 12));
 		} else {
 			verbose(VERB_ALGO, "good 0x20-ID in reply qname");
 			/* cleanup caps, prettier cache contents. */
@@ -1390,9 +1432,17 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 	sq->pending = NULL; /* removed after callback */
 	if(error == NETEVENT_TIMEOUT) {
 		int rto = 0;
+		if(sq->status == serviced_query_PROBE_EDNS) {
+			/* non-EDNS probe failed; not an EDNS lame server */
+			if(!infra_edns_update(outnet->infra, &sq->addr, 
+				sq->addrlen, 0, (uint32_t)now.tv_sec)) {
+				log_err("Out of memory caching edns works");
+			}
+			sq->status = serviced_query_UDP_EDNS;
+		}
 		sq->retry++;
 		if(!(rto=infra_rtt_update(outnet->infra, &sq->addr, sq->addrlen,
-			-1, (uint32_t)now.tv_sec)))
+			-1, sq->last_rtt, (uint32_t)now.tv_sec)))
 			log_err("out of memory in UDP exponential backoff");
 		if(sq->retry < OUTBOUND_UDP_RETRY) {
 			log_name_addr(VERB_ALGO, "retry query", sq->qbuf+10,
@@ -1437,6 +1487,25 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 		return 0;
 	}
 	/* yay! an answer */
+	if(sq->status == serviced_query_PROBE_EDNS) {
+		/* probe without EDNS succeeds, so we conclude that this
+		 * host likely has EDNS packets dropped */
+		log_addr(VERB_DETAIL, "timeouts, concluded that connection to "
+			"host drops EDNS packets", &sq->addr, sq->addrlen);
+		if(!infra_edns_update(outnet->infra, &sq->addr, sq->addrlen,
+			-1, (uint32_t)now.tv_sec)) {
+			log_err("Out of memory caching no edns for host");
+		}
+		sq->status = serviced_query_UDP;
+	} else if(sq->status == serviced_query_UDP_EDNS && 
+		!sq->edns_lame_known) {
+		/* now we know that edns queries received answers store that */
+		if(!infra_edns_update(outnet->infra, &sq->addr, sq->addrlen, 
+			0, (uint32_t)now.tv_sec)) {
+			log_err("Out of memory caching edns works");
+		}
+		sq->edns_lame_known = 1;
+	}
 	if(now.tv_sec > sq->last_sent_time.tv_sec ||
 		(now.tv_sec == sq->last_sent_time.tv_sec &&
 		now.tv_usec > sq->last_sent_time.tv_usec)) {
@@ -1446,7 +1515,7 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 		verbose(VERB_ALGO, "measured roundtrip at %d msec", roundtime);
 		log_assert(roundtime >= 0);
 		if(!infra_rtt_update(outnet->infra, &sq->addr, sq->addrlen, 
-			roundtime, (uint32_t)now.tv_sec))
+			roundtime, sq->last_rtt, (uint32_t)now.tv_sec))
 			log_err("out of memory noting rtt.");
 	}
 	serviced_callbacks(sq, error, c, rep);
@@ -1629,7 +1698,8 @@ serviced_get_mem(struct serviced_query* sq)
 	for(sb = sq->cblist; sb; sb = sb->next)
 		s += sizeof(*sb);
 	if(sq->status == serviced_query_UDP_EDNS ||
-		sq->status == serviced_query_UDP) {
+		sq->status == serviced_query_UDP ||
+		sq->status == serviced_query_PROBE_EDNS) {
 		s += sizeof(struct pending);
 		s += comm_timer_get_mem(NULL);
 	} else {
@@ -1644,3 +1714,4 @@ serviced_get_mem(struct serviced_query* sq)
 	}
 	return s;
 }
+
