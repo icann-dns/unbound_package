@@ -1,3 +1,9 @@
+unbound (1.2.0-0ubuntu2) jaunty; urgency=low
+
+  * Add unbound-control to the unbound binary package.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 16 Feb 2009 10:01:44 -0500
+
 unbound (1.2.0-0ubuntu1) jaunty; urgency=low
 
   * New upstream release
