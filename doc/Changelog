@@ -1,9 +1,62 @@
+5 February 2009: Wouter
+	- ldns 1.5.0 rc as tarball included.
+
+4 February 2009: Wouter
+	- tag for release 1.2.1.
+
+3 February 2009: Wouter
+	- noted feature requests in doc/TODO.
+	- printout more detailed errors on ssl certificate loading failures.
+	- updated IANA portlist.
+
+16 January 2009: Wouter
+	- more quiet about ipv6 network failures, i.e. when ipv6 is not
+	  available (network unreachable). Debug still printed on high
+	  verbosity.
+	- unbound-host -4 and -6 options. Stops annoying ipv6 errors when
+	  debugging with unbound-host -4 -d ... 
+	- more cycle detection for NS-check, addr-check, root-prime and
+	  stub-prime queries in the iterator.  Avoids possible deadlock
+	  when priming fails.
+
+15 January 2009: Wouter
+	- bug #229: fixup configure checks for compilation with Solaris 
+	  Sun cc compiler, ./configure CC=/opt/SUNWspro/bin/cc
+	- fixup suncc warnings.
+	- fix bug where unbound could crash using libevent 1.3 and older.
+	- update testset for recent retry change.
+
+14 January 2009: Wouter
+	- 1.2.1 feature: negative caching for failed queries.
+	  Queries that failed are cached for 5 seconds (NORR_TTL).
+	  If the failure is local, like out of memory, it is not cached.
+	- the TTL comparison for the cache used different comparisons,
+	  causing many cache responses that used the iterator and validator
+	  state machines unnecessarily.
+	- retry from 4 to 5 so that EDNS drop retry is part of the first
+	  query resolve attempt, and cached error does not stop EDNS fallback.
+	- remove debug prints that protect against bad referrals.
+	- honor QUIET=no on make commandline (or QUIET=yes ).
+
 13 January 2009: Wouter
-	- tag updated with:
-		- removed debug printout in val_nsec.c
-		- fix lame marking
-		- iana portlist updated
-	
+	- fixed bug in lameness marking, removed printouts.
+	- find NS rrset more cleanly for qtype NS.
+	- Moved changes to 1.2.0 for release. Thanks to Mark Zealey for
+	  reporting and logs.
+	- 1.2.1 feature: stops resolving AAAAs promiscuously when they
+	  are in the negative cache.
+
+12 January 2009: Wouter
+	- fixed bug in infrastructure lameness cache, did not lowercase
+	  name of zone to hash when setting lame.
+	- lameness debugging printouts.
+
+9 January 2009: Wouter
+	- created svn tag for 1.2.0 release.
+	- svn trunk contains 1.2.1 version number.
+	- iana portlist updated for todays list.
+	- removed debug print.
+
 8 January 2009: Wouter
 	- new version of ldns-trunk (today) included as tarball, fixed 
 	  bug #224, building with -j race condition.
