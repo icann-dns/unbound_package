@@ -1,14 +1,14 @@
 libunbound.so.0 libunbound0 #MINVER#
  MAX_TTL@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# acl_list_cmp@Base 1.0.0
+#MISSING: 1.2.0# acl_list_cmp@Base 1.0.0
  addr_in_common@Base 1.0.0
  addr_is_ip6@Base 1.0.0
  addr_mask@Base 1.0.0
- addr_tree_compare@Base 1.2.0-0ubuntu1
- addr_tree_init@Base 1.2.0-0ubuntu1
- addr_tree_init_parents@Base 1.2.0-0ubuntu1
- addr_tree_insert@Base 1.2.0-0ubuntu1
- addr_tree_lookup@Base 1.2.0-0ubuntu1
+ addr_tree_compare@Base 1.2.0
+ addr_tree_init@Base 1.2.0
+ addr_tree_init_parents@Base 1.2.0
+ addr_tree_insert@Base 1.2.0
+ addr_tree_lookup@Base 1.2.0
  alloc_clear@Base 1.0.0
  alloc_get_id@Base 1.0.0
  alloc_get_mem@Base 1.0.0
@@ -42,7 +42,7 @@ libunbound.so.0 libunbound0 #MINVER#
  cfg_mark_ports@Base 1.0.0
  cfg_parse_memsize@Base 1.0.0
  cfg_parser@Base 1.0.0
- cfg_ptr_reverse@Base 1.2.0-0ubuntu1
+ cfg_ptr_reverse@Base 1.2.0
  cfg_scan_ports@Base 1.0.0
  cfg_str2list_insert@Base 1.0.0
  cfg_strlist_insert@Base 1.0.0
@@ -51,7 +51,7 @@ libunbound.so.0 libunbound0 #MINVER#
  comm_base_delete@Base 1.0.0
  comm_base_dispatch@Base 1.0.0
  comm_base_exit@Base 1.0.0
- comm_base_internal@Base 1.2.0-0ubuntu1
+ comm_base_internal@Base 1.2.0
  comm_base_timept@Base 1.0.0
  comm_point_close@Base 1.0.0
  comm_point_create_local@Base 1.0.0
@@ -63,9 +63,9 @@ libunbound.so.0 libunbound0 #MINVER#
  comm_point_delete@Base 1.0.0
  comm_point_drop_reply@Base 1.0.0
  comm_point_get_mem@Base 1.0.0
- comm_point_listen_for_rw@Base 1.2.0-0ubuntu1
+ comm_point_listen_for_rw@Base 1.2.0
  comm_point_local_handle_callback@Base 1.0.0
- comm_point_perform_accept@Base 1.2.0-0ubuntu1
+ comm_point_perform_accept@Base 1.2.0
  comm_point_raw_handle_callback@Base 1.0.0
  comm_point_send_reply@Base 1.0.0
  comm_point_send_udp_msg@Base 1.0.0
@@ -112,9 +112,10 @@ libunbound.so.0 libunbound0 #MINVER#
  context_serialize_cancel@Base 1.0.0
  context_serialize_new_query@Base 1.0.0
  context_serialize_quit@Base 1.0.0
- create_tcp_accept_sock@Base 1.2.0-0ubuntu1
+ create_tcp_accept_sock@Base 1.2.0
  create_udp_sock@Base 1.0.0
  delegpt_add_addr@Base 1.0.0
+ delegpt_add_neg_msg@Base 1.2.1
  delegpt_add_ns@Base 1.0.0
  delegpt_add_rrset@Base 1.0.0
  delegpt_add_rrset_A@Base 1.0.0
@@ -122,11 +123,11 @@ libunbound.so.0 libunbound0 #MINVER#
  delegpt_add_target@Base 1.0.0
  delegpt_add_unused_targets@Base 1.0.0
  delegpt_copy@Base 1.0.0
- delegpt_count_addr@Base 1.2.0-0ubuntu1
+ delegpt_count_addr@Base 1.2.0
  delegpt_count_missing_targets@Base 1.0.0
- delegpt_count_ns@Base 1.2.0-0ubuntu1
+ delegpt_count_ns@Base 1.2.0
  delegpt_create@Base 1.0.0
- delegpt_find_addr@Base 1.2.0-0ubuntu1
+ delegpt_find_addr@Base 1.2.0
  delegpt_find_ns@Base 1.0.0
  delegpt_from_message@Base 1.0.0
  delegpt_log@Base 1.0.0
@@ -160,8 +161,8 @@ libunbound.so.0 libunbound0 #MINVER#
  dns_cache_store@Base 1.0.0
  dns_cache_store_msg@Base 1.0.0
  dns_copy_msg@Base 1.0.0
- dns_msg_authadd@Base 1.2.0-0ubuntu1
- dns_msg_create@Base 1.2.0-0ubuntu1
+ dns_msg_authadd@Base 1.2.0
+ dns_msg_create@Base 1.2.0
  dnskey_algo_is_supported@Base 1.0.0
  dnskey_calc_keytag@Base 1.0.0
  dnskey_get_algo@Base 1.0.0
@@ -171,14 +172,14 @@ libunbound.so.0 libunbound0 #MINVER#
  dnskeyset_verify_rrset@Base 1.0.0
  dnskeyset_verify_rrset_sig@Base 1.0.0
  donotq_apply_cfg@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# donotq_cmp@Base 1.0.0
+#MISSING: 1.2.0# donotq_cmp@Base 1.0.0
  donotq_create@Base 1.0.0
  donotq_delete@Base 1.0.0
  donotq_get_mem@Base 1.0.0
  donotq_lookup@Base 1.0.0
  ds_digest_algo_is_supported@Base 1.0.0
  ds_digest_match_dnskey@Base 1.0.0
- ds_get_digest_algo@Base 1.2.0-0ubuntu1
+ ds_get_digest_algo@Base 1.2.0
  ds_get_key_algo@Base 1.0.0
  ds_get_keytag@Base 1.0.0
  ds_key_algo_is_supported@Base 1.0.0
@@ -197,7 +198,7 @@ libunbound.so.0 libunbound0 #MINVER#
  fatal_exit@Base 1.0.0
  fd_set_block@Base 1.0.0
  fd_set_nonblock@Base 1.0.0
- fname_after_chroot@Base 1.2.0-0ubuntu1
+ fname_after_chroot@Base 1.2.0
  forwards_apply_cfg@Base 1.0.0
  forwards_create@Base 1.0.0
  forwards_delete@Base 1.0.0
@@ -205,7 +206,7 @@ libunbound.so.0 libunbound0 #MINVER#
  forwards_lookup@Base 1.0.0
  fptr_whitelist_alloc_cleanup@Base 1.0.0
  fptr_whitelist_comm_point@Base 1.0.0
- fptr_whitelist_comm_point_raw@Base 1.2.0-0ubuntu1
+ fptr_whitelist_comm_point_raw@Base 1.2.0
  fptr_whitelist_comm_signal@Base 1.0.0
  fptr_whitelist_comm_timer@Base 1.0.0
  fptr_whitelist_event@Base 1.0.0
@@ -230,7 +231,7 @@ libunbound.so.0 libunbound0 #MINVER#
  fptr_whitelist_pending_udp@Base 1.0.0
  fptr_whitelist_rbtree_cmp@Base 1.0.0
  fptr_whitelist_serviced_query@Base 1.0.0
- fptr_whitelist_tube_listen@Base 1.2.0-0ubuntu1
+ fptr_whitelist_tube_listen@Base 1.2.0
  fwd_cmp@Base 1.0.0
  get_cname_target@Base 1.0.0
  get_rdf_size@Base 1.0.0
@@ -311,16 +312,16 @@ libunbound.so.0 libunbound0 #MINVER#
  libworker_fg@Base 1.0.0
  libworker_handle_control_cmd@Base 1.0.0
  libworker_handle_reply@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# libworker_handle_result_write@Base 1.0.0
+#MISSING: 1.2.0# libworker_handle_result_write@Base 1.0.0
  libworker_handle_service_reply@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# libworker_read_msg@Base 1.0.0
+#MISSING: 1.2.0# libworker_read_msg@Base 1.0.0
  libworker_send_packet@Base 1.0.0
  libworker_send_query@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# libworker_write_msg@Base 1.0.0
+#MISSING: 1.2.0# libworker_write_msg@Base 1.0.0
  listen_create@Base 1.0.0
  listen_delete@Base 1.0.0
  listen_get_mem@Base 1.0.0
- listen_list_delete@Base 1.2.0-0ubuntu1
+ listen_list_delete@Base 1.2.0
  listen_pushback@Base 1.0.0
  listen_resume@Base 1.0.0
  listening_ports_free@Base 1.0.0
@@ -329,16 +330,16 @@ libunbound.so.0 libunbound0 #MINVER#
  local_data_find_type@Base 1.0.0
  local_zone_cmp@Base 1.0.0
  local_zone_delete@Base 1.0.0
- local_zone_str2type@Base 1.2.0-0ubuntu1
- local_zones_add_RR@Base 1.2.0-0ubuntu1
- local_zones_add_zone@Base 1.2.0-0ubuntu1
+ local_zone_str2type@Base 1.2.0
+ local_zones_add_RR@Base 1.2.0
+ local_zones_add_zone@Base 1.2.0
  local_zones_answer@Base 1.0.0
  local_zones_apply_cfg@Base 1.0.0
  local_zones_create@Base 1.0.0
- local_zones_del_data@Base 1.2.0-0ubuntu1
- local_zones_del_zone@Base 1.2.0-0ubuntu1
+ local_zones_del_data@Base 1.2.0
+ local_zones_del_zone@Base 1.2.0
  local_zones_delete@Base 1.0.0
- local_zones_find@Base 1.2.0-0ubuntu1
+ local_zones_find@Base 1.2.0
  local_zones_lookup@Base 1.0.0
  local_zones_print@Base 1.0.0
  log_addr@Base 1.0.0
@@ -377,10 +378,10 @@ libunbound.so.0 libunbound0 #MINVER#
  mesh_detach_subs@Base 1.0.0
  mesh_detect_cycle@Base 1.0.0
  mesh_get_mem@Base 1.0.0
- mesh_list_insert@Base 1.2.0-0ubuntu1
- mesh_list_remove@Base 1.2.0-0ubuntu1
+ mesh_list_insert@Base 1.2.0
+ mesh_list_remove@Base 1.2.0
  mesh_log_list@Base 1.0.0
- mesh_make_new_space@Base 1.2.0-0ubuntu1
+ mesh_make_new_space@Base 1.2.0
  mesh_new_callback@Base 1.0.0
  mesh_new_client@Base 1.0.0
  mesh_query_done@Base 1.0.0
@@ -400,42 +401,42 @@ libunbound.so.0 libunbound0 #MINVER#
  mini_ev_cmp@Base 1.0.0
  modstack_config@Base 1.0.0
  modstack_desetup@Base 1.0.0
- modstack_find@Base 1.2.0-0ubuntu1
+ modstack_find@Base 1.2.0
  modstack_init@Base 1.0.0
  modstack_setup@Base 1.0.0
  module_factory@Base 1.0.0
  msgparse_bucket_remove@Base 1.0.0
  msgparse_hashtable_lookup@Base 1.0.0
  msgreply_sizefunc@Base 1.0.0
- name_tree_compare@Base 1.2.0-0ubuntu1
- name_tree_find@Base 1.2.0-0ubuntu1
- name_tree_init@Base 1.2.0-0ubuntu1
- name_tree_init_parents@Base 1.2.0-0ubuntu1
- name_tree_insert@Base 1.2.0-0ubuntu1
- name_tree_lookup@Base 1.2.0-0ubuntu1
- neg_cache_delete@Base 1.2.0-0ubuntu1
- neg_create_zone@Base 1.2.0-0ubuntu1
- neg_delete_data@Base 1.2.0-0ubuntu1
- neg_find_zone@Base 1.2.0-0ubuntu1
- neg_insert_data@Base 1.2.0-0ubuntu1
+ name_tree_compare@Base 1.2.0
+ name_tree_find@Base 1.2.0
+ name_tree_init@Base 1.2.0
+ name_tree_init_parents@Base 1.2.0
+ name_tree_insert@Base 1.2.0
+ name_tree_lookup@Base 1.2.0
+ neg_cache_delete@Base 1.2.0
+ neg_create_zone@Base 1.2.0
+ neg_delete_data@Base 1.2.0
+ neg_find_zone@Base 1.2.0
+ neg_insert_data@Base 1.2.0
  netblockstrtoaddr@Base 1.0.0
- nsec3_covers@Base 1.2.0-0ubuntu1
- nsec3_get_hashed@Base 1.2.0-0ubuntu1
- nsec3_get_nextowner@Base 1.2.0-0ubuntu1
- nsec3_get_nextowner_b32@Base 1.2.0-0ubuntu1
- nsec3_get_params@Base 1.2.0-0ubuntu1
- nsec3_has_optout@Base 1.2.0-0ubuntu1
- nsec3_has_type@Base 1.2.0-0ubuntu1
+ nsec3_covers@Base 1.2.0
+ nsec3_get_hashed@Base 1.2.0
+ nsec3_get_nextowner@Base 1.2.0
+ nsec3_get_nextowner_b32@Base 1.2.0
+ nsec3_get_params@Base 1.2.0
+ nsec3_has_optout@Base 1.2.0
+ nsec3_has_type@Base 1.2.0
  nsec3_hash_cmp@Base 1.0.0
  nsec3_hash_name@Base 1.0.0
- nsec3_hash_to_b32@Base 1.2.0-0ubuntu1
+ nsec3_hash_to_b32@Base 1.2.0
  nsec3_prove_nameerror@Base 1.0.0
  nsec3_prove_nodata@Base 1.0.0
  nsec3_prove_nods@Base 1.0.0
  nsec3_prove_nxornodata@Base 1.0.0
  nsec3_prove_wildcard@Base 1.0.0
  nsec_closest_encloser@Base 1.0.0
- nsec_has_type@Base 1.2.0-0ubuntu1
+ nsec_has_type@Base 1.2.0
  nsec_proves_nodata@Base 1.0.0
  nsecbitmap_has_type_rdata@Base 1.0.0
  order_lock_cmp@Base 1.0.0
@@ -452,7 +453,7 @@ libunbound.so.0 libunbound0 #MINVER#
  outside_network_create@Base 1.0.0
  outside_network_delete@Base 1.0.0
  p_ancil@Base 1.0.0
- packed_rrset_copy_region@Base 1.2.0-0ubuntu1
+ packed_rrset_copy_region@Base 1.2.0
  packed_rrset_ptr_fixup@Base 1.0.0
  packed_rrset_sizeof@Base 1.0.0
  packed_rrset_ttl_add@Base 1.0.0
@@ -469,11 +470,11 @@ libunbound.so.0 libunbound0 #MINVER#
  pkt_dname_len@Base 1.0.0
  pkt_dname_tolower@Base 1.0.0
  pkt_hash_rrset@Base 1.0.0
- priv_apply_cfg@Base 1.2.0-0ubuntu1
- priv_create@Base 1.2.0-0ubuntu1
- priv_delete@Base 1.2.0-0ubuntu1
- priv_get_mem@Base 1.2.0-0ubuntu1
- priv_rrset_bad@Base 1.2.0-0ubuntu1
+ priv_apply_cfg@Base 1.2.0
+ priv_create@Base 1.2.0
+ priv_delete@Base 1.2.0
+ priv_get_mem@Base 1.2.0
+ priv_rrset_bad@Base 1.2.0
  qinfo_query_encode@Base 1.0.0
  query_dname_compare@Base 1.0.0
  query_dname_len@Base 1.0.0
@@ -507,9 +508,9 @@ libunbound.so.0 libunbound0 #MINVER#
  regional_get_mem@Base 1.0.0
  regional_log_stats@Base 1.0.0
  regional_strdup@Base 1.0.0
- remote_accept_callback@Base 1.2.0-0ubuntu1
- remote_control_callback@Base 1.2.0-0ubuntu1
- reply_equal@Base 1.2.0-0ubuntu1
+ remote_accept_callback@Base 1.2.0
+ remote_control_callback@Base 1.2.0
+ reply_equal@Base 1.2.0
  reply_find_answer_rrset@Base 1.0.0
  reply_find_final_cname_target@Base 1.0.0
  reply_find_rrset_section_an@Base 1.0.0
@@ -531,7 +532,7 @@ libunbound.so.0 libunbound0 #MINVER#
  rrset_cache_create@Base 1.0.0
  rrset_cache_delete@Base 1.0.0
  rrset_cache_lookup@Base 1.0.0
- rrset_cache_remove@Base 1.2.0-0ubuntu1
+ rrset_cache_remove@Base 1.2.0
  rrset_cache_touch@Base 1.0.0
  rrset_cache_update@Base 1.0.0
  rrset_check_sec_status@Base 1.0.0
@@ -571,7 +572,7 @@ libunbound.so.0 libunbound0 #MINVER#
  strextstate@Base 1.0.0
  strlcpy_unbound@Base 1.0.1
  strmodulevent@Base 1.0.0
-#MISSING: 1.2.0-0ubuntu1# stub_cmp@Base 1.0.0
+#MISSING: 1.2.0# stub_cmp@Base 1.0.0
  table_grow@Base 1.0.0
  test_slabhash_compfunc@Base 1.0.0
  test_slabhash_deldata@Base 1.0.0
@@ -580,31 +581,31 @@ libunbound.so.0 libunbound0 #MINVER#
  timehist_clear@Base 1.0.0
  timehist_count@Base 1.0.0
  timehist_delete@Base 1.0.0
- timehist_export@Base 1.2.0-0ubuntu1
- timehist_import@Base 1.2.0-0ubuntu1
+ timehist_export@Base 1.2.0
+ timehist_import@Base 1.2.0
  timehist_insert@Base 1.0.0
  timehist_log@Base 1.0.0
  timehist_print@Base 1.0.0
  timehist_quartile@Base 1.0.0
  timehist_setup@Base 1.0.0
  traverse_postorder@Base 1.0.0
- tube_close_read@Base 1.2.0-0ubuntu1
- tube_close_write@Base 1.2.0-0ubuntu1
- tube_create@Base 1.2.0-0ubuntu1
- tube_delete@Base 1.2.0-0ubuntu1
- tube_handle_listen@Base 1.2.0-0ubuntu1
- tube_handle_signal@Base 1.2.0-0ubuntu1
- tube_handle_write@Base 1.2.0-0ubuntu1
- tube_poll@Base 1.2.0-0ubuntu1
- tube_queue_item@Base 1.2.0-0ubuntu1
- tube_read_fd@Base 1.2.0-0ubuntu1
- tube_read_msg@Base 1.2.0-0ubuntu1
- tube_remove_bg_listen@Base 1.2.0-0ubuntu1
- tube_remove_bg_write@Base 1.2.0-0ubuntu1
- tube_setup_bg_listen@Base 1.2.0-0ubuntu1
- tube_setup_bg_write@Base 1.2.0-0ubuntu1
- tube_wait@Base 1.2.0-0ubuntu1
- tube_write_msg@Base 1.2.0-0ubuntu1
+ tube_close_read@Base 1.2.0
+ tube_close_write@Base 1.2.0
+ tube_create@Base 1.2.0
+ tube_delete@Base 1.2.0
+ tube_handle_listen@Base 1.2.0
+ tube_handle_signal@Base 1.2.0
+ tube_handle_write@Base 1.2.0
+ tube_poll@Base 1.2.0
+ tube_queue_item@Base 1.2.0
+ tube_read_fd@Base 1.2.0
+ tube_read_msg@Base 1.2.0
+ tube_remove_bg_listen@Base 1.2.0
+ tube_remove_bg_write@Base 1.2.0
+ tube_setup_bg_listen@Base 1.2.0
+ tube_setup_bg_write@Base 1.2.0
+ tube_wait@Base 1.2.0
+ tube_write_msg@Base 1.2.0
  ub_c_alloc@Base 1.0.0
  ub_c_char@Base 1.0.0
  ub_c_create_buffer@Base 1.0.0
@@ -684,7 +685,7 @@ libunbound.so.0 libunbound0 #MINVER#
  val_deinit@Base 1.0.0
  val_dsset_isusable@Base 1.0.0
  val_fill_reply@Base 1.0.0
- val_find_rrset_signer@Base 1.2.0-0ubuntu1
+ val_find_rrset_signer@Base 1.2.0
  val_find_signer@Base 1.0.0
  val_get_funcblock@Base 1.0.0
  val_get_mem@Base 1.0.0
@@ -692,17 +693,17 @@ libunbound.so.0 libunbound0 #MINVER#
  val_init@Base 1.0.0
  val_mark_indeterminate@Base 1.0.0
  val_mark_insecure@Base 1.0.0
- val_neg_addreferral@Base 1.2.0-0ubuntu1
- val_neg_addreply@Base 1.2.0-0ubuntu1
- val_neg_create@Base 1.2.0-0ubuntu1
- val_neg_data_compare@Base 1.2.0-0ubuntu1
- val_neg_dlvlookup@Base 1.2.0-0ubuntu1
- val_neg_get_mem@Base 1.2.0-0ubuntu1
- val_neg_getmsg@Base 1.2.0-0ubuntu1
- val_neg_zone_compare@Base 1.2.0-0ubuntu1
- val_neg_zone_take_inuse@Base 1.2.0-0ubuntu1
+ val_neg_addreferral@Base 1.2.0
+ val_neg_addreply@Base 1.2.0
+ val_neg_create@Base 1.2.0
+ val_neg_data_compare@Base 1.2.0
+ val_neg_dlvlookup@Base 1.2.0
+ val_neg_get_mem@Base 1.2.0
+ val_neg_getmsg@Base 1.2.0
+ val_neg_zone_compare@Base 1.2.0
+ val_neg_zone_take_inuse@Base 1.2.0
  val_next_unchecked@Base 1.0.0
- val_nsec_check_dlv@Base 1.2.0-0ubuntu1
+ val_nsec_check_dlv@Base 1.2.0
  val_nsec_prove_nodata_dsreply@Base 1.0.0
  val_nsec_proves_name_error@Base 1.0.0
  val_nsec_proves_no_wc@Base 1.0.0
@@ -715,7 +716,7 @@ libunbound.so.0 libunbound0 #MINVER#
  val_verify_rrset_entry@Base 1.0.0
  verbose@Base 1.0.0
  verbosity@Base 1.0.0
- winsock_unused_symbol@Base 1.2.0-0ubuntu1
+ winsock_unused_symbol@Base 1.2.0
  worker_alloc_cleanup@Base 1.0.0
  worker_handle_control_cmd@Base 1.0.0
  worker_handle_reply@Base 1.0.0

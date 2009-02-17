@@ -1,3 +1,16 @@
+unbound (1.2.1-0ubuntu1) jaunty; urgency=low
+
+  * New upstream release
+    - Multiple bugfixes
+    - negative caching for failed queries
+  * debian/libunbound0.install
+    - Change usr/lib/libunbound.so.0.17.0 to usr/lib/libunbound.so.0.18.0
+  * debian/libunbound0.symbols
+    - Added symbol delegpt_add_neg_msg
+    - Stripped debian revisions from versions
+
+ -- Michael Jeanson <mjeanson@revolutionlinux.com>  Tue, 17 Feb 2009 10:37:06 -0500
+
 unbound (1.2.0-0ubuntu2) jaunty; urgency=low
 
   * Add unbound-control to the unbound binary package.

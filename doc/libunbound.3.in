@@ -1,4 +1,4 @@
-.TH "libunbound" "3" "Jan 13, 2009" "NLnet Labs" "unbound 1.2.0"
+.TH "libunbound" "3" "Feb 10, 2009" "NLnet Labs" "unbound 1.2.1"
 .\"
 .\" libunbound.3 -- unbound library functions manual
 .\"
@@ -36,7 +36,7 @@
 .B ub_cancel,
 .B ub_resolve_free,
 .B ub_strerror
-\- Unbound DNS validating resolver 1.2.0 functions.
+\- Unbound DNS validating resolver 1.2.1 functions.
 .SH "SYNOPSIS"
 .LP
 .B #include <unbound.h>

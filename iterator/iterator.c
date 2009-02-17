@@ -229,6 +229,34 @@ error_response(struct module_qstate* qstate, int id, int rcode)
 	return 0;
 }
 
+/**
+ * Return an error to the client and cache the error code in the
+ * message cache (so per qname, qtype, qclass).
+ * @param qstate: our query state
+ * @param id: module id
+ * @param rcode: error code (DNS errcode).
+ * @return: 0 for use by caller, to make notation easy, like:
+ * 	return error_response(..). 
+ */
+static int
+error_response_cache(struct module_qstate* qstate, int id, int rcode)
+{
+	/* store in cache */
+	struct reply_info err;
+	memset(&err, 0, sizeof(err));
+	err.flags = (uint16_t)(BIT_QR | BIT_RA);
+	FLAGS_SET_RCODE(err.flags, rcode);
+	err.qdcount = 1;
+	err.ttl = NORR_TTL;
+	/* do not waste time trying to validate this servfail */
+	err.security = sec_status_indeterminate;
+	verbose(VERB_ALGO, "store error response in message cache");
+	if(!iter_dns_store(qstate->env, &qstate->qinfo, &err, 0)) {
+		log_err("error_response_cache: could not store error (nomem)");
+	}
+	return error_response(qstate, id, rcode);
+}
+
 /** check if prepend item is duplicate item */
 static int
 prepend_is_duplicate(struct ub_packed_rrset_key** sets, size_t to,
@@ -432,13 +460,15 @@ handle_cname_response(struct module_qstate* qstate, struct iter_qstate* iq,
  * @param subq_ret: if newly allocated, the subquerystate, or NULL if it does
  * 	not need initialisation.
  * @param v: if true, validation is done on the subquery.
+ * @param detcyc: if true, cycle detection is done on the subquery.
  * @return false on error (malloc).
  */
 static int
 generate_sub_request(uint8_t* qname, size_t qnamelen, uint16_t qtype, 
 	uint16_t qclass, struct module_qstate* qstate, int id,
 	struct iter_qstate* iq, enum iter_state initial_state, 
-	enum iter_state final_state, struct module_qstate** subq_ret, int v)
+	enum iter_state final_state, struct module_qstate** subq_ret, int v,
+	int detcyc)
 {
 	struct module_qstate* subq = NULL;
 	struct iter_qstate* subiq = NULL;
@@ -460,6 +490,15 @@ generate_sub_request(uint8_t* qname, size_t qnamelen, uint16_t qtype,
 	 * path.  */
 	if(!v)
 		qflags |= BIT_CD;
+	
+	if(detcyc) {
+		fptr_ok(fptr_whitelist_modenv_detect_cycle(
+			qstate->env->detect_cycle));
+		if((*qstate->env->detect_cycle)(qstate, &qinf, qflags, prime)){
+			log_query_info(VERB_DETAIL, "cycle detected", &qinf);
+			return 0;
+		}
+	}
 
 	/* attach subquery, lookup existing or make a new one */
 	fptr_ok(fptr_whitelist_modenv_attach_sub(qstate->env->attach_sub));
@@ -527,8 +566,8 @@ prime_root(struct module_qstate* qstate, struct iter_qstate* iq,
 	 * the normal INIT state logic (which would cause an infloop). */
 	if(!generate_sub_request((uint8_t*)"\000", 1, LDNS_RR_TYPE_NS, 
 		qclass, qstate, id, iq, QUERYTARGETS_STATE, PRIME_RESP_STATE,
-		&subq, 0)) {
-		log_err("out of memory priming root");
+		&subq, 0, 1)) {
+		verbose(VERB_ALGO, "could not prime root");
 		return 0;
 	}
 	if(subq) {
@@ -596,8 +635,8 @@ prime_stub(struct module_qstate* qstate, struct iter_qstate* iq,
 	 * redundant INIT state processing. */
 	if(!generate_sub_request(stub_dp->name, stub_dp->namelen, 
 		LDNS_RR_TYPE_NS, qclass, qstate, id, iq,
-		QUERYTARGETS_STATE, PRIME_RESP_STATE, &subq, 0)) {
-		log_err("out of memory priming stub");
+		QUERYTARGETS_STATE, PRIME_RESP_STATE, &subq, 0, 1)) {
+		verbose(VERB_ALGO, "could not prime stub");
 		(void)error_response(qstate, id, LDNS_RCODE_SERVFAIL);
 		return 1; /* return 1 to make module stop, with error */
 	}
@@ -674,8 +713,8 @@ generate_a_aaaa_check(struct module_qstate* qstate, struct iter_qstate* iq,
 		if(!generate_sub_request(s->rk.dname, s->rk.dname_len, 
 			ntohs(s->rk.type), ntohs(s->rk.rrset_class),
 			qstate, id, iq,
-			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
-			log_err("out of memory generating ns check");
+			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+			verbose(VERB_ALGO, "could not generate addr check");
 			return;
 		}
 		/* ignore subq - not need for more init */
@@ -709,8 +748,8 @@ generate_ns_check(struct module_qstate* qstate, struct iter_qstate* iq, int id)
 		iq->dp->name, LDNS_RR_TYPE_NS, iq->qchase.qclass);
 	if(!generate_sub_request(iq->dp->name, iq->dp->namelen, 
 		LDNS_RR_TYPE_NS, iq->qchase.qclass, qstate, id, iq,
-		INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
-		log_err("out of memory generating ns check");
+		INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+		verbose(VERB_ALGO, "could not generate ns check");
 		return;
 	}
 	if(subq) {
@@ -1058,7 +1097,7 @@ generate_target_query(struct module_qstate* qstate, struct iter_qstate* iq,
 {
 	struct module_qstate* subq;
 	if(!generate_sub_request(name, namelen, qtype, qclass, qstate, 
-		id, iq, INIT_REQUEST_STATE, FINISHED_STATE, &subq, 0))
+		id, iq, INIT_REQUEST_STATE, FINISHED_STATE, &subq, 0, 0))
 		return 0;
 	if(subq) {
 		struct iter_qstate* subiq = 
@@ -1308,7 +1347,7 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 					"returning SERVFAIL");
 				/* fail -- no more targets, no more hope 
 				 * of targets, no hope of a response. */
-				return error_response(qstate, id,
+				return error_response_cache(qstate, id,
 					LDNS_RCODE_SERVFAIL);
 			}
 		}
@@ -1341,9 +1380,7 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 		iq->chase_flags | (iq->chase_to_rd?BIT_RD:0), EDNS_DO|BIT_CD, 
 		&target->addr, target->addrlen, qstate);
 	if(!outq) {
-		verbose(VERB_OPS, "error sending query to auth server; "
-			"skip this address");
-		log_addr(VERB_OPS, "error for address:", 
+		log_addr(VERB_DETAIL, "error sending query to auth server", 
 			&target->addr, target->addrlen);
 		return next_state(iq, QUERYTARGETS_STATE);
 	}
@@ -1429,10 +1466,6 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 		if(!ns || !dname_strict_subdomain_c(ns->rk.dname, iq->dp->name) 
 			|| !dname_subdomain_c(iq->qchase.qname, ns->rk.dname)){
 			verbose(VERB_ALGO, "bad referral, throwaway");
-			if(!ns) log_info("no ns");
-			log_query_info(0, "qchase", &iq->qchase);
-			log_nametypeclass(0, "dp", iq->dp->name, 0, 0);
-			log_nametypeclass(0, "ns", ns->rk.dname, 0, 0);
 			type = RESPONSE_TYPE_THROWAWAY;
 		}
 	}
@@ -1699,8 +1732,8 @@ processPrimeResponse(struct module_qstate* qstate, int id)
 		if(!generate_sub_request(qstate->qinfo.qname, 
 			qstate->qinfo.qname_len, qstate->qinfo.qtype,
 			qstate->qinfo.qclass, qstate, id, iq,
-			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
-			log_err("out of memory generating prime check");
+			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+			verbose(VERB_ALGO, "could not generate prime check");
 		}
 		generate_a_aaaa_check(qstate, iq, id);
 	}
