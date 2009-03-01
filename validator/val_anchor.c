@@ -46,6 +46,9 @@
 #include "util/net_help.h"
 #include "util/regional.h"
 #include "util/config_file.h"
+#ifdef HAVE_GLOB_H
+#include <glob.h>
+#endif
 
 int
 anchor_cmp(const void* k1, const void* k2)
@@ -203,9 +206,9 @@ anchor_new_ta_key(struct val_anchors* anchors, uint8_t* rdata, size_t rdata_len,
  * @param dclass: class of RR
  * @param rdata: rdata wireformat, starting with rdlength.
  * @param rdata_len: length of rdata including rdlength.
- * @return: 0 on error.
+ * @return: NULL on error, else the trust anchor.
  */
-static int
+static struct trust_anchor*
 anchor_store_new_key(struct val_anchors* anchors, uint8_t* name, uint16_t type,
 	uint16_t dclass, uint8_t* rdata, size_t rdata_len)
 {
@@ -223,22 +226,22 @@ anchor_store_new_key(struct val_anchors* anchors, uint8_t* name, uint16_t type,
 	if(!ta) {
 		ta = anchor_new_ta(anchors, name, namelabs, namelen, dclass);
 		if(!ta)
-			return 0;
+			return NULL;
 	}
 	/* look for duplicates */
 	if(anchor_find_key(ta, rdata, rdata_len, type)) {
-		return 1;
+		return ta;
 	}
 	k = anchor_new_ta_key(anchors, rdata, rdata_len, type);
 	if(!k)
-		return 0;
+		return NULL;
 	/* add new key */
 	if(type == LDNS_RR_TYPE_DS)
 		ta->numDS++;
 	else	ta->numDNSKEY++;
 	k->next = ta->keylist;
 	ta->keylist = k;
-	return 1;
+	return ta;
 }
 
 /**
@@ -246,12 +249,13 @@ anchor_store_new_key(struct val_anchors* anchors, uint8_t* name, uint16_t type,
  * @param anchors: anchor storage.
  * @param buffer: parsing buffer.
  * @param rr: the rr (allocated by caller).
- * @return false on error.
+ * @return NULL on error, else the trust anchor.
  */
-static int
+static struct trust_anchor*
 anchor_store_new_rr(struct val_anchors* anchors, ldns_buffer* buffer, 
 	ldns_rr* rr)
 {
+	struct trust_anchor* ta;
 	ldns_rdf* owner = ldns_rr_owner(rr);
 	ldns_status status;
 	ldns_buffer_clear(buffer);
@@ -260,41 +264,42 @@ anchor_store_new_rr(struct val_anchors* anchors, ldns_buffer* buffer,
 	if(status != LDNS_STATUS_OK) {
 		log_err("error converting trustanchor to wireformat: %s", 
 			ldns_get_errorstr_by_id(status));
-		return 0;
+		return NULL;
 	}
 	ldns_buffer_flip(buffer);
 	ldns_buffer_write_u16_at(buffer, 0, ldns_buffer_limit(buffer) - 2);
 
-	if(!anchor_store_new_key(anchors, ldns_rdf_data(owner), 
+	if(!(ta=anchor_store_new_key(anchors, ldns_rdf_data(owner), 
 		ldns_rr_get_type(rr), ldns_rr_get_class(rr),
-		ldns_buffer_begin(buffer), ldns_buffer_limit(buffer))) {
-		return 0;
+		ldns_buffer_begin(buffer), ldns_buffer_limit(buffer)))) {
+		return NULL;
 	}
 	log_nametypeclass(VERB_QUERY, "adding trusted key",
 		ldns_rdf_data(owner), 
 		ldns_rr_get_type(rr), ldns_rr_get_class(rr));
-	return 1;
+	return ta;
 }
 
-int
+struct trust_anchor*
 anchor_store_str(struct val_anchors* anchors, ldns_buffer* buffer,
 	const char* str)
 {
+	struct trust_anchor* ta;
 	ldns_rr* rr = NULL;
 	ldns_status status = ldns_rr_new_frm_str(&rr, str, 0, NULL, NULL);
 	if(status != LDNS_STATUS_OK) {
 		log_err("error parsing trust anchor: %s", 
 			ldns_get_errorstr_by_id(status));
 		ldns_rr_free(rr);
-		return 0;
+		return NULL;
 	}
-	if(!anchor_store_new_rr(anchors, buffer, rr)) {
+	if(!(ta=anchor_store_new_rr(anchors, buffer, rr))) {
 		log_err("out of memory");
 		ldns_rr_free(rr);
-		return 0;
+		return NULL;
 	}
 	ldns_rr_free(rr);
-	return 1;
+	return ta;
 }
 
 /**
@@ -302,12 +307,14 @@ anchor_store_str(struct val_anchors* anchors, ldns_buffer* buffer,
  * @param anchors: anchor storage.
  * @param buffer: parsing buffer.
  * @param fname: string.
- * @return false on error.
+ * @param onlyone: only one trust anchor allowed in file.
+ * @return NULL on error. Else last trust-anchor point.
  */
-static int
+static struct trust_anchor*
 anchor_read_file(struct val_anchors* anchors, ldns_buffer* buffer,
-	const char* fname)
+	const char* fname, int onlyone)
 {
+	struct trust_anchor* ta = NULL, *tanew;
 	uint32_t default_ttl = 3600;
 	ldns_rdf* origin = NULL, *prev = NULL;
 	int line_nr = 1;
@@ -339,18 +346,31 @@ anchor_read_file(struct val_anchors* anchors, ldns_buffer* buffer,
 			ldns_rr_free(rr);
 			continue;
 		}
-		if(!anchor_store_new_rr(anchors, buffer, rr)) {
+		if(!(tanew=anchor_store_new_rr(anchors, buffer, rr))) {
 			log_err("error at %s line %d", fname, line_nr);
 			ldns_rr_free(rr);
 			ok = 0;
 			break;
 		}
+		if(onlyone && ta && ta != tanew) {
+			log_err("error at %s line %d: no multiple anchor "
+				"domains allowed (you can have multiple "
+				"keys, but they must have the same name).", 
+				fname, line_nr);
+			ldns_rr_free(rr);
+			ok = 0;
+			break;
+		}
+		ta = tanew;
 		ldns_rr_free(rr);
 	}
 	ldns_rdf_deep_free(origin);
 	ldns_rdf_deep_free(prev);
 	fclose(in);
-	return ok;
+	if(!ok) return NULL;
+	/* empty file is OK when multiple anchors are allowed */
+	if(!onlyone && !ta) return (struct trust_anchor*)1;
+	return ta;
 }
 
 /** skip file to end of line */
@@ -645,6 +665,77 @@ anchor_read_bind_file(struct val_anchors* anchors, ldns_buffer* buffer,
 	return 1;
 }
 
+/**
+ * Read a BIND9 like files with trust anchors in named.conf format.
+ * Performs wildcard processing of name.
+ * @param anchors: anchor storage.
+ * @param buffer: parsing buffer.
+ * @param pat: pattern string. (can be wildcarded)
+ * @return false on error.
+ */
+static int
+anchor_read_bind_file_wild(struct val_anchors* anchors, ldns_buffer* buffer,
+	const char* pat)
+{
+#ifdef HAVE_GLOB
+	glob_t g;
+	size_t i;
+	int r, flags;
+	if(!strchr(pat, '*') && !strchr(pat, '?') && !strchr(pat, '[') && 
+		!strchr(pat, '{') && !strchr(pat, '~')) {
+		return anchor_read_bind_file(anchors, buffer, pat);
+	}
+	verbose(VERB_QUERY, "wildcard found, processing %s", pat);
+	flags = 0 
+#ifdef GLOB_ERR
+		| GLOB_ERR
+#endif
+#ifdef GLOB_NOSORT
+		| GLOB_NOSORT
+#endif
+#ifdef GLOB_BRACE
+		| GLOB_BRACE
+#endif
+#ifdef GLOB_TILDE
+		| GLOB_TILDE
+#endif
+	;
+	memset(&g, 0, sizeof(g));
+	r = glob(pat, flags, NULL, &g);
+	if(r) {
+		/* some error */
+		if(r == GLOB_NOMATCH) {
+			verbose(VERB_QUERY, "trusted-keys-file: "
+				"no matches for %s", pat);
+			return 1;
+		} else if(r == GLOB_NOSPACE) {
+			log_err("wildcard trusted-keys-file %s: "
+				"pattern out of memory", pat);
+		} else if(r == GLOB_ABORTED) {
+			log_err("wildcard trusted-keys-file %s: expansion "
+				"aborted (%s)", pat, strerror(errno));
+		} else {
+			log_err("wildcard trusted-keys-file %s: expansion "
+				"failed (%s)", pat, strerror(errno));
+		}
+		return 0;
+	}
+	/* process files found, if any */
+	for(i=0; i<(size_t)g.gl_pathc; i++) {
+		if(!anchor_read_bind_file(anchors, buffer, g.gl_pathv[i])) {
+			log_err("error reading wildcard "
+				"trusted-keys-file: %s", g.gl_pathv[i]);
+			globfree(&g);
+			return 0;
+		}
+	}
+	globfree(&g);
+	return 1;
+#else /* not HAVE_GLOB */
+	return anchor_read_bind_file(anchors, buffer, pat);
+#endif /* HAVE_GLOB */
+}
+
 /** 
  * Assemble an rrset structure for the type 
  * @param region: allocated in this region.
@@ -759,7 +850,7 @@ anchors_apply_cfg(struct val_anchors* anchors, struct config_file* cfg)
 		if(cfg->chrootdir && cfg->chrootdir[0] && strncmp(nm,
 			cfg->chrootdir, strlen(cfg->chrootdir)) == 0)
 			nm += strlen(cfg->chrootdir);
-		if(!anchor_read_file(anchors, parsebuf, nm)) {
+		if(!anchor_read_file(anchors, parsebuf, nm, 0)) {
 			log_err("error reading trust-anchor-file: %s", f->str);
 			ldns_buffer_free(parsebuf);
 			return 0;
@@ -772,7 +863,7 @@ anchors_apply_cfg(struct val_anchors* anchors, struct config_file* cfg)
 		if(cfg->chrootdir && cfg->chrootdir[0] && strncmp(nm,
 			cfg->chrootdir, strlen(cfg->chrootdir)) == 0)
 			nm += strlen(cfg->chrootdir);
-		if(!anchor_read_bind_file(anchors, parsebuf, nm)) {
+		if(!anchor_read_bind_file_wild(anchors, parsebuf, nm)) {
 			log_err("error reading trusted-keys-file: %s", f->str);
 			ldns_buffer_free(parsebuf);
 			return 0;
@@ -783,6 +874,29 @@ anchors_apply_cfg(struct val_anchors* anchors, struct config_file* cfg)
 			continue;
 		if(!anchor_store_str(anchors, parsebuf, f->str)) {
 			log_err("error in trust-anchor: \"%s\"", f->str);
+			ldns_buffer_free(parsebuf);
+			return 0;
+		}
+	}
+	if(cfg->dlv_anchor_file && cfg->dlv_anchor_file[0] != 0) {
+		nm = cfg->dlv_anchor_file;
+		if(cfg->chrootdir && cfg->chrootdir[0] && strncmp(nm,
+			cfg->chrootdir, strlen(cfg->chrootdir)) == 0)
+			nm += strlen(cfg->chrootdir);
+		if(!(anchors->dlv_anchor = anchor_read_file(anchors, parsebuf,
+			nm, 1))) {
+			log_err("error reading dlv-anchor-file: %s", 
+				cfg->dlv_anchor_file);
+			ldns_buffer_free(parsebuf);
+			return 0;
+		}
+	}
+	for(f = cfg->dlv_anchor_list; f; f = f->next) {
+		if(!f->str || f->str[0] == 0) /* empty "" */
+			continue;
+		if(!(anchors->dlv_anchor = anchor_store_str(
+			anchors, parsebuf, f->str))) {
+			log_err("error in dlv-anchor: \"%s\"", f->str);
 			ldns_buffer_free(parsebuf);
 			return 0;
 		}

@@ -42,6 +42,7 @@
 #include "testcode/ldns-testpkts.h"
 #include "testcode/replay.h"
 #include "testcode/fake_event.h"
+#include "daemon/remote.h"
 
 /** 
  * include the main program from the unbound daemon.
@@ -64,6 +65,7 @@ testbound_usage()
 	printf("\ttest the unbound daemon.\n");
 	printf("-h      this help\n");
 	printf("-p file	playback text file\n");
+	printf("-2 	detect SHA256 support (exit code 0 or 1)\n");
 	printf("-o str  unbound commandline options separated by spaces.\n");
 	printf("Version %s\n", PACKAGE_VERSION);
 	printf("BSD licensed, see LICENSE file in source package.\n");
@@ -80,9 +82,9 @@ testbound_usage()
  * @param pass_argv: the argv to pass to unbound. Modified.
  */
 static void
-add_opts(char* optarg, int* pass_argc, char* pass_argv[])
+add_opts(const char* optarg, int* pass_argc, char* pass_argv[])
 {
-	char *p = optarg, *np;
+	const char *p = optarg, *np;
 	size_t len;
 	while(p && isspace((int)*p)) 
 		p++;
@@ -222,8 +224,17 @@ main(int argc, char* argv[])
 	pass_argc = 1;
 	pass_argv[0] = "unbound";
 	add_opts("-d", &pass_argc, pass_argv);
-	while( (c=getopt(argc, argv, "ho:p:")) != -1) {
+	while( (c=getopt(argc, argv, "2ho:p:")) != -1) {
 		switch(c) {
+		case '2':
+#ifdef HAVE_EVP_SHA256
+			printf("SHA256 supported\n");
+			exit(0);
+#else
+			printf("SHA256 not supported\n");
+			exit(1);
+#endif
+			break;
 		case 'p':
 			playback_file = optarg;
 			break;
@@ -268,3 +279,43 @@ main(int argc, char* argv[])
 		log_info("Testbound Exit Success");
 	return res;
 }
+
+/* fake remote control */
+struct listen_port* daemon_remote_open_ports(struct config_file* 
+	ATTR_UNUSED(cfg))
+{
+	return NULL;
+}
+
+struct daemon_remote* daemon_remote_create(struct worker* ATTR_UNUSED(worker))
+{
+	return (struct daemon_remote*)calloc(1,1);
+}
+
+void daemon_remote_delete(struct daemon_remote* rc)
+{
+	free(rc);
+}
+
+int daemon_remote_open_accept(struct daemon_remote* ATTR_UNUSED(rc),
+        struct listen_port* ATTR_UNUSED(ports))
+{
+	return 1;
+}
+
+int remote_accept_callback(struct comm_point* ATTR_UNUSED(c), 
+	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
+        struct comm_reply* ATTR_UNUSED(repinfo))
+{
+	log_assert(0);
+	return 0;
+}
+
+int remote_control_callback(struct comm_point* ATTR_UNUSED(c), 
+	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
+        struct comm_reply* ATTR_UNUSED(repinfo))
+{
+	log_assert(0);
+	return 0;
+}
+

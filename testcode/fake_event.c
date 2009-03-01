@@ -57,9 +57,24 @@
 #include "testcode/ldns-testpkts.h"
 #include "util/log.h"
 #include <signal.h>
+struct worker;
 
 /** Global variable: the scenario. Saved here for when event_init is done. */
 static struct replay_scenario* saved_scenario = NULL;
+
+/** add timers and the values do not overflow or become negative */
+static void
+timeval_add(struct timeval* d, const struct timeval* add)
+{
+#ifndef S_SPLINT_S
+	d->tv_sec += add->tv_sec;
+	d->tv_usec += add->tv_usec;
+	while(d->tv_usec > 1000000 ) {
+		d->tv_usec -= 1000000;
+		d->tv_sec++;
+	}
+#endif
+}
 
 void 
 fake_event_init(struct replay_scenario* scen)
@@ -98,11 +113,12 @@ repevt_string(enum replay_event_type t)
 	case repevt_front_query: return "QUERY";
 	case repevt_front_reply: return "CHECK_ANSWER";
 	case repevt_timeout:	 return "TIMEOUT";
+	case repevt_time_passes: return "TIME_PASSES";
 	case repevt_back_reply:  return "REPLY";
 	case repevt_back_query:  return "CHECK_OUT_QUERY";
 	case repevt_error:	 return "ERROR";
 	default:		 return "UNKNOWN";
-	};
+	}
 }
 
 /** delete a fake pending */
@@ -381,11 +397,13 @@ fake_pending_callback(struct replay_runtime* runtime,
 	struct fake_pending* p = runtime->pending_list;
 	struct comm_reply repinfo;
 	struct comm_point c;
-	void* cb_arg = p->cb_arg;
-	comm_point_callback_t* cb = p->callback;
+	void* cb_arg;
+	comm_point_callback_t* cb;
 
 	memset(&c, 0, sizeof(c));
 	if(!p) fatal_exit("No pending queries.");
+	cb_arg = p->cb_arg;
+	cb = p->callback;
 	log_assert(todo->qname == NULL); /* or find that one */
 	c.buffer = ldns_buffer_new(runtime->bufsize);
 	c.type = comm_udp;
@@ -404,6 +422,19 @@ fake_pending_callback(struct replay_runtime* runtime,
 	}
 	/* delete the pending item. */
 	ldns_buffer_free(c.buffer);
+}
+
+/** pass time */
+static void
+time_passes(struct replay_runtime* runtime, struct replay_moment* mom)
+{
+	timeval_add(&runtime->now_tv, &mom->elapse);
+	runtime->now_secs = (uint32_t)runtime->now_tv.tv_sec;
+#ifndef S_SPLINT_S
+	log_info("elapsed %d.%6.6d  now %d.%6.6d", 
+		(int)mom->elapse.tv_sec, (int)mom->elapse.tv_usec,
+		(int)runtime->now_tv.tv_sec, (int)runtime->now_tv.tv_usec);
+#endif
 }
 
 /**
@@ -469,6 +500,10 @@ do_moment_and_advance(struct replay_runtime* runtime)
 		advance_moment(runtime);
 		fake_pending_callback(runtime, mom, NETEVENT_CLOSED);
 		break;
+	case repevt_time_passes:
+		time_passes(runtime, runtime->now);
+		advance_moment(runtime);
+		break;
 	default:
 		fatal_exit("testbound: unknown event type %d", 
 			runtime->now->evt_type);
@@ -515,8 +550,10 @@ run_scenario(struct replay_runtime* runtime)
 	if(runtime->pending_list) {
 		struct fake_pending* p;
 		log_err("testbound: there are still messages pending.");
-		for(p = runtime->pending_list; p; p=p->next)
+		for(p = runtime->pending_list; p; p=p->next) {
 			log_pkt("pending msg", p->pkt);
+			log_addr(0, "pending to", &p->addr, p->addrlen);
+		}
 		fatal_exit("testbound: there are still messages pending.");
 	}
 	if(runtime->answer_list) {
@@ -559,7 +596,7 @@ listen_delete(struct listen_dnsport* listen)
 }
 
 struct comm_base* 
-comm_base_create()
+comm_base_create(int ATTR_UNUSED(sigs))
 {
 	/* we return the runtime structure instead. */
 	struct replay_runtime* runtime = (struct replay_runtime*)
@@ -688,10 +725,12 @@ outside_network_create(struct comm_base* base, size_t bufsize,
 	struct infra_cache* ATTR_UNUSED(infra),
 	struct ub_randstate* ATTR_UNUSED(rnd), 
 	int ATTR_UNUSED(use_caps_for_id), int* ATTR_UNUSED(availports),
-	int ATTR_UNUSED(numavailports))
+	int ATTR_UNUSED(numavailports), size_t ATTR_UNUSED(unwanted_threshold),
+	void (*unwanted_action)(void*), void* ATTR_UNUSED(unwanted_param))
 {
 	struct outside_network* outnet =  calloc(1, 
 		sizeof(struct outside_network));
+	(void)unwanted_action;
 	if(!outnet)
 		return NULL;
 	outnet->base = base;
@@ -945,6 +984,26 @@ struct comm_point* comm_point_create_local(struct comm_base* ATTR_UNUSED(base),
 	return calloc(1, 1);
 }
 
+struct comm_point* comm_point_create_raw(struct comm_base* ATTR_UNUSED(base),
+        int ATTR_UNUSED(fd), int ATTR_UNUSED(writing),
+        comm_point_callback_t* ATTR_UNUSED(callback), 
+	void* ATTR_UNUSED(callback_arg))
+{
+	/* no pipe comm possible */
+	return calloc(1, 1);
+}
+
+void comm_point_start_listening(struct comm_point* ATTR_UNUSED(c), 
+	int ATTR_UNUSED(newfd), int ATTR_UNUSED(sec))
+{
+	/* no bg write pipe comm possible */
+}
+
+void comm_point_stop_listening(struct comm_point* ATTR_UNUSED(c))
+{
+	/* no bg write pipe comm possible */
+}
+
 /* only cmd com _local gets deleted */
 void comm_point_delete(struct comm_point* c)
 {
@@ -1094,6 +1153,16 @@ void comm_timer_set(struct comm_timer* ATTR_UNUSED(timer),
 void comm_timer_delete(struct comm_timer* timer)
 {
 	free(timer);
+}
+
+struct event_base* comm_base_internal(struct comm_base* ATTR_UNUSED(b))
+{
+	/* no pipe comm possible in testbound */
+	return NULL;
+}
+
+void daemon_remote_exec(struct worker* ATTR_UNUSED(worker))
+{
 }
 
 /*********** End of Dummy routines ***********/

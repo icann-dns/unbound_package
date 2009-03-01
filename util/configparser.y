@@ -90,12 +90,18 @@ extern struct config_parser_state* cfg_parser;
 %token VAR_LOCAL_ZONE VAR_LOCAL_DATA VAR_INTERFACE_AUTOMATIC
 %token VAR_STATISTICS_INTERVAL VAR_DO_DAEMONIZE VAR_USE_CAPS_FOR_ID
 %token VAR_STATISTICS_CUMULATIVE VAR_OUTGOING_PORT_PERMIT 
-%token VAR_OUTGOING_PORT_AVOID
+%token VAR_OUTGOING_PORT_AVOID VAR_DLV_ANCHOR_FILE VAR_DLV_ANCHOR
+%token VAR_NEG_CACHE_SIZE VAR_HARDEN_REFERRAL_PATH VAR_PRIVATE_ADDRESS
+%token VAR_PRIVATE_DOMAIN VAR_REMOTE_CONTROL VAR_CONTROL_ENABLE
+%token VAR_CONTROL_INTERFACE VAR_CONTROL_PORT VAR_SERVER_KEY_FILE
+%token VAR_SERVER_CERT_FILE VAR_CONTROL_KEY_FILE VAR_CONTROL_CERT_FILE
+%token VAR_EXTENDED_STATISTICS VAR_LOCAL_DATA_PTR VAR_JOSTLE_TIMEOUT
+%token VAR_STUB_PRIME VAR_UNWANTED_REPLY_THRESHOLD
 
 %%
 toplevelvars: /* empty */ | toplevelvars toplevelvar ;
 toplevelvar: serverstart contents_server | stubstart contents_stub |
-	forwardstart contents_forward
+	forwardstart contents_forward | rcstart contents_rc
 	;
 
 /* server: declaration */
@@ -132,7 +138,12 @@ content_server: server_num_threads | server_verbosity | server_port |
 	server_local_zone | server_local_data | server_interface_automatic |
 	server_statistics_interval | server_do_daemonize | 
 	server_use_caps_for_id | server_statistics_cumulative |
-	server_outgoing_port_permit | server_outgoing_port_avoid
+	server_outgoing_port_permit | server_outgoing_port_avoid |
+	server_dlv_anchor_file | server_dlv_anchor | server_neg_cache_size |
+	server_harden_referral_path | server_private_address |
+	server_private_domain | server_extended_statistics | 
+	server_local_data_ptr | server_jostle_timeout | 
+	server_unwanted_reply_threshold
 	;
 stubstart: VAR_STUB_ZONE
 	{
@@ -148,7 +159,7 @@ stubstart: VAR_STUB_ZONE
 	;
 contents_stub: contents_stub content_stub 
 	| ;
-content_stub: stub_name | stub_host | stub_addr 
+content_stub: stub_name | stub_host | stub_addr | stub_prime
 	;
 forwardstart: VAR_FORWARD_ZONE
 	{
@@ -201,6 +212,15 @@ server_statistics_cumulative: VAR_STATISTICS_CUMULATIVE STRING
 		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
 			yyerror("expected yes or no.");
 		else cfg_parser->cfg->stat_cumulative = (strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
+server_extended_statistics: VAR_EXTENDED_STATISTICS STRING
+	{
+		OUTYY(("P(server_extended_statistics:%s)\n", $2));
+		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+			yyerror("expected yes or no.");
+		else cfg_parser->cfg->stat_extended = (strcmp($2, "yes")==0);
 		free($2);
 	}
 	;
@@ -397,6 +417,20 @@ server_root_hints: VAR_ROOT_HINTS STRING
 			yyerror("out of memory");
 	}
 	;
+server_dlv_anchor_file: VAR_DLV_ANCHOR_FILE STRING
+	{
+		OUTYY(("P(server_dlv_anchor_file:%s)\n", $2));
+		free(cfg_parser->cfg->dlv_anchor_file);
+		cfg_parser->cfg->dlv_anchor_file = $2;
+	}
+	;
+server_dlv_anchor: VAR_DLV_ANCHOR STRING
+	{
+		OUTYY(("P(server_dlv_anchor:%s)\n", $2));
+		if(!cfg_strlist_insert(&cfg_parser->cfg->dlv_anchor_list, $2))
+			yyerror("out of memory");
+	}
+	;
 server_trust_anchor_file: VAR_TRUST_ANCHOR_FILE STRING
 	{
 		OUTYY(("P(server_trust_anchor_file:%s)\n", $2));
@@ -490,6 +524,15 @@ server_num_queries_per_thread: VAR_NUM_QUERIES_PER_THREAD STRING
 		if(atoi($2) == 0)
 			yyerror("number expected");
 		else cfg_parser->cfg->num_queries_per_thread = atoi($2);
+		free($2);
+	}
+	;
+server_jostle_timeout: VAR_JOSTLE_TIMEOUT STRING
+	{
+		OUTYY(("P(server_jostle_timeout:%s)\n", $2));
+		if(atoi($2) == 0 && strcmp($2, "0") != 0)
+			yyerror("number expected");
+		else cfg_parser->cfg->jostle_time = atoi($2);
 		free($2);
 	}
 	;
@@ -610,6 +653,16 @@ server_harden_dnssec_stripped: VAR_HARDEN_DNNSEC_STRIPPED STRING
 		free($2);
 	}
 	;
+server_harden_referral_path: VAR_HARDEN_REFERRAL_PATH STRING
+	{
+		OUTYY(("P(server_harden_referral_path:%s)\n", $2));
+		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+			yyerror("expected yes or no.");
+		else cfg_parser->cfg->harden_referral_path = 
+			(strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
 server_use_caps_for_id: VAR_USE_CAPS_FOR_ID STRING
 	{
 		OUTYY(("P(server_use_caps_for_id:%s)\n", $2));
@@ -617,6 +670,29 @@ server_use_caps_for_id: VAR_USE_CAPS_FOR_ID STRING
 			yyerror("expected yes or no.");
 		else cfg_parser->cfg->use_caps_bits_for_id = 
 			(strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
+server_private_address: VAR_PRIVATE_ADDRESS STRING
+	{
+		OUTYY(("P(server_private_address:%s)\n", $2));
+		if(!cfg_strlist_insert(&cfg_parser->cfg->private_address, $2))
+			yyerror("out of memory");
+	}
+	;
+server_private_domain: VAR_PRIVATE_DOMAIN STRING
+	{
+		OUTYY(("P(server_private_domain:%s)\n", $2));
+		if(!cfg_strlist_insert(&cfg_parser->cfg->private_domain, $2))
+			yyerror("out of memory");
+	}
+	;
+server_unwanted_reply_threshold: VAR_UNWANTED_REPLY_THRESHOLD STRING
+	{
+		OUTYY(("P(server_unwanted_reply_threshold:%s)\n", $2));
+		if(atoi($2) == 0 && strcmp($2, "0") != 0)
+			yyerror("number expected");
+		else cfg_parser->cfg->unwanted_threshold = atoi($2);
 		free($2);
 	}
 	;
@@ -641,9 +717,10 @@ server_access_control: VAR_ACCESS_CONTROL STRING STRING
 	{
 		OUTYY(("P(server_access_control:%s %s)\n", $2, $3));
 		if(strcmp($3, "deny")!=0 && strcmp($3, "refuse")!=0 &&
-			strcmp($3, "allow")!=0) {
-			yyerror("expected deny, refuse or allow in "
-				"access control action");
+			strcmp($3, "allow")!=0 && 
+			strcmp($3, "allow_snoop")!=0) {
+			yyerror("expected deny, refuse, allow or allow_snoop "
+				"in access control action");
 		} else {
 			if(!cfg_str2list_insert(&cfg_parser->cfg->acls, $2, $3))
 				fatal_exit("out of memory adding acl");
@@ -741,6 +818,14 @@ server_key_cache_slabs: VAR_KEY_CACHE_SLABS STRING
 		free($2);
 	}
 	;
+server_neg_cache_size: VAR_NEG_CACHE_SIZE STRING
+	{
+		OUTYY(("P(server_neg_cache_size:%s)\n", $2));
+		if(!cfg_parse_memsize($2, &cfg_parser->cfg->neg_cache_size))
+			yyerror("memory size expected");
+		free($2);
+	}
+	;
 server_local_zone: VAR_LOCAL_ZONE STRING STRING
 	{
 		OUTYY(("P(server_local_zone:%s %s)\n", $2, $3));
@@ -753,6 +838,7 @@ server_local_zone: VAR_LOCAL_ZONE STRING STRING
 			if(!cfg_strlist_insert(&cfg_parser->cfg->
 				local_zones_nodefault, $2))
 				fatal_exit("out of memory adding local-zone");
+			free($3);
 		} else {
 			if(!cfg_str2list_insert(&cfg_parser->cfg->local_zones, 
 				$2, $3))
@@ -765,6 +851,21 @@ server_local_data: VAR_LOCAL_DATA STRING
 		OUTYY(("P(server_local_data:%s)\n", $2));
 		if(!cfg_strlist_insert(&cfg_parser->cfg->local_data, $2))
 			fatal_exit("out of memory adding local-data");
+	}
+	;
+server_local_data_ptr: VAR_LOCAL_DATA_PTR STRING
+	{
+		char* ptr;
+		OUTYY(("P(server_local_data_ptr:%s)\n", $2));
+		ptr = cfg_ptr_reverse($2);
+		free($2);
+		if(ptr) {
+			if(!cfg_strlist_insert(&cfg_parser->cfg->
+				local_data, ptr))
+				fatal_exit("out of memory adding local-data");
+		} else {
+			yyerror("local-data-ptr could not be reversed");
+		}
 	}
 	;
 stub_name: VAR_NAME STRING
@@ -788,6 +889,16 @@ stub_addr: VAR_STUB_ADDR STRING
 			yyerror("out of memory");
 	}
 	;
+stub_prime: VAR_STUB_PRIME STRING
+	{
+		OUTYY(("P(stub-prime:%s)\n", $2));
+		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+			yyerror("expected yes or no.");
+		else cfg_parser->cfg->stubs->isprime = 
+			(strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
 forward_name: VAR_NAME STRING
 	{
 		OUTYY(("P(name:%s)\n", $2));
@@ -807,6 +918,71 @@ forward_addr: VAR_FORWARD_ADDR STRING
 		OUTYY(("P(forward-addr:%s)\n", $2));
 		if(!cfg_strlist_insert(&cfg_parser->cfg->forwards->addrs, $2))
 			yyerror("out of memory");
+	}
+	;
+rcstart: VAR_REMOTE_CONTROL
+	{ 
+		OUTYY(("\nP(remote-control:)\n")); 
+	}
+	;
+contents_rc: contents_rc content_rc 
+	| ;
+content_rc: rc_control_enable | rc_control_interface | rc_control_port |
+	rc_server_key_file | rc_server_cert_file | rc_control_key_file |
+	rc_control_cert_file
+	;
+rc_control_enable: VAR_CONTROL_ENABLE STRING
+	{
+		OUTYY(("P(control_enable:%s)\n", $2));
+		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+			yyerror("expected yes or no.");
+		else cfg_parser->cfg->remote_control_enable = 
+			(strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
+rc_control_port: VAR_CONTROL_PORT STRING
+	{
+		OUTYY(("P(control_port:%s)\n", $2));
+		if(atoi($2) == 0)
+			yyerror("control port number expected");
+		else cfg_parser->cfg->control_port = atoi($2);
+		free($2);
+	}
+	;
+rc_control_interface: VAR_CONTROL_INTERFACE STRING
+	{
+		OUTYY(("P(control_interface:%s)\n", $2));
+		if(!cfg_strlist_insert(&cfg_parser->cfg->control_ifs, $2))
+			yyerror("out of memory");
+	}
+	;
+rc_server_key_file: VAR_SERVER_KEY_FILE STRING
+	{
+		OUTYY(("P(rc_server_key_file:%s)\n", $2));
+		free(cfg_parser->cfg->server_key_file);
+		cfg_parser->cfg->server_key_file = $2;
+	}
+	;
+rc_server_cert_file: VAR_SERVER_CERT_FILE STRING
+	{
+		OUTYY(("P(rc_server_cert_file:%s)\n", $2));
+		free(cfg_parser->cfg->server_cert_file);
+		cfg_parser->cfg->server_cert_file = $2;
+	}
+	;
+rc_control_key_file: VAR_CONTROL_KEY_FILE STRING
+	{
+		OUTYY(("P(rc_control_key_file:%s)\n", $2));
+		free(cfg_parser->cfg->control_key_file);
+		cfg_parser->cfg->control_key_file = $2;
+	}
+	;
+rc_control_cert_file: VAR_CONTROL_CERT_FILE STRING
+	{
+		OUTYY(("P(rc_control_cert_file:%s)\n", $2));
+		free(cfg_parser->cfg->control_cert_file);
+		cfg_parser->cfg->control_cert_file = $2;
 	}
 	;
 %%

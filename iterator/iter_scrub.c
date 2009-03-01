@@ -41,6 +41,8 @@
  */
 #include "config.h"
 #include "iterator/iter_scrub.h"
+#include "iterator/iterator.h"
+#include "iterator/iter_priv.h"
 #include "services/cache/rrset.h"
 #include "util/log.h"
 #include "util/net_help.h"
@@ -98,8 +100,6 @@ has_additional(uint16_t t)
 			return 1;
 		case LDNS_RR_TYPE_NAPTR:
 			/* TODO: NAPTR not supported, glue stripped off */
-			return 0;
-		default:
 			return 0;
 	}
 	return 0;
@@ -519,6 +519,35 @@ store_rrset(ldns_buffer* pkt, struct msg_parse* msg, struct module_env* env,
 }
 
 /**
+ * Check if right hand name in NSEC is within zone
+ * @param rrset: the NSEC rrset
+ * @param zonename: the zone name.
+ * @return true if BAD.
+ */
+static int sanitize_nsec_is_overreach(struct rrset_parse* rrset, 
+	uint8_t* zonename)
+{
+	struct rr_parse* rr;
+	uint8_t* rhs;
+	size_t len;
+	log_assert(rrset->type == LDNS_RR_TYPE_NSEC);
+	for(rr = rrset->rr_first; rr; rr = rr->next) {
+		rhs = rr->ttl_data+4+2;
+		len = ldns_read_uint16(rr->ttl_data+4);
+		if(!(len=dname_valid(rhs, len))) {
+			/* malformed domain name in rdata */
+			return 1;
+		}
+		if(!dname_subdomain_c(rhs, zonename)) {
+			/* overreaching */
+			return 1;
+		}
+	}
+	/* all NSEC RRs OK */
+	return 0;
+}
+
+/**
  * Given a response event, remove suspect RRsets from the response.
  * "Suspect" rrsets are potentially poison. Note that this routine expects
  * the response to be in a "normalized" state -- that is, all "irrelevant"
@@ -529,11 +558,13 @@ store_rrset(ldns_buffer* pkt, struct msg_parse* msg, struct module_env* env,
  * @param qinfo: the question originally asked.
  * @param zonename: name of server zone.
  * @param env: module environment with config and cache.
+ * @param ie: iterator environment with private address data.
  * @return 0 on error.
  */
 static int
 scrub_sanitize(ldns_buffer* pkt, struct msg_parse* msg, 
-	struct query_info* qinfo, uint8_t* zonename, struct module_env* env)
+	struct query_info* qinfo, uint8_t* zonename, struct module_env* env,
+	struct iter_env* ie)
 {
 	struct rrset_parse* rrset, *prev;
 	prev = NULL;
@@ -577,6 +608,18 @@ scrub_sanitize(ldns_buffer* pkt, struct msg_parse* msg,
 	prev = NULL;
 	rrset = msg->rrset_first;
 	while(rrset) {
+
+		/* remove private addresses */
+		if( (rrset->type == LDNS_RR_TYPE_A || 
+			rrset->type == LDNS_RR_TYPE_AAAA) &&
+			priv_rrset_bad(ie->priv, pkt, rrset)) {
+			/* set servfail, so the classification becomes
+			 * THROWAWAY, instead of LAME or other unwanted */
+			FLAGS_SET_RCODE(msg->flags, LDNS_RCODE_SERVFAIL);
+			remove_rrset("sanitize: removing public name with "
+				"private address", pkt, msg, prev, &rrset);
+			continue;
+		}
 		
 		/* skip DNAME records -- they will always be followed by a 
 		 * synthesized CNAME, which will be relevant.
@@ -608,6 +651,13 @@ scrub_sanitize(ldns_buffer* pkt, struct msg_parse* msg,
 				continue;
 			}
 		}
+		/* check if right hand side of NSEC is within zone */
+		if(rrset->type == LDNS_RR_TYPE_NSEC &&
+			sanitize_nsec_is_overreach(rrset, zonename)) {
+			remove_rrset("sanitize: removing overreaching NSEC "
+				"RRset:", pkt, msg, prev, &rrset);
+			continue;
+		}
 		prev = rrset;
 		rrset = rrset->rrset_all_next;
 	}
@@ -617,7 +667,7 @@ scrub_sanitize(ldns_buffer* pkt, struct msg_parse* msg,
 int 
 scrub_message(ldns_buffer* pkt, struct msg_parse* msg, 
 	struct query_info* qinfo, uint8_t* zonename, struct regional* region,
-	struct module_env* env)
+	struct module_env* env, struct iter_env* ie)
 {
 	/* basic sanity checks */
 	log_nametypeclass(VERB_ALGO, "scrub for", zonename, LDNS_RR_TYPE_NS, 
@@ -648,7 +698,7 @@ scrub_message(ldns_buffer* pkt, struct msg_parse* msg,
 	if(!scrub_normalize(pkt, msg, qinfo, region))
 		return 0;
 	/* delete all out-of-zone information */
-	if(!scrub_sanitize(pkt, msg, qinfo, zonename, env))
+	if(!scrub_sanitize(pkt, msg, qinfo, zonename, env, ie))
 		return 0;
 	return 1;
 }

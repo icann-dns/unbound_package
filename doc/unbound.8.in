@@ -1,4 +1,4 @@
-.TH "unbound" "8" "Aug  7, 2008" "NLnet Labs" "unbound 1.0.2"
+.TH "unbound" "8" "Feb 10, 2009" "NLnet Labs" "unbound 1.2.1"
 .\"
 .\" unbound.8 -- unbound manual
 .\"
@@ -10,7 +10,7 @@
 .SH "NAME"
 .LP
 .B unbound
-\- Unbound DNS validating resolver 1.0.2.
+\- Unbound DNS validating resolver 1.2.1.
 .SH "SYNOPSIS"
 .LP
 .B unbound

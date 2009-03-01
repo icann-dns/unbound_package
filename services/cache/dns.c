@@ -101,41 +101,6 @@ dns_cache_store_msg(struct module_env* env, struct query_info* qinfo,
 	slabhash_insert(env->msg_cache, hash, &e->entry, rep, env->alloc);
 }
 
-/** allocate rrset in region - no more locks needed */
-static struct ub_packed_rrset_key*
-copy_rrset(struct ub_packed_rrset_key* key, struct regional* region, 
-	uint32_t now)
-{
-	struct ub_packed_rrset_key* ck = regional_alloc(region, 
-		sizeof(struct ub_packed_rrset_key));
-	struct packed_rrset_data* d;
-	struct packed_rrset_data* data = (struct packed_rrset_data*)
-		key->entry.data;
-	size_t dsize, i;
-	if(!ck)
-		return NULL;
-	ck->id = key->id;
-	memset(&ck->entry, 0, sizeof(ck->entry));
-	ck->entry.hash = key->entry.hash;
-	ck->entry.key = ck;
-	ck->rk = key->rk;
-	ck->rk.dname = regional_alloc_init(region, key->rk.dname, 
-		key->rk.dname_len);
-	if(!ck->rk.dname)
-		return NULL;
-	dsize = packed_rrset_sizeof(data);
-	d = (struct packed_rrset_data*)regional_alloc_init(region, data, dsize);
-	if(!d)
-		return NULL;
-	ck->entry.data = d;
-	packed_rrset_ptr_fixup(d);
-	/* make TTLs relative - once per rrset */
-	for(i=0; i<d->count + d->rrsig_count; i++)
-		d->rr_ttl[i] -= now;
-	d->ttl -= now;
-	return ck;
-}
-
 /** find closest NS or DNAME and returns the rrset (locked) */
 static struct ub_packed_rrset_key*
 find_closest_of_type(struct module_env* env, uint8_t* qname, size_t qnamelen, 
@@ -171,10 +136,34 @@ addr_to_additional(struct ub_packed_rrset_key* rrset, struct regional* region,
 	struct dns_msg* msg, uint32_t now)
 {
 	if((msg->rep->rrsets[msg->rep->rrset_count] = 
-		copy_rrset(rrset, region, now))) {
+		packed_rrset_copy_region(rrset, region, now))) {
 		msg->rep->ar_numrrsets++;
 		msg->rep->rrset_count++;
 	}
+}
+
+/** lookup message in message cache */
+static struct msgreply_entry* 
+msg_cache_lookup(struct module_env* env, uint8_t* qname, size_t qnamelen, 
+	uint16_t qtype, uint16_t qclass, uint32_t now, int wr)
+{
+	struct lruhash_entry* e;
+	struct query_info k;
+	hashvalue_t h;
+
+	k.qname = qname;
+	k.qname_len = qnamelen;
+	k.qtype = qtype;
+	k.qclass = qclass;
+	h = query_info_hash(&k);
+	e = slabhash_lookup(env->msg_cache, h, &k, wr);
+
+	if(!e) return NULL;
+	if( now > ((struct reply_info*)e->data)->ttl ) {
+		lock_rw_unlock(&e->lock);
+		return NULL;
+	}
+	return (struct msgreply_entry*)e->key;
 }
 
 /** find and add A and AAAA records for nameservers in delegpt */
@@ -184,29 +173,44 @@ find_add_addrs(struct module_env* env, uint16_t qclass,
 	struct dns_msg** msg)
 {
 	struct delegpt_ns* ns;
+	struct msgreply_entry* neg;
 	struct ub_packed_rrset_key* akey;
 	for(ns = dp->nslist; ns; ns = ns->next) {
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_A, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_A(dp, region, akey)) {
+			if(!delegpt_add_rrset_A(dp, region, akey, 0)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
 			if(msg)
 				addr_to_additional(akey, region, *msg, now);
 			lock_rw_unlock(&akey->entry.lock);
+		} else {
+			neg = msg_cache_lookup(env, ns->name, ns->namelen,
+				LDNS_RR_TYPE_A, qclass, now, 0);
+			if(neg) {
+				delegpt_add_neg_msg(dp, neg);
+				lock_rw_unlock(&neg->entry.lock);
+			}
 		}
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_AAAA(dp, region, akey)) {
+			if(!delegpt_add_rrset_AAAA(dp, region, akey, 0)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
 			if(msg)
 				addr_to_additional(akey, region, *msg, now);
 			lock_rw_unlock(&akey->entry.lock);
+		} else {
+			neg = msg_cache_lookup(env, ns->name, ns->namelen,
+				LDNS_RR_TYPE_AAAA, qclass, now, 0);
+			if(neg) {
+				delegpt_add_neg_msg(dp, neg);
+				lock_rw_unlock(&neg->entry.lock);
+			}
 		}
 	}
 	return 1;
@@ -218,6 +222,7 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 	struct regional* region, struct delegpt* dp)
 {
 	struct delegpt_ns* ns;
+	struct msgreply_entry* neg;
 	struct ub_packed_rrset_key* akey;
 	uint32_t now = *env->now;
 	for(ns = dp->nslist; ns; ns = ns->next) {
@@ -226,24 +231,38 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_A, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_A(dp, region, akey)) {
+			if(!delegpt_add_rrset_A(dp, region, akey, 1)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
 			log_nametypeclass(VERB_ALGO, "found in cache",
 				ns->name, LDNS_RR_TYPE_A, qclass);
 			lock_rw_unlock(&akey->entry.lock);
+		} else {
+			neg = msg_cache_lookup(env, ns->name, ns->namelen,
+				LDNS_RR_TYPE_A, qclass, now, 0);
+			if(neg) {
+				delegpt_add_neg_msg(dp, neg);
+				lock_rw_unlock(&neg->entry.lock);
+			}
 		}
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_AAAA(dp, region, akey)) {
+			if(!delegpt_add_rrset_AAAA(dp, region, akey, 1)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
 			log_nametypeclass(VERB_ALGO, "found in cache",
 				ns->name, LDNS_RR_TYPE_AAAA, qclass);
 			lock_rw_unlock(&akey->entry.lock);
+		} else {
+			neg = msg_cache_lookup(env, ns->name, ns->namelen,
+				LDNS_RR_TYPE_AAAA, qclass, now, 0);
+			if(neg) {
+				delegpt_add_neg_msg(dp, neg);
+				lock_rw_unlock(&neg->entry.lock);
+			}
 		}
 	}
 	return 1;
@@ -271,7 +290,7 @@ find_add_ds(struct module_env* env, struct regional* region,
 	if(rrset) {
 		/* add it to auth section. This is the second rrset. */
 		if((msg->rep->rrsets[msg->rep->rrset_count] = 
-			copy_rrset(rrset, region, now))) {
+			packed_rrset_copy_region(rrset, region, now))) {
 			msg->rep->ns_numrrsets++;
 			msg->rep->rrset_count++;
 		}
@@ -279,11 +298,9 @@ find_add_ds(struct module_env* env, struct regional* region,
 	}
 }
 
-/** create referral message with NS and query */
-static struct dns_msg*
-create_msg(uint8_t* qname, size_t qnamelen, uint16_t qtype, uint16_t qclass, 
-	struct regional* region, struct ub_packed_rrset_key* nskey, 
-	struct packed_rrset_data* nsdata, uint32_t now)
+struct dns_msg*
+dns_msg_create(uint8_t* qname, size_t qnamelen, uint16_t qtype, 
+	uint16_t qclass, struct regional* region, size_t capacity)
 {
 	struct dns_msg* msg = (struct dns_msg*)regional_alloc(region,
 		sizeof(struct dns_msg));
@@ -296,30 +313,29 @@ create_msg(uint8_t* qname, size_t qnamelen, uint16_t qtype, uint16_t qclass,
 	msg->qinfo.qtype = qtype;
 	msg->qinfo.qclass = qclass;
 	/* non-packed reply_info, because it needs to grow the array */
-	msg->rep = (struct reply_info*)regional_alloc(region, 
+	msg->rep = (struct reply_info*)regional_alloc_zero(region, 
 		sizeof(struct reply_info)-sizeof(struct rrset_ref));
 	if(!msg->rep)
 		return NULL;
-	memset(msg->rep, 0, 
-		sizeof(struct reply_info)-sizeof(struct rrset_ref));
 	msg->rep->flags = BIT_QR; /* with QR, no AA */
 	msg->rep->qdcount = 1;
-	/* allocate the array to as much as we could need:
-	 *	NS rrset + DS/NSEC rrset +
-	 *	A rrset for every NS RR
-	 *	AAAA rrset for every NS RR
-	 */
 	msg->rep->rrsets = (struct ub_packed_rrset_key**)
 		regional_alloc(region, 
-		(2 + nsdata->count*2)*sizeof(struct ub_packed_rrset_key*));
+		capacity*sizeof(struct ub_packed_rrset_key*));
 	if(!msg->rep->rrsets)
 		return NULL;
-	msg->rep->rrsets[0] = copy_rrset(nskey, region, now);
-	if(!msg->rep->rrsets[0])
-		return NULL;
-	msg->rep->ns_numrrsets++;
-	msg->rep->rrset_count++;
 	return msg;
+}
+
+int
+dns_msg_authadd(struct dns_msg* msg, struct regional* region, 
+	struct ub_packed_rrset_key* rrset, uint32_t now)
+{
+	if(!(msg->rep->rrsets[msg->rep->rrset_count++] = 
+		packed_rrset_copy_region(rrset, region, now)))
+		return 0;
+	msg->rep->ns_numrrsets++;
+	return 1;
 }
 
 struct delegpt* 
@@ -346,9 +362,14 @@ dns_cache_find_delegation(struct module_env* env, uint8_t* qname,
 	}
 	/* create referral message */
 	if(msg) {
-		*msg = create_msg(qname, qnamelen, qtype, qclass, region, 
-			nskey, nsdata, now);
-		if(!*msg) {
+		/* allocate the array to as much as we could need:
+		 *	NS rrset + DS/NSEC rrset +
+		 *	A rrset for every NS RR
+		 *	AAAA rrset for every NS RR
+		 */
+		*msg = dns_msg_create(qname, qnamelen, qtype, qclass, region, 
+			2 + nsdata->count*2);
+		if(!*msg || !dns_msg_authadd(*msg, region, nskey, now)) {
 			lock_rw_unlock(&nskey->entry.lock);
 			log_err("find_delegation: out of memory");
 			return NULL;
@@ -414,7 +435,8 @@ tomsg(struct module_env* env, struct msgreply_entry* e, struct reply_info* r,
 	if(!rrset_array_lock(r->ref, r->rrset_count, now))
 		return NULL;
 	for(i=0; i<msg->rep->rrset_count; i++) {
-		msg->rep->rrsets[i] = copy_rrset(r->rrsets[i], region, now);
+		msg->rep->rrsets[i] = packed_rrset_copy_region(r->rrsets[i], 
+			region, now);
 		if(!msg->rep->rrsets[i]) {
 			rrset_array_unlock(r->ref, r->rrset_count);
 			return NULL;
@@ -446,7 +468,7 @@ rrset_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 	msg->rep->ns_numrrsets = 0;
 	msg->rep->ar_numrrsets = 0;
 	msg->rep->rrset_count = 1;
-	msg->rep->rrsets[0] = copy_rrset(rrset, region, now);
+	msg->rep->rrsets[0] = packed_rrset_copy_region(rrset, region, now);
 	if(!msg->rep->rrsets[0]) /* copy CNAME */
 		return NULL;
 	return msg;
@@ -480,7 +502,7 @@ synth_dname_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 	msg->rep->ns_numrrsets = 0;
 	msg->rep->ar_numrrsets = 0;
 	msg->rep->rrset_count = 1;
-	msg->rep->rrsets[0] = copy_rrset(rrset, region, now);
+	msg->rep->rrsets[0] = packed_rrset_copy_region(rrset, region, now);
 	if(!msg->rep->rrsets[0]) /* copy DNAME */
 		return NULL;
 	/* synth CNAME rrset */
@@ -515,7 +537,7 @@ synth_dname_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 		return NULL;
 	ck->rk.dname_len = q->qname_len;
 	ck->entry.hash = rrset_key_hash(&ck->rk);
-	newd = (struct packed_rrset_data*)regional_alloc(region,
+	newd = (struct packed_rrset_data*)regional_alloc_zero(region,
 		sizeof(struct packed_rrset_data) + sizeof(size_t) + 
 		sizeof(uint8_t*) + sizeof(uint32_t) + sizeof(uint16_t) 
 		+ newlen);
@@ -595,8 +617,9 @@ dns_cache_lookup(struct module_env* env,
 		lock_rw_unlock(&rrset->entry.lock);
 	}
 
-	/* construct DS, DNSKEY messages from rrset cache. */
-	if((qtype == LDNS_RR_TYPE_DS || qtype == LDNS_RR_TYPE_DNSKEY) &&
+	/* construct DS, DNSKEY, DLV messages from rrset cache. */
+	if((qtype == LDNS_RR_TYPE_DS || qtype == LDNS_RR_TYPE_DNSKEY ||
+		qtype == LDNS_RR_TYPE_DLV) &&
 		(rrset=rrset_cache_lookup(env->rrset_cache, qname, qnamelen, 
 		qtype, qclass, 0, now, 0))) {
 		/* if the rrset is from the additional section, and the

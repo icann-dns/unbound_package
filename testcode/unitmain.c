@@ -89,7 +89,7 @@ alloc_test() {
 static void 
 net_test()
 {
-	char* t4[] = {"\000\000\000\000",
+	const char* t4[] = {"\000\000\000\000",
 		"\200\000\000\000",
 		"\300\000\000\000",
 		"\340\000\000\000",
@@ -289,15 +289,15 @@ rtt_test()
 	rtt_init(&r);
 	/* initial value sensible */
 	unit_assert( rtt_timeout(&r) == init );
-	rtt_lost(&r);
+	rtt_lost(&r, init);
 	unit_assert( rtt_timeout(&r) == init*2 );
-	rtt_lost(&r);
+	rtt_lost(&r, init*2);
 	unit_assert( rtt_timeout(&r) == init*4 );
 	rtt_update(&r, 4000);
 	unit_assert( rtt_timeout(&r) >= 2000 );
-	rtt_lost(&r);
+	rtt_lost(&r, rtt_timeout(&r) );
 	for(i=0; i<100; i++) {
-		rtt_lost(&r); 
+		rtt_lost(&r, rtt_timeout(&r) ); 
 		unit_assert( rtt_timeout(&r) > RTT_MIN_TIMEOUT-1);
 		unit_assert( rtt_timeout(&r) < RTT_MAX_TIMEOUT+1);
 	}
@@ -309,65 +309,63 @@ rtt_test()
 static void
 infra_test()
 {
-	int one = 1;
+	struct sockaddr_storage one;
+	socklen_t onelen;
 	uint8_t* zone = (uint8_t*)"\007example\003com\000";
 	size_t zonelen = 13;
 	struct infra_cache* slab;
 	struct config_file* cfg = config_create();
 	uint32_t now = 0;
+	uint8_t edns_lame;
 	int vs, to;
 	struct infra_host_key* k;
 	struct infra_host_data* d;
 	int init = 376;
-	int dlame, alame, olame;
+	int dlame, rlame, alame, olame;
+
+	unit_assert(ipstrtoaddr("127.0.0.1", 53, &one, &onelen));
 
 	slab = infra_create(cfg);
 	unit_assert( infra_host(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), now, &vs, &to) );
-	unit_assert( vs == 0 && to == init );
+		(socklen_t)sizeof(int), now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init && edns_lame == 0 );
 
-	unit_assert( infra_rtt_update(slab, (struct sockaddr_storage*)&one,
-		(socklen_t)sizeof(int), -1, now) );
-	unit_assert( infra_host(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), now, &vs, &to) );
-	unit_assert( vs == 0 && to == init*2 );
+	unit_assert( infra_rtt_update(slab, &one, onelen, -1, init, now) );
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init*2 && edns_lame == 0 );
 
-	unit_assert( infra_edns_update(slab, (struct sockaddr_storage*)&one,
-		(socklen_t)sizeof(int), -1, now) );
-	unit_assert( infra_host(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), now, &vs, &to) );
-	unit_assert( vs == -1 && to == init*2 );
+	unit_assert( infra_edns_update(slab, &one, onelen, -1, now) );
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == -1 && to == init*2  && edns_lame == 1);
 
 	now += cfg->host_ttl + 10;
-	unit_assert( infra_host(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), now, &vs, &to) );
-	unit_assert( vs == 0 && to == init );
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init && edns_lame == 0 );
 	
-	unit_assert( infra_set_lame(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), zone, zonelen,  now, 0, 
-		LDNS_RR_TYPE_A) );
-	unit_assert( (d=infra_lookup_host(slab, (struct sockaddr_storage*)&one,
-		(socklen_t)sizeof(int), 0, now, &k)) );
+	unit_assert( infra_set_lame(slab, &one, onelen, 
+		zone, zonelen,  now, 0, 0, LDNS_RR_TYPE_A) );
+	unit_assert( (d=infra_lookup_host(slab, &one, onelen, 0, now, &k)) );
 	unit_assert( d->ttl == now+cfg->host_ttl );
 	unit_assert( d->edns_version == 0 );
 	unit_assert( infra_lookup_lame(d, zone, zonelen, now, 
-		&dlame, &alame, &olame) );
-	unit_assert(!dlame && alame && !olame);
+		&dlame, &rlame, &alame, &olame) );
+	unit_assert(!dlame && !rlame && alame && !olame);
 	unit_assert( !infra_lookup_lame(d, zone, zonelen, 
-		now+cfg->lame_ttl+10, &dlame, &alame, &olame) );
+		now+cfg->lame_ttl+10, &dlame, &rlame, &alame, &olame) );
 	unit_assert( !infra_lookup_lame(d, (uint8_t*)"\000", 1, now, 
-		&dlame, &alame, &olame) );
+		&dlame, &rlame, &alame, &olame) );
 	lock_rw_unlock(&k->entry.lock);
 
 	/* test merge of data */
-	unit_assert( infra_set_lame(slab, (struct sockaddr_storage*)&one, 
-		(socklen_t)sizeof(int), zone, zonelen,  now, 0, 
-		LDNS_RR_TYPE_AAAA) );
-	unit_assert( (d=infra_lookup_host(slab, (struct sockaddr_storage*)&one,
-		(socklen_t)sizeof(int), 0, now, &k)) );
+	unit_assert( infra_set_lame(slab, &one, onelen, 
+		zone, zonelen,  now, 0, 0, LDNS_RR_TYPE_AAAA) );
+	unit_assert( (d=infra_lookup_host(slab, &one, onelen, 0, now, &k)) );
 	unit_assert( infra_lookup_lame(d, zone, zonelen, now, 
-		&dlame, &alame, &olame) );
-	unit_assert(!dlame && alame && olame);
+		&dlame, &rlame, &alame, &olame) );
+	unit_assert(!dlame && !rlame && alame && olame);
 	lock_rw_unlock(&k->entry.lock);
 
 	infra_delete(slab);
@@ -412,6 +410,7 @@ main(int argc, char* argv[])
 	printf("Start of %s unit test.\n", PACKAGE_STRING);
 	ERR_load_crypto_strings();
 	checklock_start();
+	neg_test();
 	rnd_test();
 	verify_test();
 	net_test();

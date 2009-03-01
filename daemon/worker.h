@@ -58,11 +58,17 @@ struct daemon;
 struct listen_port;
 struct ub_randstate;
 struct regional;
+struct tube;
+struct daemon_remote;
 
 /** worker commands */
 enum worker_commands {
 	/** make the worker quit */
-	worker_cmd_quit
+	worker_cmd_quit,
+	/** obtain statistics */
+	worker_cmd_stats,
+	/** execute remote control command */
+	worker_cmd_remote
 };
 
 /**
@@ -76,10 +82,8 @@ struct worker {
 	struct daemon* daemon;
 	/** thread id */
 	ub_thread_t thr_id;
-	/** fd 0 of socketpair, write commands for worker to this one */
-	int cmd_send_fd;
-	/** fd 1 of socketpair, worker listens on this one */
-	int cmd_recv_fd;
+	/** pipe, for commands for this worker */
+	struct tube* cmd;
 	/** the event base this worker works with */
 	struct comm_base* base;
 	/** the frontside listening interface where request events come in */
@@ -96,6 +100,8 @@ struct worker {
 	struct comm_point* cmd_com;
 	/** timer for statistics */
 	struct comm_timer* stat_timer;
+	/** remote control state (for first thread only) */
+	struct daemon_remote* rc;
 
 	/** number of requests that can be handled by this worker */
 	size_t request_size;
@@ -151,11 +157,9 @@ void worker_delete(struct worker* worker);
 /**
  * Send a command to a worker. Uses blocking writes.
  * @param worker: worker to send command to.
- * @param buffer: an empty buffer to use.
  * @param cmd: command to send.
  */
-void worker_send_cmd(struct worker* worker, ldns_buffer* buffer,
-        enum worker_commands cmd);
+void worker_send_cmd(struct worker* worker, enum worker_commands cmd);
 
 /**
  * Worker signal handler function. User argument is the worker itself.
@@ -198,14 +202,16 @@ struct outbound_entry* worker_send_query(uint8_t* qname, size_t qnamelen,
 	struct module_qstate* q);
 
 /** 
- * process control messages from the main thread. 
- * @param c: comm point to read from.
- * @param arg: worker.
- * @param error: error status of comm point.
- * @param reply_info: not used.
+ * process control messages from the main thread. Frees the control 
+ * command message.
+ * @param tube: tube control message came on.
+ * @param msg: message contents.  Is freed.
+ * @param len: length of message.
+ * @param error: if error (NETEVENT_*) happened.
+ * @param arg: user argument
  */
-int worker_handle_control_cmd(struct comm_point* c, void* arg, int error, 
-	struct comm_reply* reply_info);
+void worker_handle_control_cmd(struct tube* tube, uint8_t* msg, size_t len,
+	int error, void* arg);
 
 /** handles callbacks from listening event interface */
 int worker_handle_request(struct comm_point* c, void* arg, int error,

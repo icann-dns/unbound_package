@@ -77,6 +77,17 @@ struct outside_network {
 	/** use x20 bits to encode additional ID random bits */
 	int use_caps_for_id;
 
+	/** number of unwanted replies received (for statistics) */
+	size_t unwanted_replies;
+	/** cumulative total of unwanted replies (for defense) */
+	size_t unwanted_total;
+	/** threshold when to take defensive action. If 0 then never. */
+	size_t unwanted_threshold;
+	/** what action to take, called when defensive action is needed */
+	void (*unwanted_action)(void*);
+	/** user param for action */
+	void* unwanted_param;
+
 	/** linked list of available commpoints, unused file descriptors,
 	 * for use as outgoing UDP ports. cp.fd=-1 in them. */
 	struct port_comm* unused_fds;
@@ -292,7 +303,9 @@ struct serviced_query {
 		/** TCP with EDNS sent */
 		serviced_query_TCP_EDNS,
 		/** TCP without EDNS sent */
-		serviced_query_TCP
+		serviced_query_TCP,
+		/** probe to test EDNS lameness (EDNS is dropped) */
+		serviced_query_PROBE_EDNS
 	} 	
 		/** variable with current status */ 
 		status;
@@ -302,6 +315,10 @@ struct serviced_query {
 	int retry;
 	/** time last UDP was sent */
 	struct timeval last_sent_time;
+	/** rtt of last (UDP) message */
+	int last_rtt;
+	/** do we know edns probe status already, for UDP_EDNS queries */
+	int edns_lame_known;
 	/** outside network this is part of */
 	struct outside_network* outnet;
 	/** list of interested parties that need callback on results. */
@@ -326,13 +343,17 @@ struct serviced_query {
  * @param use_caps_for_id: enable to use 0x20 bits to encode id randomness.
  * @param availports: array of available ports. 
  * @param numavailports: number of available ports in array.
+ * @param unwanted_threshold: when to take defensive action.
+ * @param unwanted_action: the action to take.
+ * @param unwanted_param: user parameter to action.
  * @return: the new structure (with no pending answers) or NULL on error.
  */
 struct outside_network* outside_network_create(struct comm_base* base,
 	size_t bufsize, size_t num_ports, char** ifs, int num_ifs,
 	int do_ip4, int do_ip6, size_t num_tcp, struct infra_cache* infra, 
 	struct ub_randstate* rnd, int use_caps_for_id, int* availports, 
-	int numavailports);
+	int numavailports, size_t unwanted_threshold,
+	void (*unwanted_action)(void*), void* unwanted_param);
 
 /**
  * Delete outside_network structure.

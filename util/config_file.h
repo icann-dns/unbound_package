@@ -57,6 +57,8 @@ struct config_file {
 	int stat_interval;
 	/** if false, statistics values are reset after printing them */
 	int stat_cumulative;
+	/** if true, the statistics are kept in greater detail */
+	int stat_extended;
 
 	/** number of threads to create */
 	int num_threads;
@@ -89,6 +91,8 @@ struct config_file {
 	size_t msg_cache_slabs;
 	/** number of queries every thread can service */
 	size_t num_queries_per_thread;
+	/** number of msec to wait before items can be jostled out */
+	size_t jostle_time;
 	/** size of the rrset cache */
 	size_t rrset_cache_size;
 	/** slabs in the rrset cache */
@@ -143,8 +147,16 @@ struct config_file {
 	int harden_glue;
 	/** harden against receiving no DNSSEC data for trust anchor */
 	int harden_dnssec_stripped;
+	/** harden the referral path, query for NS,A,AAAA and validate */
+	int harden_referral_path;
 	/** use 0x20 bits in query as random ID bits */
 	int use_caps_bits_for_id;
+	/** strip away these private addrs from answers, no DNS Rebinding */
+	struct config_strlist* private_address;
+	/** allow domain (and subdomains) to use private address space */
+	struct config_strlist* private_domain;
+	/** what threshold for unwanted action. */
+	size_t unwanted_threshold;
 
 	/** chrootdir, if not "" or chroot will be done */
 	char* chrootdir;
@@ -178,6 +190,10 @@ struct config_file {
 	struct config_strlist* trust_anchor_list;
 	/** files with trusted DNSKEYs in named.conf format, list */
 	struct config_strlist* trusted_keys_file_list;
+	/** DLV anchor file */
+	char* dlv_anchor_file;
+	/** DLV anchor inline */
+	struct config_strlist* dlv_anchor_list;
 
 	/** the number of seconds maximal TTL used for RRsets and messages */
 	int max_ttl;
@@ -196,6 +212,8 @@ struct config_file {
 	size_t key_cache_size;
 	/** slabs in the key cache. */
 	size_t key_cache_slabs;
+	/** size of the neg cache */
+	size_t neg_cache_size;
 
 	/** local zones config */
 	struct config_str2list* local_zones;
@@ -203,6 +221,21 @@ struct config_file {
 	struct config_strlist* local_zones_nodefault;
 	/** local data RRs configged */
 	struct config_strlist* local_data;
+
+	/** remote control section. enable toggle. */
+	int remote_control_enable;
+	/** the interfaces the remote control should listen on */
+	struct config_strlist* control_ifs;
+	/** port number for the control port */
+	int control_port;
+	/** private key file for server */
+	char* server_key_file;
+	/** certificate file for server */
+	char* server_cert_file;
+	/** private key file for unbound-control */
+	char* control_key_file;
+	/** certificate file for unbound-control */
+	char* control_cert_file;
 
 	/** daemonize, i.e. fork into the background. */
 	int do_daemonize;
@@ -220,6 +253,8 @@ struct config_stub {
 	struct config_strlist* hosts;
 	/** list of stub nameserver addresses (IP address) */
 	struct config_strlist* addrs;
+	/** if stub-prime is set */
+	int isprime;
 };
 
 /**
@@ -260,10 +295,12 @@ struct config_file* config_create_forlib();
  * Read the config file from the specified filename.
  * @param config: where options are stored into, must be freshly created.
  * @param filename: name of configfile. If NULL nothing is done.
+ * @param chroot: if not NULL, the chroot dir currently in use (for include).
  * @return: false on error. In that case errno is set, ENOENT means 
  * 	file not found.
  */
-int config_read(struct config_file* config, char* filename);
+int config_read(struct config_file* config, const char* filename,
+	const char* chroot);
 
 /**
  * Destroy the config file structure.
@@ -380,6 +417,25 @@ int cfg_condense_ports(struct config_file* cfg, int** avail);
  */
 int cfg_scan_ports(int* avail, int num);
 
+/** 
+ * Convert a filename to full pathname in original filesys
+ * @param fname: the path name to convert.
+ *      Must not be null or empty.
+ * @param cfg: config struct for chroot and chdir (if set).
+ * @param use_chdir: if false, only chroot is applied.
+ * @return pointer to malloced buffer which is: [chroot][chdir]fname
+ *      or NULL on malloc failure.
+ */
+char* fname_after_chroot(const char* fname, struct config_file* cfg, 
+	int use_chdir);
+
+/**
+ * Convert a ptr shorthand into a full reverse-notation PTR record.
+ * @param str: input string, "IP name"
+ * @return: malloced string "reversed-ip-name PTR name"
+ */
+char* cfg_ptr_reverse(char* str);
+
 /**
  * Used during options parsing
  */
@@ -392,6 +448,8 @@ struct config_parser_state {
 	int errors;
 	/** the result of parsing is stored here. */
 	struct config_file* cfg;
+	/** the current chroot dir (or NULL if none) */
+	const char* chroot;
 };
 
 /** global config parser object used during config parsing */

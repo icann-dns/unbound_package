@@ -6,6 +6,10 @@
 /* Pathname to the Unbound configuration file */
 #undef CONFIGFILE
 
+/* Define this if on macOSX10.4-darwin8 and setreuid and setregid do not work
+   */
+#undef DARWIN_BROKEN_SETREUID
+
 /* Define if you want to use debug lock checking (slow). */
 #undef ENABLE_LOCK_CHECKS
 
@@ -39,6 +43,18 @@
 /* Define to 1 if you have the <event.h> header file. */
 #undef HAVE_EVENT_H
 
+/* Define to 1 if you have the `EVP_sha1' function. */
+#undef HAVE_EVP_SHA1
+
+/* Define to 1 if you have the `EVP_sha256' function. */
+#undef HAVE_EVP_SHA256
+
+/* Define to 1 if you have the `EVP_sha512' function. */
+#undef HAVE_EVP_SHA512
+
+/* Define to 1 if you have the `ev_loop' function. */
+#undef HAVE_EV_LOOP
+
 /* Define to 1 if you have the `fcntl' function. */
 #undef HAVE_FCNTL
 
@@ -59,6 +75,12 @@
 
 /* Define to 1 if you have the `getrlimit' function. */
 #undef HAVE_GETRLIMIT
+
+/* Define to 1 if you have the `glob' function. */
+#undef HAVE_GLOB
+
+/* Define to 1 if you have the <glob.h> header file. */
+#undef HAVE_GLOB_H
 
 /* Define to 1 if you have the `gmtime_r' function. */
 #undef HAVE_GMTIME_R
@@ -136,6 +158,18 @@
 /* Define to 1 if you have the `sendmsg' function. */
 #undef HAVE_SENDMSG
 
+/* Define to 1 if you have the `setregid' function. */
+#undef HAVE_SETREGID
+
+/* Define to 1 if you have the `setresgid' function. */
+#undef HAVE_SETRESGID
+
+/* Define to 1 if you have the `setresuid' function. */
+#undef HAVE_SETRESUID
+
+/* Define to 1 if you have the `setreuid' function. */
+#undef HAVE_SETREUID
+
 /* Define to 1 if you have the `setsid' function. */
 #undef HAVE_SETSID
 
@@ -147,9 +181,6 @@
 
 /* Define to 1 if you have the `snprintf' function. */
 #undef HAVE_SNPRINTF
-
-/* Define to 1 if you have the `socketpair' function. */
-#undef HAVE_SOCKETPAIR
 
 /* Using Solaris threads */
 #undef HAVE_SOLARIS_THREADS
@@ -249,6 +280,10 @@
 
 /* Define if mkdir has one argument. */
 #undef MKDIR_HAS_ONE_ARG
+
+/* Define if the network stack does not fully support nonblocking io (causes
+   lower performance). */
+#undef NONBLOCKING_IS_BROKEN
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
@@ -532,14 +567,9 @@ size_t strlcpy(char *dst, const char *src, size_t siz);
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 #endif
 #ifndef HAVE_GETADDRINFO
-#define getaddrinfo getaddrinfo_unbound
-#define gai_strerror gai_strerror_unbound
-#define freeaddrinfo freeaddrinfo_unbound
-#define getnameinfo getnameinfo_unbound
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
 #endif
-
 #ifndef HAVE_SLEEP
 #define sleep(x) Sleep((x)*1000) /* on win32 */
 #endif /* HAVE_SLEEP */
@@ -552,9 +582,6 @@ struct sockaddr_storage;
 #ifndef HAVE_SRANDOM
 #define srandom(x) srand(x) /* on win32, for tests only (bad random) */
 #endif /* HAVE_SRANDOM */
-#ifndef HAVE_SOCKETPAIR
-int socketpair(int d, int type, int protocol, int *sv);
-#endif
 
 /* detect if we need to cast to unsigned int for FD_SET to avoid warnings */
 #ifdef HAVE_WINSOCK2_H

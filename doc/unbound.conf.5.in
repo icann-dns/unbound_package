@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Aug  7, 2008" "NLnet Labs" "unbound 1.0.2"
+.TH "unbound.conf" "5" "Feb 10, 2009" "NLnet Labs" "unbound 1.2.1"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -49,7 +49,7 @@ example.conf file with all the options.
 # unbound.conf(5) config file for unbound(8).
 server:
 	directory: "/etc/unbound"
-	username: unbound 	# make sure it can write to pidfile.
+	username: unbound
 	# make sure unbound can access entropy from inside the chroot.
 	# e.g. on linux the use these commands (on BSD, devfs(8) is used):
 	#      mount --bind -n /dev/random /etc/unbound/dev/random
@@ -73,7 +73,10 @@ Files can be included using the
 .B include:
 directive. It can appear anywhere, and takes a single filename as an argument.
 Processing continues as if the text from the included file was copied into
-the config file at that point.
+the config file at that point.  If also using chroot, using full path names
+for the included files works, relative pathnames for the included names work
+if the directory where the daemon is started equals its chroot/working 
+directory.
 .SS "Server Options"
 These options are part of the
 .B server:
@@ -88,13 +91,17 @@ Default is level 1. The verbosity can also be increased from the commandline,
 see
 \fIunbound\fR(8).
 .TP
-.B statistics-interval: \fI<seconds>
+.B statistics\-interval: \fI<seconds>
 The number of seconds between printing statistics to the log for every thread.
 Disable with value 0 or "". Default is disabled. 
 .TP
-.B statistics-cumulative: \fI<yes or no>
+.B statistics\-cumulative: \fI<yes or no>
 If enabled, statistics are cumulative since starting unbound, without clearing
 the statistics counters after logging the statistics. Default is no.
+.TP
+.B extended\-statistics: \fI<yes or no>
+If enabled, extended statistics are printed from \fIunbound\-control\fR(8). 
+Default is off, because keeping track of more statistics takes time.
 .TP
 .B num\-threads: \fI<number>
 The number of threads to create to serve clients. Use 1 for no threading.
@@ -137,6 +144,12 @@ A larger number of permitted outgoing ports increases resilience against
 spoofing attempts. Make sure these ports are not needed by other daemons. 
 By default only ports above 1024 that have not been assigned by IANA are used.
 Give a port number or a range of the form "low-high", without spaces.
+.IP
+The \fBoutgoing\-port\-permit\fR and \fBoutgoing\-port\-avoid\fR statements 
+are processed in the line order of the config file, adding the permitted ports 
+and subtracting the avoided ports from the set of allowed ports.  The 
+processing starts with the non IANA allocated ports above 1024 in the set 
+of allowed ports.
 .TP
 .B outgoing\-port\-avoid: \fI<port number or range>
 Do not permit unbound to open this port or range of ports for use to send 
@@ -172,9 +185,18 @@ reasonable guess.
 .TP
 .B num\-queries\-per\-thread: \fI<number>
 The number of queries that every thread will service simultaneously.
-If more queries arrive that need servicing, they are dropped. This forces
+If more queries arrive that need servicing, and no queries can be jostled out
+(see \fIjostle\-timeout\fR), then the queries are dropped. This forces
 the client to resend after a timeout; allowing the server time to work on
 the existing queries. Default 1024.
+.TP
+.B jostle\-timeout: \fI<msec>
+Timeout used when the server is very busy.  Set to a value that usually
+results in one roundtrip to the authority servers.  If too many queries 
+arrive, then 50% of the queries are allowed to run to completion, and
+the other 50% are replaced with the new incoming query if they have already 
+spent more than their allowed time.  This protects against denial of 
+service by slow queries or high query rates.  Default 200 milliseconds.
 .TP
 .B rrset\-cache\-size: \fI<number>
 Number of bytes size of the RRset cache. Default is 4 megabytes.
@@ -232,14 +254,36 @@ a daemon. Default is yes.
 .TP
 .B access\-control: \fI<IP netblock> <action>
 The netblock is given as an IP4 or IP6 address with /size appended for a 
-classless network block. The action can be deny, refuse or allow.
-Deny stops queries from hosts from that netblock.
-Refuse stops queries too, but sends a DNS rcode REFUSED error message back.
-Allow gives access to clients from that netblock.
-By default only localhost is allowed, the rest is refused.
-The default is refused, because that is protocol\-friendly. The DNS protocol
-is not designed to handle dropped packets due to policy, and dropping may 
-result in (possibly excessive) retried queries.
+classless network block. The action can be \fIdeny\fR, \fIrefuse\fR, 
+\fIallow\fR or \fIallow_snoop\fR.
+.IP
+The action \fIdeny\fR stops queries from hosts from that netblock.
+.IP
+The action \fIrefuse\fR stops queries too, but sends a DNS rcode REFUSED 
+error message back.
+.IP
+The action \fIallow\fR gives access to clients from that netblock.  
+It gives only access for recursion clients (which is 
+what almost all clients need).  Nonrecursive queries are refused.
+.IP
+The \fIallow\fR action does allow nonrecursive queries to access the 
+local\-data that is configured.  The reason is that this does not involve
+the unbound server recursive lookup algorithm, and static data is served 
+in the reply.  This supports normal operations where nonrecursive queries 
+are made for the authoritative data.  For nonrecursive queries any replies 
+from the dynamic cache are refused.
+.IP
+The action \fIallow_snoop\fR gives nonrecursive access too.  This give 
+both recursive and non recursive access.  The name \fIallow_snoop\fR refers 
+to cache snooping, a technique to use nonrecursive queries to examine
+the cache contents (for malicious acts).  However, nonrecursive queries can 
+also be a valuable debugging tool (when you want to examine the cache 
+contents). In that case use \fIallow_snoop\fR for your administration host.
+.IP
+By default only localhost is \fIallow\fRed, the rest is \fIrefuse\fRd.
+The default is \fIrefuse\fRd, because that is protocol\-friendly. The DNS 
+protocol is not designed to handle dropped packets due to policy, and 
+dropping may result in (possibly excessive) retried queries.
 .TP
 .B chroot: \fI<directory>
 If chroot is enabled, you should pass the configfile (from the
@@ -247,15 +291,20 @@ commandline) as a full path from the original root. After the
 chroot has been performed the now defunct portion of the config 
 file path is removed to be able to reread the config after a reload. 
 .IP
-All other file paths (working dir, pidfile, logfile, roothints,
+All other file paths (working dir, logfile, roothints, and
 key files) can be specified in several ways:
 as an absolute path relative to the new root,
 as a relative path to the working directory, or
 as an absolute path relative to the original root.
 In the last case the path is adjusted to remove the unused portion.
 .IP
+The pidfile can be either a relative path to the working directory, or
+an absolute path relative to the original root. It is written just prior
+to chroot and dropping permissions. This allows the pidfile to be 
+/var/run/unbound.pid and the chroot to be /var/unbound, for example.
+.IP
 Additionally, unbound may need to access /dev/random (for entropy)
-and to /dev/log (if you use syslog) from inside the chroot.
+from inside the chroot.
 .IP
 If given a chroot is done to the given directory. The default is 
 "@UNBOUND_CHROOT_DIR@". If you give "" no chroot is performed.
@@ -360,14 +409,52 @@ removes DNSSEC data from packets, or a zone changes from signed to
 unsigned to badly signed often. If turned off you run the risk of a 
 downgrade attack that disables security for a zone. Default is on.
 .TP
+.B harden\-referral\-path: \fI<yes or no>
+Harden the referral path by performing additional queries for
+infrastructure data.  Validates the replies if trust anchors are configured
+and the zones are signed.  This enforces DNSSEC validation on nameserver
+NS sets and the nameserver addresses that are encountered on the referral 
+path to the answer.
+Default off, because it burdens the authority servers, and it is
+not RFC standard, and could lead to performance problems because of the
+extra query load that is generated.  Experimental option.
+.TP
 .B use\-caps\-for\-id: \fI<yes or no>
 Use 0x20-encoded random bits in the query to foil spoof attempts.
 This perturbs the lowercase and uppercase of query names sent to 
 authority servers and checks if the reply still has the correct casing. 
-Disabled by default, because some caching forwarders may not
-support this. It is known that some authority servers do not support 0x20, 
-and resolution will fail for them. A solution is on the TODO list.
+Disabled by default. 
 This feature is an experimental implementation of draft dns\-0x20.
+.TP
+.B private\-address: \fI<IP address or subnet>
+Give IPv4 of IPv6 addresses or classless subnets. These are addresses
+on your private network, and are not allowed to be returned for public
+internet names.  Any occurence of such addresses are removed from
+DNS answers. Additionally, the DNSSEC validator may mark the answers
+bogus. This protects against so-called DNS Rebinding, where a user browser
+is turned into a network proxy, allowing remote access through the browser
+to other parts of your private network.  Some names can be allowed to
+contain your private addresses, by default all the \fBlocal\-data\fR
+that you configured is allowed to, and you can specify additional
+names using \fBprivate\-domain\fR.  No private addresses are enabled
+by default.  We consider to enable this for the RFC1918 private IP
+address space by default in later releases. That would enable private 
+addresses for 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 192.254.0.0/16 
+fd00::/8 and fe80::/10, since the RFC standards say these addresses 
+should not be visible on the public internet.  Turning on 127.0.0.0/8 
+would hinder many spamblocklists as they use that.
+.TP
+.B private\-domain: \fI<domain name>
+Allow this domain, and all its subdomains to contain private addresses.
+Give multiple times to allow multiple domain names to contain private 
+addresses. Default is none.
+.TP
+.B unwanted\-reply\-threshold: \fI<number>
+If set, a total number of unwanted replies is kept track of in every thread.
+When it reaches the threshold, a defensive action is taken and a warning
+is printed to the log.  The defensive action is to clear the rrset and
+message caches, hopefully flushing away any poison.  A value of 10 million
+is suggested.  Default is 0 (turned off).
 .TP
 .B do\-not\-query\-address: \fI<IP address>
 Do not query the given IP address. Can be IP4 or IP6. Append /num to 
@@ -404,6 +491,18 @@ File with trusted keys for validation. Specify more than one file
 with several entries, one file per entry. Like \fBtrust\-anchor\-file\fR
 but has a different file format. Format is BIND\-9 style format, 
 the trusted\-keys { name flag proto algo "key"; }; clauses are read.
+It is possible to use wildcards with this statement, the wildcard is
+expanded on start and on reload.
+.TP
+.B dlv\-anchor\-file: \fI<filename>
+File with trusted keys for DLV (DNSSEC Lookaside Validation). Both DS and
+DNSKEY entries can be used in the file, in the same format as for
+\fItrust\-anchor\-file:\fR statements. Only one DLV can be configured, more
+would be slow. The DLV configured is used as a root trusted DLV, this 
+means that it is a lookaside for the root. Default is "", or no dlv anchor file.
+.TP
+.B dlv\-anchor: \fI<"Resource Record">
+Much like trust\-anchor, this is a DLV anchor with the DS or DNSKEY inline.
 .TP
 .B val\-override\-date: \fI<rrsig\-style date spec>
 Default is "" or "0", which disables this debugging feature. If enabled by
@@ -414,7 +513,7 @@ you are debugging signature inception and expiration.
 .B val\-bogus\-ttl: \fI<number>
 The time to live for bogus data. This is data that has failed validation;
 due to invalid signatures or other checks. The TTL from that data cannot be
-trusted, and this value is used instead. The value is in seconds, default 900.
+trusted, and this value is used instead. The value is in seconds, default 60.
 The time interval prevents repeated revalidation of bogus data.
 .TP
 .B val\-clean\-additional: \fI<yes or no>
@@ -451,6 +550,11 @@ Number of slabs in the key cache. Slabs reduce lock contention by threads.
 Must be set to a power of 2. Setting (close) to the number of cpus is a 
 reasonable guess.
 .TP
+.B neg\-cache\-size: \fI<number>
+Number of bytes size of the aggressive negative cache. Default is 1 megabyte.
+A plain number is in bytes, append 'k', 'm' or 'g' for kilobytes, megabytes
+or gigabytes (1024*1024 bytes in a megabyte).
+.TP
 .B local\-zone: \fI<zone> <type>
 Configure a local zone. The type determines the answer to give if there is
 no match from local\-data. The types are deny, refuse, static, transparent, 
@@ -478,7 +582,9 @@ as local\-data for the zone apex domain.
 .TP 10
 \h'5'\fItransparent\fR 
 If there is a match from local data, the query is answered.
-Otherwise, the query is resolved normally.
+Otherwise if the query has a different name, the query is resolved normally.
+If the query is for a name given in localdata but no such type of data is
+given in localdata, then a noerror nodata answer is returned.
 If no local\-zone is given local\-data causes a transparent zone
 to be created by default.
 .TP 10
@@ -589,6 +695,57 @@ local\-data: 'example. TXT "text"'.
 If you need more complicated authoritative data, with referrals, wildcards,
 CNAME/DNAME support, or DNSSEC authoritative service, setup a stub\-zone for
 it as detailed in the stub zone section below.
+.TP 5
+.B local\-data\-ptr: \fI"IPaddr name"
+Configure local data shorthand for a PTR record with the reversed IPv4 or
+IPv6 address and the host name.  For example "192.0.2.4 www.example.com".
+TTL can be inserted like this: "2001:DB8::4 7200 www.example.com"
+.SS "Remote Control Options"
+In the
+.B remote\-control:
+clause are the declarations for the remote control facility.  If this is
+enabled, the \fIunbound\-control\fR(8) utility can be used to send
+commands to the running unbound server.  The server uses these clauses
+to setup SSLv3 / TLSv1 security for the connection.  The
+\fIunbound\-control\fR(8) utility also reads the \fBremote\-control\fR
+section for options.  To setup the correct self-signed certificates use the
+\fIunbound\-control\-setup\fR(8) utility.
+.TP 5
+.B control\-enable:     \fI<yes or no>
+The option is used to enable remote control, default is "no".
+If turned off, the server does not listen for control commands.
+.TP 5
+.B control\-interface: <ip address>
+Give IPv4 or IPv6 addresses to listen on for control commands.
+By default localhost (127.0.0.1 and ::1) is listened to.
+Use 0.0.0.0 and ::0 to listen to all interfaces.
+.TP 5
+.B control\-port: <port number>
+The port number to listen on for control commands, default is 953
+(that is the same port number named uses to listen to rndc).
+If you change this port number, and permissions have been dropped, a
+reload is not sufficient to open the port again, you must then restart.
+.TP 5
+.B server\-key\-file: "<private key file>"
+Path to the server private key, by default unbound_server.key.
+This file is generated by the \fIunbound\-control\-setup\fR utility.
+This file is used by the unbound server, but not by \fIunbound\-control\fR.
+.TP 5
+.B server\-cert\-file: "<certificate file.pem>"
+Path to the server self signed certificate, by default unbound_server.pem.
+This file is generated by the \fIunbound\-control\-setup\fR utility.
+This file is used by the unbound server, and also by \fIunbound\-control\fR.
+.TP 5
+.B control\-key\-file: "<private key file>"
+Path to the control client private key, by default unbound_control.key.
+This file is generated by the \fIunbound\-control\-setup\fR utility.
+This file is used by \fIunbound\-control\fR.
+.TP 5
+.B control\-cert\-file: "<certificate file.pem>"
+Path to the control client certificate, by default unbound_control.pem.
+This certificate has to be signed with the server certificate.
+This file is generated by the \fIunbound\-control\-setup\fR utility.
+This file is used by \fIunbound\-control\fR.
 .SS "Stub Zone Options"
 .LP
 There may be multiple
@@ -623,6 +780,12 @@ Name of stub zone nameserver. Is itself resolved before it is used.
 .B stub\-addr: \fI<IP address>
 IP address of stub zone nameserver. Can be IP 4 or IP 6.
 To use a nondefault port for DNS communication append '@' with the port number.
+.TP
+.B stub\-prime: \fI<yes or no>
+This option is by default off.  If enabled it performs NS set priming, 
+which is similar to root hints, where it starts using the list of nameservers 
+currently published by the zone.  Thus, if the hint list is slightly outdated,
+the resolver picks up a correct list online.
 .SS "Forward Zone Options"
 .LP
 There may be multiple
@@ -668,6 +831,7 @@ server:
 	infra\-cache\-lame\-size: 1k
 	key\-cache\-size: 100k
 	key\-cache\-slabs: 1
+	neg\-cache\-size: 10k
 	num\-queries\-per\-thread: 30
 	target\-fetch\-policy: "2 1 0 0 0 0"
 	harden\-large\-queries: "yes"

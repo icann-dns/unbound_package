@@ -48,6 +48,7 @@ struct delegpt_ns;
 struct delegpt_addr;
 struct dns_msg;
 struct ub_packed_rrset_key;
+struct msgreply_entry;
 
 /**
  * Delegation Point.
@@ -70,6 +71,9 @@ struct delegpt {
 	struct delegpt_addr* usable_list;
 	/** the list of returned targets; subset of target_list */
 	struct delegpt_addr* result_list;
+
+	/** if true, the NS RRset was bogus. All info is bad. */
+	int bogus;
 };
 
 /**
@@ -84,9 +88,15 @@ struct delegpt_ns {
 	size_t namelen;
 	/** 
 	 * If the name has been resolved. false if not queried for yet.
-	 * true if the address is known, or marked true if failed.
+	 * true if the A, AAAA queries have been generated.
+	 * marked true if those queries fail.
+	 * and marked true is got4 and got6 are both true.
 	 */
 	int resolved;
+	/** if the ipv4 address is in the delegpt */
+	uint8_t got4;
+	/** if the ipv6 address is in the delegpt */
+	uint8_t got6;
 };
 
 /**
@@ -108,6 +118,9 @@ struct delegpt_addr {
 	int attempts;
 	/** rtt stored here in the selection algorithm */
 	int sel_rtt;
+	/** if true, the A or AAAA RR was bogus, so this address is bad.
+	 * Also check the dp->bogus to see if everything is bogus. */
+	int bogus;
 };
 
 /**
@@ -164,34 +177,40 @@ int delegpt_rrset_add_ns(struct delegpt* dp, struct regional* regional,
  * @param namelen: length of name.
  * @param addr: the address.
  * @param addrlen: the length of addr.
+ * @param bogus: security status for the address, pass true if bogus.
+ * @param nodup: if true, no address duplicates are made by this add. 
+ *	name duplicates are always filtered.
  * @return false on error.
  */
 int delegpt_add_target(struct delegpt* dp, struct regional* regional, 
 	uint8_t* name, size_t namelen, struct sockaddr_storage* addr, 
-	socklen_t addrlen);
+	socklen_t addrlen, int bogus, int nodup);
 
 /**
  * Add A RRset to delegpt.
  * @param dp: delegation point.
  * @param regional: where to allocate the info.
  * @param rrset: RRset A to add.
+ * @param nodup: if true, no duplicates are made by this add. takes time.
  * @return 0 on alloc error.
  */
 int delegpt_add_rrset_A(struct delegpt* dp, struct regional* regional, 
-	struct ub_packed_rrset_key* rrset);
+	struct ub_packed_rrset_key* rrset, int nodup);
 
 /**
  * Add AAAA RRset to delegpt.
  * @param dp: delegation point.
  * @param regional: where to allocate the info.
  * @param rrset: RRset AAAA to add.
+ * @param nodup: if true, no duplicates are made by this add. takes time.
  * @return 0 on alloc error.
  */
 int delegpt_add_rrset_AAAA(struct delegpt* dp, struct regional* regional, 
-	struct ub_packed_rrset_key* rrset);
+	struct ub_packed_rrset_key* rrset, int nodup);
 
 /**
  * Add any RRset to delegpt.
+ * Does not check for duplicates added.
  * @param dp: delegation point.
  * @param regional: where to allocate the info.
  * @param rrset: RRset to add, NS, A, AAAA.
@@ -206,10 +225,12 @@ int delegpt_add_rrset(struct delegpt* dp, struct regional* regional,
  * @param regional: where to allocate the info.
  * @param addr: the address.
  * @param addrlen: the length of addr.
+ * @param bogus: if address is bogus.
+ * @param nodup: if true, no duplicates are made by this add. takes time.
  * @return false on error.
  */
 int delegpt_add_addr(struct delegpt* dp, struct regional* regional, 
-	struct sockaddr_storage* addr, socklen_t addrlen);
+	struct sockaddr_storage* addr, socklen_t addrlen, int bogus, int nodup);
 
 /** 
  * Find NS record in name list of delegation point.
@@ -221,12 +242,29 @@ int delegpt_add_addr(struct delegpt* dp, struct regional* regional,
 struct delegpt_ns* delegpt_find_ns(struct delegpt* dp, uint8_t* name, 
 	size_t namelen);
 
+/** 
+ * Find address record in total list of delegation point.
+ * @param dp: delegation point.
+ * @param addr: address
+ * @param addrlen: length of addr
+ * @return the addr structure or NULL if not found.
+ */
+struct delegpt_addr* delegpt_find_addr(struct delegpt* dp, 
+	struct sockaddr_storage* addr, socklen_t addrlen);
+
 /**
  * Print the delegation point to the log. For debugging.
  * @param v: verbosity value that is needed to emit to log.
  * @param dp: delegation point.
  */
 void delegpt_log(enum verbosity_value v, struct delegpt* dp);
+
+/** count NS and number missing for logging */
+void delegpt_count_ns(struct delegpt* dp, size_t* numns, size_t* missing);
+
+/** count addresses, and number in result and available lists, for logging */
+void delegpt_count_addr(struct delegpt* dp, size_t* numaddr, size_t* numres, 
+	size_t* numavail);
 
 /**
  * Add all usable targets to the result list.
@@ -261,5 +299,12 @@ size_t delegpt_count_missing_targets(struct delegpt* dp);
  */
 struct delegpt* delegpt_from_message(struct dns_msg* msg, 
 	struct regional* regional);
+
+/**
+ * Add negative message to delegation point.
+ * @param dp: delegation point.
+ * @param msg: the message added, marks off A or AAAA from an NS entry.
+ */
+void delegpt_add_neg_msg(struct delegpt* dp, struct msgreply_entry* msg);
 
 #endif /* ITERATOR_ITER_DELEGPT_H */

@@ -62,12 +62,13 @@ void usage(char* argv[])
 
 /** open TCP socket to svr */
 static int
-open_svr(char* svr, int udp)
+open_svr(const char* svr, int udp)
 {
 	struct sockaddr_storage addr;
 	socklen_t addrlen;
 	int fd = -1;
 	/* svr can be ip@port */
+	memset(&addr, 0, sizeof(addr));
 	if(!extstrtoaddr(svr, &addr, &addrlen)) {
 		printf("fatal: bad server specs '%s'\n", svr);
 		exit(1);
@@ -96,7 +97,7 @@ open_svr(char* svr, int udp)
 /** write a query over the TCP fd */
 static void
 write_q(int fd, int udp, ldns_buffer* buf, int id, 
-	char* strname, char* strtype, char* strclass)
+	const char* strname, const char* strtype, const char* strclass)
 {
 	struct query_info qinfo;
 	ldns_rdf* rdf;
@@ -210,7 +211,7 @@ recv_one(int fd, int udp, ldns_buffer* buf)
 
 /** send the TCP queries and print answers */
 static void
-send_em(char* svr, int udp, int noanswer, int num, char** qs)
+send_em(const char* svr, int udp, int noanswer, int num, char** qs)
 {
 	ldns_buffer* buf = ldns_buffer_new(65553);
 	int fd = open_svr(svr, udp);
@@ -251,7 +252,7 @@ extern char* optarg;
 int main(int argc, char** argv) 
 {
 	int c;
-	char* svr = "127.0.0.1";
+	const char* svr = "127.0.0.1";
 	int udp = 0;
 	int noanswer = 0;
 

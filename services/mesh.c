@@ -54,6 +54,71 @@
 #include "util/timehist.h"
 #include "util/fptr_wlist.h"
 #include "util/alloc.h"
+#include "util/config_file.h"
+
+/** subtract timers and the values do not overflow or become negative */
+static void
+timeval_subtract(struct timeval* d, const struct timeval* end, const struct timeval* start)
+{
+#ifndef S_SPLINT_S
+	time_t end_usec = end->tv_usec;;
+	d->tv_sec = end->tv_sec - start->tv_sec;
+	while(end_usec < start->tv_usec) {
+		end_usec += 1000000;
+		d->tv_sec--;
+	}
+	d->tv_usec = end_usec - start->tv_usec;
+#endif
+}
+
+/** add timers and the values do not overflow or become negative */
+static void
+timeval_add(struct timeval* d, const struct timeval* add)
+{
+#ifndef S_SPLINT_S
+	d->tv_sec += add->tv_sec;
+	d->tv_usec += add->tv_usec;
+	while(d->tv_usec > 1000000 ) {
+		d->tv_usec -= 1000000;
+		d->tv_sec++;
+	}
+#endif
+}
+
+/** divide sum of timers to get average */
+static void
+timeval_divide(struct timeval* avg, const struct timeval* sum, size_t d)
+{
+#ifndef S_SPLINT_S
+	size_t leftover;
+	if(d == 0) {
+		avg->tv_sec = 0;
+		avg->tv_usec = 0;
+		return;
+	}
+	avg->tv_sec = sum->tv_sec / d;
+	avg->tv_usec = sum->tv_usec / d;
+	/* handle fraction from seconds divide */
+	leftover = sum->tv_sec - avg->tv_sec*d;
+	avg->tv_usec += (leftover*1000000)/d;
+#endif
+}
+
+/** histogram compare of time values */
+static int
+timeval_smaller(const struct timeval* x, const struct timeval* y)
+{
+#ifndef S_SPLINT_S
+	if(x->tv_sec < y->tv_sec)
+		return 1;
+	else if(x->tv_sec == y->tv_sec) {
+		if(x->tv_usec <= y->tv_usec)
+			return 1;
+		else	return 0;
+	}
+	else	return 0;
+#endif
+}
 
 int
 mesh_state_compare(const void* ap, const void* bp)
@@ -108,6 +173,16 @@ mesh_create(struct module_stack* stack, struct module_env* env)
 	mesh->num_reply_addrs = 0;
 	mesh->num_reply_states = 0;
 	mesh->num_detached_states = 0;
+	mesh->num_forever_states = 0;
+	mesh->stats_jostled = 0;
+	mesh->stats_dropped = 0;
+	mesh->max_reply_states = env->cfg->num_queries_per_thread;
+	mesh->max_forever_states = (mesh->max_reply_states+1)/2;
+#ifndef S_SPLINT_S
+	mesh->jostle_max.tv_sec = (time_t)(env->cfg->jostle_time / 1000);
+	mesh->jostle_max.tv_usec = (time_t)((env->cfg->jostle_time % 1000)
+		*1000);
+#endif
 	return mesh;
 }
 
@@ -130,6 +205,40 @@ mesh_delete(struct mesh_area* mesh)
 	free(mesh);
 }
 
+int mesh_make_new_space(struct mesh_area* mesh)
+{
+	struct mesh_state* m = mesh->jostle_last;
+	/* free space is available */
+	if(mesh->num_reply_states < mesh->max_reply_states)
+		return 1;
+	/* try to kick out a jostle-list item */
+	if(m && m->reply_list && m->list_select == mesh_jostle_list) {
+		/* how old is it? */
+		struct timeval age;
+		timeval_subtract(&age, mesh->env->now_tv, 
+			&m->reply_list->start_time);
+		if(timeval_smaller(&mesh->jostle_max, &age)) {
+			/* its a goner */
+			log_nametypeclass(VERB_ALGO, "query jostled out to "
+				"make space for a new one",
+				m->s.qinfo.qname, m->s.qinfo.qtype,
+				m->s.qinfo.qclass);
+			/* notify supers */
+			if(m->super_set.count > 0) {
+				verbose(VERB_ALGO, "notify supers of failure");
+				m->s.return_msg = NULL;
+				m->s.return_rcode = LDNS_RCODE_SERVFAIL;
+				mesh_walk_supers(mesh, m);
+			}
+			mesh->stats_jostled ++;
+			mesh_state_delete(&m->s);
+			return 1;
+		}
+	}
+	/* no space for new item */
+	return 0;
+}
+
 void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
         uint16_t qflags, struct edns_data* edns, struct comm_reply* rep,
         uint16_t qid)
@@ -138,6 +247,16 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 	int was_detached = 0;
 	int was_noreply = 0;
 	int added = 0;
+	/* does this create a new reply state? */
+	if(!s || s->list_select == mesh_no_list) {
+		if(!mesh_make_new_space(mesh)) {
+			verbose(VERB_ALGO, "Too many queries. dropping "
+				"incoming query.");
+			comm_point_drop_reply(rep);
+			mesh->stats_dropped ++;
+			return;
+		}
+	}
 	/* see if it already exists, if not, create one */
 	if(!s) {
 		struct rbnode_t* n;
@@ -178,6 +297,19 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 		mesh->num_reply_states ++;
 	}
 	mesh->num_reply_addrs++;
+	if(s->list_select == mesh_no_list) {
+		/* move to either the forever or the jostle_list */
+		if(mesh->num_forever_states < mesh->max_forever_states) {
+			mesh->num_forever_states ++;
+			mesh_list_insert(s, &mesh->forever_first, 
+				&mesh->forever_last);
+			s->list_select = mesh_forever_list;
+		} else {
+			mesh_list_insert(s, &mesh->jostle_first, 
+				&mesh->jostle_last);
+			s->list_select = mesh_jostle_list;
+		}
+	}
 	if(added)
 		mesh_run(mesh, s, module_event_new, NULL);
 }
@@ -191,6 +323,8 @@ mesh_new_callback(struct mesh_area* mesh, struct query_info* qinfo,
 	int was_detached = 0;
 	int was_noreply = 0;
 	int added = 0;
+	/* there are no limits on the number of callbacks */
+
 	/* see if it already exists, if not, create one */
 	if(!s) {
 		struct rbnode_t* n;
@@ -229,11 +363,16 @@ mesh_new_callback(struct mesh_area* mesh, struct query_info* qinfo,
 }
 
 void mesh_report_reply(struct mesh_area* mesh, struct outbound_entry* e,
-        int is_ok, struct comm_reply* reply)
+        struct comm_reply* reply, int what)
 {
+	enum module_ev event = module_event_reply;
 	e->qstate->reply = reply;
-	mesh_run(mesh, e->qstate->mesh_info,
-		is_ok?module_event_reply:module_event_noreply, e);
+	if(what != NETEVENT_NOERROR) {
+		event = module_event_noreply;
+		if(what == NETEVENT_CAPSFAIL)
+			event = module_event_capsfail;
+	}
+	mesh_run(mesh, e->qstate->mesh_info, event, e);
 }
 
 struct mesh_state* 
@@ -257,6 +396,8 @@ mesh_state_create(struct module_env* env, struct query_info* qinfo,
 	mstate->node.key = mstate;
 	mstate->run_node.key = mstate;
 	mstate->reply_list = NULL;
+	mstate->list_select = mesh_no_list;
+	mstate->replies_sent = 0;
 	rbtree_init(&mstate->super_set, &mesh_state_ref_compare);
 	rbtree_init(&mstate->sub_set, &mesh_state_ref_compare);
 	mstate->num_activated = 0;
@@ -295,6 +436,14 @@ mesh_state_cleanup(struct mesh_state* mstate)
 	int i;
 	if(!mstate)
 		return;
+	/* drop unsent replies */
+	if(!mstate->replies_sent) {
+		struct mesh_reply* rep;
+		for(rep=mstate->reply_list; rep; rep=rep->next) {
+			comm_point_drop_reply(&rep->query_reply);
+		}
+	}
+
 	/* de-init modules */
 	mesh = mstate->s.env->mesh;
 	for(i=0; i<mesh->mods.num; i++) {
@@ -317,6 +466,14 @@ mesh_state_delete(struct module_qstate* qstate)
 	mstate = qstate->mesh_info;
 	mesh = mstate->s.env->mesh;
 	mesh_detach_subs(&mstate->s);
+	if(mstate->list_select == mesh_forever_list) {
+		mesh->num_forever_states --;
+		mesh_list_remove(mstate, &mesh->forever_first, 
+			&mesh->forever_last);
+	} else if(mstate->list_select == mesh_jostle_list) {
+		mesh_list_remove(mstate, &mesh->jostle_first, 
+			&mesh->jostle_last);
+	}
 	if(!mstate->reply_list && !mstate->cb_list
 		&& mstate->super_set.count == 0) {
 		log_assert(mesh->num_detached_states > 0);
@@ -414,53 +571,6 @@ int mesh_state_attachment(struct mesh_state* super, struct mesh_state* sub)
 	return 1;
 }
 
-/** subtract timers and the values do not overflow or become negative */
-static void
-timeval_subtract(struct timeval* d, struct timeval* end, struct timeval* start)
-{
-#ifndef S_SPLINT_S
-	d->tv_sec = end->tv_sec - start->tv_sec;
-	while(end->tv_usec < start->tv_usec) {
-		end->tv_usec += 1000000;
-		d->tv_sec--;
-	}
-	d->tv_usec = end->tv_usec - start->tv_usec;
-#endif
-}
-
-/** add timers and the values do not overflow or become negative */
-static void
-timeval_add(struct timeval* d, struct timeval* add)
-{
-#ifndef S_SPLINT_S
-	d->tv_sec += add->tv_sec;
-	d->tv_usec += add->tv_usec;
-	while(d->tv_usec > 1000000 ) {
-		d->tv_usec -= 1000000;
-		d->tv_sec++;
-	}
-#endif
-}
-
-/** divide sum of timers to get average */
-static void
-timeval_divide(struct timeval* avg, struct timeval* sum, size_t d)
-{
-#ifndef S_SPLINT_S
-	size_t leftover;
-	if(d == 0) {
-		avg->tv_sec = 0;
-		avg->tv_usec = 0;
-		return;
-	}
-	avg->tv_sec = sum->tv_sec / d;
-	avg->tv_usec = sum->tv_usec / d;
-	/* handle fraction from seconds divide */
-	leftover = sum->tv_sec - avg->tv_sec*d;
-	avg->tv_usec += (leftover*1000000)/d;
-#endif
-}
-
 /**
  * callback results to mesh cb entry
  * @param m: mesh state to send it for.
@@ -523,6 +633,8 @@ mesh_send_reply(struct mesh_state* m, int rcode, struct reply_info* rep,
 	if(m->s.env->need_to_validate && !(r->qflags&BIT_CD) && rep && 
 		rep->security <= sec_status_bogus) {
 		rcode = LDNS_RCODE_SERVFAIL;
+		if(m->s.env->cfg->stat_extended) 
+			m->s.env->mesh->ans_bogus++;
 	}
 	if(rep && rep->security == sec_status_secure)
 		secure = 1;
@@ -575,6 +687,15 @@ mesh_send_reply(struct mesh_state* m, int rcode, struct reply_info* rep,
 	m->s.env->mesh->replies_sent++;
 	timeval_add(&m->s.env->mesh->replies_sum_wait, &duration);
 	timehist_insert(m->s.env->mesh->histogram, &duration);
+	if(m->s.env->cfg->stat_extended) {
+		uint16_t rc = FLAGS_GET_RCODE(ldns_buffer_read_u16_at(r->
+			query_reply.c->buffer, 2));
+		if(secure) m->s.env->mesh->ans_secure++;
+		m->s.env->mesh->ans_rcode[ rc ] ++;
+		if(rc == 0 && LDNS_ANCOUNT(ldns_buffer_begin(r->
+			query_reply.c->buffer)) == 0)
+			m->s.env->mesh->ans_nodata++;
+	}
 }
 
 void mesh_query_done(struct mesh_state* mstate)
@@ -588,6 +709,7 @@ void mesh_query_done(struct mesh_state* mstate)
 		mesh_send_reply(mstate, mstate->s.return_rcode, rep, r, prev);
 		prev = r;
 	}
+	mstate->replies_sent = 1;
 	for(c = mstate->cb_list; c; c = c->next) {
 		mesh_do_callback(mstate, mstate->s.return_rcode, rep, c);
 	}
@@ -785,11 +907,14 @@ mesh_stats(struct mesh_area* mesh, const char* str)
 {
 	verbose(VERB_DETAIL, "%s %u recursion states (%u with reply, "
 		"%u detached), %u waiting replies, %u recursion replies "
-		"sent", str, (unsigned)mesh->all.count, 
+		"sent, %d replies dropped, %d states jostled out", 
+		str, (unsigned)mesh->all.count, 
 		(unsigned)mesh->num_reply_states,
 		(unsigned)mesh->num_detached_states,
 		(unsigned)mesh->num_reply_addrs,
-		(unsigned)mesh->replies_sent);
+		(unsigned)mesh->replies_sent,
+		(unsigned)mesh->stats_dropped,
+		(unsigned)mesh->stats_jostled);
 	if(mesh->replies_sent > 0) {
 		struct timeval avg;
 		timeval_divide(&avg, &mesh->replies_sum_wait, 
@@ -809,7 +934,13 @@ mesh_stats_clear(struct mesh_area* mesh)
 	mesh->replies_sent = 0;
 	mesh->replies_sum_wait.tv_sec = 0;
 	mesh->replies_sum_wait.tv_usec = 0;
+	mesh->stats_jostled = 0;
+	mesh->stats_dropped = 0;
 	timehist_clear(mesh->histogram);
+	mesh->ans_secure = 0;
+	mesh->ans_bogus = 0;
+	memset(&mesh->ans_rcode[0], 0, sizeof(size_t)*16);
+	mesh->ans_nodata = 0;
 }
 
 size_t 
@@ -849,4 +980,27 @@ mesh_detect_cycle(struct module_qstate* qstate, struct query_info* qinfo,
 	if(dep_m == cyc_m || find_in_subsub(dep_m, cyc_m))
 		return 1;
 	return 0;
+}
+
+void mesh_list_insert(struct mesh_state* m, struct mesh_state** fp,
+        struct mesh_state** lp)
+{
+	/* insert as last element */
+	m->prev = *lp;
+	m->next = NULL;
+	if(*lp)
+		(*lp)->next = m;
+	else	*fp = m;
+	*lp = m;
+}
+
+void mesh_list_remove(struct mesh_state* m, struct mesh_state** fp,
+        struct mesh_state** lp)
+{
+	if(m->next)
+		m->next->prev = m->prev;
+	else	*lp = m->prev;
+	if(m->prev)
+		m->prev->next = m->next;
+	else	*fp = m->next;
 }
