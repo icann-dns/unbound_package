@@ -42,10 +42,12 @@
 	; if you leave it out, any opcode matches this entry.
 	; 'qtype' makes the query match the qtype from the reply
 	; 'qname' makes the query match the qname from the reply
+	; 'subdomain' makes the query match subdomains of qname from the reply
 	; 'serial=1023' makes the query match if ixfr serial is 1023. 
 	; 'all' has to match header byte for byte and all rrs in packet.
 	; 'ttl' used with all, rrs in packet must also have matching TTLs.
 	; 'DO' will match only queries with DO bit set.
+	; 'noedns' matches queries without EDNS OPT records.
 	MATCH [opcode] [qtype] [qname] [serial=<value>] [all] [ttl]
 	MATCH [UDP|TCP] DO
 	MATCH ...
@@ -157,6 +159,8 @@ struct entry {
 	bool match_qtype;  
 	/** match qname with answer qname */
 	bool match_qname;  
+	/** match qname as subdomain of answer qname */
+	bool match_subdomain;  
 	/** match SOA serial number, from auth section */
 	bool match_serial; 
 	/** match all of the packet */
@@ -165,6 +169,8 @@ struct entry {
 	bool match_ttl;
 	/** match DO bit */
 	bool match_do;
+	/** match absence of EDNS OPT record in query */
+	bool match_noedns;
 	/** match query serial with this value. */
 	uint32_t ixfr_soa_serial; 
 	/** match on UDP/TCP */

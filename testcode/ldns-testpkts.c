@@ -61,7 +61,7 @@ static bool isendline(char c)
  * @param keyword: the keyword to match
  * @return: true if keyword present. False otherwise, and str unchanged.
 */
-static bool str_keyword(const char** str, const char* keyword)
+static bool str_keyword(char** str, const char* keyword)
 {
 	size_t len = strlen(keyword);
 	assert(str && keyword);
@@ -92,9 +92,9 @@ entry_add_reply(struct entry* entry)
 }
 
 /** parse MATCH line */
-static void matchline(const char* line, struct entry* e)
+static void matchline(char* line, struct entry* e)
 {
-	const char* parse = line;
+	char* parse = line;
 	while(*parse) {
 		if(isendline(*parse)) 
 			return;
@@ -104,12 +104,16 @@ static void matchline(const char* line, struct entry* e)
 			e->match_qtype = true;
 		} else if(str_keyword(&parse, "qname")) {
 			e->match_qname = true;
+		} else if(str_keyword(&parse, "subdomain")) {
+			e->match_subdomain = true;
 		} else if(str_keyword(&parse, "all")) {
 			e->match_all = true;
 		} else if(str_keyword(&parse, "ttl")) {
 			e->match_ttl = true;
 		} else if(str_keyword(&parse, "DO")) {
 			e->match_do = true;
+		} else if(str_keyword(&parse, "noedns")) {
+			e->match_noedns = true;
 		} else if(str_keyword(&parse, "UDP")) {
 			e->match_transport = transport_udp;
 		} else if(str_keyword(&parse, "TCP")) {
@@ -129,9 +133,9 @@ static void matchline(const char* line, struct entry* e)
 }
 
 /** parse REPLY line */
-static void replyline(const char* line, ldns_pkt *reply)
+static void replyline(char* line, ldns_pkt *reply)
 {
-	const char* parse = line;
+	char* parse = line;
 	while(*parse) {
 		if(isendline(*parse)) 
 			return;
@@ -194,10 +198,10 @@ static void replyline(const char* line, ldns_pkt *reply)
 }
 
 /** parse ADJUST line */
-static void adjustline(const char* line, struct entry* e, 
+static void adjustline(char* line, struct entry* e, 
 	struct reply_packet* pkt)
 {
-	const char* parse = line;
+	char* parse = line;
 	while(*parse) {
 		if(isendline(*parse)) 
 			return;
@@ -227,9 +231,11 @@ static struct entry* new_entry()
 	e->match_opcode = false;
 	e->match_qtype = false;
 	e->match_qname = false;
+	e->match_subdomain = false;
 	e->match_all = false;
 	e->match_ttl = false;
 	e->match_do = false;
+	e->match_noedns = false;
 	e->match_serial = false;
 	e->ixfr_soa_serial = 0;
 	e->match_transport = transport_any;
@@ -410,7 +416,7 @@ read_entry(FILE* in, const char* name, int *lineno, uint32_t* default_ttl,
 {
 	struct entry* current = NULL;
 	char line[MAX_LINE];
-	const char* parse;
+	char* parse;
 	ldns_pkt_section add_section = LDNS_SECTION_QUESTION;
 	struct reply_packet *cur_reply = NULL;
 	bool reading_hex = false;
@@ -436,7 +442,7 @@ read_entry(FILE* in, const char* name, int *lineno, uint32_t* default_ttl,
 			cur_reply = entry_add_reply(current);
 			continue;
 		} else if(str_keyword(&parse, "$ORIGIN")) {
-			get_origin(name, *lineno, origin, (char*)parse);
+			get_origin(name, *lineno, origin, parse);
 			continue;
 		} else if(str_keyword(&parse, "$TTL")) {
 			*default_ttl = (uint32_t)atoi(parse);
@@ -484,9 +490,12 @@ read_entry(FILE* in, const char* name, int *lineno, uint32_t* default_ttl,
 			/* it must be a RR, parse and add to packet. */
 			ldns_rr* n = NULL;
 			ldns_status status;
-			status = ldns_rr_new_frm_str(&n, parse, *default_ttl, 
-				*origin, prev_rr);
-			if (status != LDNS_STATUS_OK)
+			if(add_section == LDNS_SECTION_QUESTION)
+				status = ldns_rr_new_question_frm_str(
+					&n, parse, *origin, prev_rr);
+			else status = ldns_rr_new_frm_str(&n, parse, 
+				*default_ttl, *origin, prev_rr);
+			if(status != LDNS_STATUS_OK)
 				error("%s line %d:\n\t%s: %s", name, *lineno,
 					ldns_get_errorstr_by_id(status), parse);
 			ldns_pkt_push_rr(cur_reply->reply, add_section, n);
@@ -634,7 +643,7 @@ match_all(ldns_pkt* q, ldns_pkt* p, bool mttl)
 	{ verbose(3, "allmatch: nscount different"); return 0;}
 	if(ldns_pkt_arcount(q) != ldns_pkt_arcount(p))
 	{ verbose(3, "allmatch: arcount different"); return 0;}
-	if(!match_list(ldns_pkt_question(q), ldns_pkt_question(p), mttl))
+	if(!match_list(ldns_pkt_question(q), ldns_pkt_question(p), 0))
 	{ verbose(3, "allmatch: qd section different"); return 0;}
 	if(!match_list(ldns_pkt_answer(q), ldns_pkt_answer(p), mttl))
 	{ verbose(3, "allmatch: an section different"); return 0;}
@@ -672,12 +681,27 @@ find_match(struct entry* entries, ldns_pkt* query_pkt,
 				continue;
 			}
 		}
+		if(p->match_subdomain) {
+			if(!get_owner(query_pkt) || !get_owner(reply) ||
+				(ldns_dname_compare(get_owner(query_pkt), 
+				get_owner(reply)) != 0 &&
+				!ldns_dname_is_subdomain(
+				get_owner(query_pkt), get_owner(reply))))
+			{
+				verbose(3, "bad subdomain\n");
+				continue;
+			}
+		}
 		if(p->match_serial && get_serial(query_pkt) != p->ixfr_soa_serial) {
 				verbose(3, "bad serial\n");
 				continue;
 		}
 		if(p->match_do && !ldns_pkt_edns_do(query_pkt)) {
 			verbose(3, "no DO bit set\n");
+			continue;
+		}
+		if(p->match_noedns && ldns_pkt_edns(query_pkt)) {
+			verbose(3, "bad; EDNS OPT present\n");
 			continue;
 		}
 		if(p->match_transport != transport_any && p->match_transport != transport) {

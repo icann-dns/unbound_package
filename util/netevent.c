@@ -48,8 +48,12 @@
 /** The TCP reading or writing query timeout in seconds */
 #define TCP_QUERY_TIMEOUT 120 
 
+#ifndef NONBLOCKING_IS_BROKEN
 /** number of UDP reads to perform per read indication from select */
 #define NUM_UDP_PER_SELECT 100
+#else
+#define NUM_UDP_PER_SELECT 1
+#endif
 
 /* We define libevent structures here to hide the libevent stuff. */
 
@@ -132,7 +136,7 @@ comm_base_now(struct comm_base* b)
 #endif /* USE_MINI_EVENT */
 
 struct comm_base* 
-comm_base_create()
+comm_base_create(int sigs)
 {
 	struct comm_base* b = (struct comm_base*)calloc(1,
 		sizeof(struct comm_base));
@@ -144,10 +148,20 @@ comm_base_create()
 		return NULL;
 	}
 #ifdef USE_MINI_EVENT
+	(void)sigs;
 	/* use mini event time-sharing feature */
 	b->eb->base = event_init(&b->eb->secs, &b->eb->now);
 #else
+#  ifdef HAVE_EV_LOOP
+	/* libev */
+	if(sigs)
+		b->eb->base=(struct event_base *)ev_default_loop(EVFLAG_AUTO);
+	else
+		b->eb->base=(struct event_base *)ev_loop_new(EVFLAG_AUTO);
+#  else
+	(void)sigs;
 	b->eb->base = event_init();
+#  endif
 #endif
 	if(!b->eb->base) {
 		free(b->eb);
@@ -155,12 +169,14 @@ comm_base_create()
 		return NULL;
 	}
 	comm_base_now(b);
+	/* avoid event_get_method call which causes crashes even when
+	 * not printing, because its result is passed */
 	verbose(VERB_ALGO, "libevent %s uses %s method.", 
 		event_get_version(), 
 #ifdef HAVE_EVENT_BASE_GET_METHOD
 		event_base_get_method(b->eb->base)
 #else
-		event_get_method()
+		"not_obtainable"
 #endif
 	);
 	return b;
@@ -209,6 +225,11 @@ void comm_base_exit(struct comm_base* b)
 	}
 }
 
+struct event_base* comm_base_internal(struct comm_base* b)
+{
+	return b->eb->base;
+}
+
 /* send a UDP reply */
 int
 comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
@@ -216,12 +237,19 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 {
 	ssize_t sent;
 	log_assert(c->fd != -1);
-	log_assert(ldns_buffer_remaining(packet) > 0);
+#ifdef UNBOUND_DEBUG
+	if(ldns_buffer_remaining(packet) == 0)
+		log_err("error: send empty UDP packet");
+#endif
 	log_assert(addr && addrlen > 0);
 	sent = sendto(c->fd, ldns_buffer_begin(packet), 
 		ldns_buffer_remaining(packet), 0,
 		addr, addrlen);
 	if(sent == -1) {
+#ifdef ENETUNREACH
+		if(errno == ENETUNREACH && verbosity < VERB_ALGO)
+			return 0;
+#endif
 #ifndef USE_WINSOCK
 		verbose(VERB_OPS, "sendto failed: %s", strerror(errno));
 #else
@@ -498,7 +526,8 @@ comm_point_udp_callback(int fd, short event, void* arg)
 		if(recv == -1) {
 #ifndef USE_WINSOCK
 			if(errno != EAGAIN && errno != EINTR)
-				log_err("recvfrom failed: %s", strerror(errno));
+				log_err("recvfrom %d failed: %s", 
+					fd, strerror(errno));
 #else
 			if(WSAGetLastError() != WSAEINPROGRESS &&
 				WSAGetLastError() != WSAECONNRESET &&
@@ -517,7 +546,8 @@ comm_point_udp_callback(int fd, short event, void* arg)
 			(void)comm_point_send_udp_msg(rep.c, rep.c->buffer,
 				(struct sockaddr*)&rep.addr, rep.addrlen);
 		}
-		if(rep.c->fd == -1) /* commpoint closed */
+		if(rep.c->fd != fd) /* commpoint closed to -1 or reused for
+		another UDP port. Note rep.c cannot be reused with TCP fd. */
 			break;
 	}
 }
@@ -532,6 +562,45 @@ setup_tcp_handler(struct comm_point* c, int fd)
 	c->tcp_is_reading = 1;
 	c->tcp_byte_count = 0;
 	comm_point_start_listening(c, fd, TCP_QUERY_TIMEOUT);
+}
+
+int comm_point_perform_accept(struct comm_point* c,
+	struct sockaddr_storage* addr, socklen_t* addrlen)
+{
+	int new_fd;
+	*addrlen = (socklen_t)sizeof(*addr);
+	new_fd = accept(c->fd, (struct sockaddr*)addr, addrlen);
+	if(new_fd == -1) {
+#ifndef USE_WINSOCK
+		/* EINTR is signal interrupt. others are closed connection. */
+		if(	errno == EINTR || errno == EAGAIN
+#ifdef EWOULDBLOCK
+			|| errno == EWOULDBLOCK 
+#endif
+#ifdef ECONNABORTED
+			|| errno == ECONNABORTED 
+#endif
+#ifdef EPROTO
+			|| errno == EPROTO
+#endif /* EPROTO */
+			)
+			return -1;
+		log_err("accept failed: %s", strerror(errno));
+#else /* USE_WINSOCK */
+		if(WSAGetLastError() == WSAEINPROGRESS ||
+			WSAGetLastError() == WSAECONNRESET)
+			return -1;
+		if(WSAGetLastError() == WSAEWOULDBLOCK) {
+			winsock_tcp_wouldblock(&c->ev->ev, EV_READ);
+			return -1;
+		}
+		log_err("accept failed: %s", wsa_strerror(WSAGetLastError()));
+#endif
+		log_addr(0, "remote address is", addr, *addrlen);
+		return -1;
+	}
+	fd_set_nonblock(new_fd);
+	return new_fd;
 }
 
 void 
@@ -552,40 +621,12 @@ comm_point_tcp_accept_callback(int fd, short event, void* arg)
 	}
 	/* accept incoming connection. */
 	c_hdl = c->tcp_free;
-	c_hdl->repinfo.addrlen = (socklen_t)sizeof(c_hdl->repinfo.addr);
 	log_assert(fd != -1);
-	new_fd = accept(fd, (struct sockaddr*)&c_hdl->repinfo.addr, 
+	new_fd = comm_point_perform_accept(c, &c_hdl->repinfo.addr,
 		&c_hdl->repinfo.addrlen);
-	if(new_fd == -1) {
-#ifndef USE_WINSOCK
-		/* EINTR is signal interrupt. others are closed connection. */
-		if(	errno != EINTR 
-#ifdef EWOULDBLOCK
-			&& errno != EWOULDBLOCK 
-#endif
-#ifdef ECONNABORTED
-			&& errno != ECONNABORTED 
-#endif
-#ifdef EPROTO
-			&& errno != EPROTO
-#endif /* EPROTO */
-			)
-			return;
-		log_err("accept failed: %s", strerror(errno));
-#else /* USE_WINSOCK */
-		if(WSAGetLastError() == WSAEINPROGRESS ||
-			WSAGetLastError() == WSAECONNRESET)
-			return;
-		if(WSAGetLastError() == WSAEWOULDBLOCK) {
-			winsock_tcp_wouldblock(&c->ev->ev, EV_READ);
-			return ;
-		}
-		log_err("accept failed: %s", wsa_strerror(WSAGetLastError()));
-#endif
-		log_addr(0, "remote address is", &c_hdl->repinfo.addr,
-			c_hdl->repinfo.addrlen);
+	if(new_fd == -1)
 		return;
-	}
+
 	/* grab the tcp handler buffers */
 	c->tcp_free = c_hdl->tcp_free;
 	if(!c->tcp_free) {
@@ -781,6 +822,10 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
                 else if(error == EHOSTUNREACH && verbosity < 2)
                         return 0; /* silence 'no route to host' */
 #endif
+#ifdef EHOSTDOWN
+                else if(error == EHOSTDOWN && verbosity < 2)
+                        return 0; /* silence 'host is down' */
+#endif
                 else if(error != 0) {
 			log_err("tcp connect: %s", strerror(error));
 #else /* USE_WINSOCK */
@@ -937,13 +982,17 @@ void comm_point_local_handle_callback(int fd, short event, void* arg)
 }
 
 void comm_point_raw_handle_callback(int ATTR_UNUSED(fd), 
-	short ATTR_UNUSED(event), void* arg)
+	short event, void* arg)
 {
 	struct comm_point* c = (struct comm_point*)arg;
+	int err = NETEVENT_NOERROR;
 	log_assert(c->type == comm_raw);
 	comm_base_now(c->ev->base);
-
-	(void)(*c->callback)(c, c->cb_arg, NETEVENT_NOERROR, NULL);
+	
+	if(event&EV_TIMEOUT)
+		err = NETEVENT_TIMEOUT;
+	fptr_ok(fptr_whitelist_comm_point_raw(c->callback));
+	(void)(*c->callback)(c, c->cb_arg, err, NULL);
 }
 
 struct comm_point* 
@@ -1094,7 +1143,7 @@ comm_point_create_tcp_handler(struct comm_base *base,
 	c->tcp_free = parent->tcp_free;
 	parent->tcp_free = c;
 	/* libevent stuff */
-	evbits = EV_PERSIST | EV_READ;
+	evbits = EV_PERSIST | EV_READ | EV_TIMEOUT;
 	event_set(&c->ev->ev, c->fd, evbits, comm_point_tcp_handle_callback, c);
 	if(event_base_set(base->eb->base, &c->ev->ev) != 0)
 	{
@@ -1423,6 +1472,7 @@ comm_point_start_listening(struct comm_point* c, int newfd, int sec)
 				return;
 			}
 		}
+		c->ev->ev.ev_events |= EV_TIMEOUT;
 #ifndef S_SPLINT_S /* splint fails on struct timeval. */
 		c->timeout->tv_sec = sec;
 		c->timeout->tv_usec = 0;
@@ -1442,6 +1492,20 @@ comm_point_start_listening(struct comm_point* c, int newfd, int sec)
 	}
 	if(event_add(&c->ev->ev, sec==0?NULL:c->timeout) != 0) {
 		log_err("event_add failed. in cpsl.");
+	}
+}
+
+void comm_point_listen_for_rw(struct comm_point* c, int rd, int wr)
+{
+	verbose(VERB_ALGO, "comm point listen_for_rw %d %d", c->fd, wr);
+	if(event_del(&c->ev->ev) != 0) {
+		log_err("event_del error to cplf");
+	}
+	c->ev->ev.ev_events &= ~(EV_READ|EV_WRITE);
+	if(rd) c->ev->ev.ev_events |= EV_READ;
+	if(wr) c->ev->ev.ev_events |= EV_WRITE;
+	if(event_add(&c->ev->ev, c->timeout) != 0) {
+		log_err("event_add failed. in cplf.");
 	}
 }
 
@@ -1508,6 +1572,9 @@ comm_timer_set(struct comm_timer* timer, struct timeval* tv)
 		comm_timer_disable(timer);
 	event_set(&timer->ev_timer->ev, -1, EV_PERSIST|EV_TIMEOUT,
 		comm_timer_callback, timer);
+	if(event_base_set(timer->ev_timer->base->eb->base, 
+		&timer->ev_timer->ev) != 0)
+		log_err("comm_timer_set: set_base failed.");
 	if(evtimer_add(&timer->ev_timer->ev, tv) != 0)
 		log_err("comm_timer_set: evtimer_add failed.");
 	timer->ev_timer->enabled = 1;

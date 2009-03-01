@@ -48,21 +48,6 @@
 #include "util/net_help.h"
 #include "util/data/dname.h"
 
-int
-stub_cmp(const void* k1, const void* k2)
-{
-	int m;
-	struct iter_hints_stub* n1 = (struct iter_hints_stub*)k1;
-	struct iter_hints_stub* n2 = (struct iter_hints_stub*)k2;
-	if(n1->hint_class != n2->hint_class) {
-		if(n1->hint_class < n2->hint_class)
-			return -1;
-		return 1;
-	}
-	return dname_lab_cmp(n1->name, n1->namelabs, n2->name, n2->namelabs, 
-		&m);
-}
-
 struct iter_hints* 
 hints_create()
 {
@@ -84,7 +69,6 @@ hints_delete(struct iter_hints* hints)
 	if(!hints) 
 		return;
 	regional_destroy(hints->region);
-	free(hints->tree);
 	free(hints);
 }
 
@@ -102,7 +86,7 @@ ah(struct delegpt* dp, struct regional* r, const char* sv, const char* ip)
 	if(!delegpt_add_ns(dp, r, ldns_rdf_data(rdf)) ||
 	   !extstrtoaddr(ip, &addr, &addrlen) ||
 	   !delegpt_add_target(dp, r, ldns_rdf_data(rdf), ldns_rdf_size(rdf),
-		&addr, addrlen)) {
+		&addr, addrlen, 0, 1)) {
 		ldns_rdf_deep_free(rdf);
 		return 0;
 	}
@@ -149,6 +133,7 @@ compile_time_root_prime(struct regional* r, int do_ip4, int do_ip6)
 	if(!ah(dp, r, "H.ROOT-SERVERS.NET.", "2001:500:1::803f:235")) return 0;
 	if(!ah(dp, r, "J.ROOT-SERVERS.NET.", "2001:503:c27::2:30")) return 0;
 	if(!ah(dp, r, "K.ROOT-SERVERS.NET.", "2001:7fd::1")) return 0;
+	if(!ah(dp, r, "L.ROOT-SERVERS.NET.", "2001:500:3::42")) return 0;
 	if(!ah(dp, r, "M.ROOT-SERVERS.NET.", "2001:dc3::35")) return 0;
       }
 	return dp;
@@ -156,53 +141,24 @@ compile_time_root_prime(struct regional* r, int do_ip4, int do_ip6)
 
 /** insert new hint info into hint structure */
 static int
-hints_insert(struct iter_hints* hints, uint16_t c, struct delegpt* dp)
+hints_insert(struct iter_hints* hints, uint16_t c, struct delegpt* dp,
+	int noprime)
 {
 	struct iter_hints_stub* node = regional_alloc(hints->region,
 		sizeof(struct iter_hints_stub));
+	uint8_t* nm;
 	if(!node)
 		return 0;
-	node->node.key = node;
-	node->hint_class = c;
-	node->name = regional_alloc_init(hints->region, dp->name, dp->namelen);
-	if(!node->name)
+	nm = regional_alloc_init(hints->region, dp->name, dp->namelen);
+	if(!nm)
 		return 0;
-	node->namelen = dp->namelen;
-	node->namelabs = dp->namelabs;
 	node->dp = dp;
-	if(!rbtree_insert(hints->tree, &node->node)) {
+	node->noprime = (uint8_t)noprime;
+	if(!name_tree_insert(&hints->tree, &node->node, nm, dp->namelen,
+		dp->namelabs, c)) {
 		log_err("second hints ignored.");
 	}
 	return 1;
-}
-
-/** initialise parent pointers in the tree */
-static void
-init_parents(struct iter_hints* hints)
-{
-	struct iter_hints_stub* node, *prev = NULL, *p;
-	int m;
-	RBTREE_FOR(node, struct iter_hints_stub*, hints->tree) {
-		node->parent = NULL;
-		if(!prev || prev->hint_class != node->hint_class) {
-			prev = node;
-			continue;
-		}
-		(void)dname_lab_cmp(prev->name, prev->namelabs, node->name,
-			node->namelabs, &m); /* we know prev is smaller */
-		/* sort order like: . com. bla.com. zwb.com. net. */
-		/* find the previous, or parent-parent-parent */
-		for(p = prev; p; p = p->parent)
-			/* looking for name with few labels, a parent */
-			if(p->namelabs <= m) {
-				/* ==: since prev matched m, this is closest*/
-				/* <: prev matches more, but is not a parent,
-				 * this one is a (grand)parent */
-				node->parent = p;
-				break;
-			}
-		prev = node;
-	}
 }
 
 /** set stub name */
@@ -269,7 +225,7 @@ read_stubs_addr(struct iter_hints* hints, struct config_stub* s,
 				s->name, p->str);
 			return 0;
 		}
-		if(!delegpt_add_addr(dp, hints->region, &addr, addrlen)) {
+		if(!delegpt_add_addr(dp, hints->region, &addr, addrlen, 0, 1)) {
 			log_err("out of memory");
 			return 0;
 		}
@@ -292,7 +248,7 @@ read_stubs(struct iter_hints* hints, struct config_file* cfg)
 			!read_stubs_host(hints, s, dp) ||
 			!read_stubs_addr(hints, s, dp))
 			return 0;
-		if(!hints_insert(hints, LDNS_RR_CLASS_IN, dp))
+		if(!hints_insert(hints, LDNS_RR_CLASS_IN, dp, !s->isprime))
 			return 0;
 		delegpt_log(VERB_QUERY, dp);
 	}
@@ -361,7 +317,8 @@ read_root_hints(struct iter_hints* hints, char* fname)
 			if(!delegpt_add_target(dp, hints->region,
 					ldns_rdf_data(ldns_rr_owner(rr)),
 					ldns_rdf_size(ldns_rr_owner(rr)),
-					(struct sockaddr_storage*)&sa, len)) {
+					(struct sockaddr_storage*)&sa, len, 
+					0, 1)) {
 				log_err("out of memory reading root hints");
 				goto stop_read;
 			}
@@ -376,7 +333,8 @@ read_root_hints(struct iter_hints* hints, char* fname)
 			if(!delegpt_add_target(dp, hints->region,
 					ldns_rdf_data(ldns_rr_owner(rr)),
 					ldns_rdf_size(ldns_rr_owner(rr)),
-					(struct sockaddr_storage*)&sa, len)) {
+					(struct sockaddr_storage*)&sa, len,
+					0, 1)) {
 				log_err("out of memory reading root hints");
 				goto stop_read;
 			}
@@ -397,7 +355,7 @@ read_root_hints(struct iter_hints* hints, char* fname)
 		log_warn("root hints %s: no NS content", fname);
 		return 1;
 	}
-	if(!hints_insert(hints, c, dp)) {
+	if(!hints_insert(hints, c, dp, 0)) {
 		return 0;
 	}
 	delegpt_log(VERB_QUERY, dp);
@@ -435,10 +393,8 @@ read_root_hints_list(struct iter_hints* hints, struct config_file* cfg)
 int 
 hints_apply_cfg(struct iter_hints* hints, struct config_file* cfg)
 {
-	free(hints->tree);
-	hints->tree = rbtree_create(stub_cmp);
-	if(!hints->tree)
-		return 0;
+	regional_free_all(hints->region);
+	name_tree_init(&hints->tree);
 	
 	/* read root hints */
 	if(!read_root_hints_list(hints, cfg))
@@ -455,11 +411,11 @@ hints_apply_cfg(struct iter_hints* hints, struct config_file* cfg)
 		verbose(VERB_ALGO, "no config, using builtin root hints.");
 		if(!dp) 
 			return 0;
-		if(!hints_insert(hints, LDNS_RR_CLASS_IN, dp))
+		if(!hints_insert(hints, LDNS_RR_CLASS_IN, dp, 0))
 			return 0;
 	}
 
-	init_parents(hints);
+	name_tree_init_parents(&hints->tree);
 	return 1;
 }
 
@@ -467,56 +423,41 @@ struct delegpt*
 hints_lookup_root(struct iter_hints* hints, uint16_t qclass)
 {
 	uint8_t rootlab = 0;
-	struct iter_hints_stub key, *stub;
-	key.node.key = &key;
-	key.hint_class = qclass;
-	key.name = &rootlab;
-	key.namelen = 1;
-	key.namelabs = 1;
-	stub = (struct iter_hints_stub*)rbtree_search(hints->tree, &key);
+	struct iter_hints_stub *stub;
+	stub = (struct iter_hints_stub*)name_tree_find(&hints->tree,
+		&rootlab, 1, 1, qclass);
 	if(!stub)
 		return NULL;
 	return stub->dp;
 }
 
-struct delegpt* 
+struct iter_hints_stub* 
 hints_lookup_stub(struct iter_hints* hints, uint8_t* qname, 
 	uint16_t qclass, struct delegpt* cache_dp)
 {
+	size_t len;
+	int labs;
+	struct iter_hints_stub *r;
+
 	/* first lookup the stub */
-	rbnode_t* res = NULL;
-	struct iter_hints_stub *result;
-	struct iter_hints_stub key;
-	key.node.key = &key;
-	key.hint_class = qclass;
-	key.name = qname;
-	key.namelabs = dname_count_size_labels(qname, &key.namelen);
-	if(rbtree_find_less_equal(hints->tree, &key, &res)) {
-		/* exact */
-		result = (struct iter_hints_stub*)res;
-	} else {
-		/* smaller element (or no element) */
-		int m;
-		result = (struct iter_hints_stub*)res;
-		if(!result || result->hint_class != qclass)
-			return NULL;
-		/* count number of labels matched */
-		(void)dname_lab_cmp(result->name, result->namelabs, key.name,
-			key.namelabs, &m);
-		while(result) { /* go up until qname is subdomain of stub */
-			if(result->namelabs <= m)
-				break;
-			result = result->parent;
-		}
-		if(!result)
-			return NULL;
-	}
+	labs = dname_count_size_labels(qname, &len);
+	r = (struct iter_hints_stub*)name_tree_lookup(&hints->tree, qname,
+		len, labs, qclass);
+	if(!r) return NULL;
+
+	/*
+	 * If the stub is same as the delegation we got
+	 * And has noprime set, we need to 'prime' to use this stub instead.
+	 */
+	if(r->noprime && query_dname_compare(cache_dp->name, r->dp->name)==0)
+		return r; /* use this stub instead of cached dp */
+	
 	/* 
 	 * If our cached delegation point is above the hint, we need to prime.
 	 */
-	if(dname_strict_subdomain(result->dp->name, result->dp->namelabs,
+	if(dname_strict_subdomain(r->dp->name, r->dp->namelabs,
 		cache_dp->name, cache_dp->namelabs))
-		return result->dp; /* need to prime this stub */
+		return r; /* need to prime this stub */
 	return NULL;
 }
 

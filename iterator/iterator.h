@@ -50,6 +50,7 @@ struct iter_hints;
 struct iter_forwards;
 struct iter_donotq;
 struct iter_prep_list;
+struct iter_priv;
 
 /** max number of query restarts. Determines max number of CNAME chain. */
 #define MAX_RESTART_COUNT       8
@@ -65,7 +66,7 @@ struct iter_prep_list;
  */
 #define USEFUL_SERVER_TOP_TIMEOUT	120000
 /** number of retries on outgoing queries */
-#define OUTBOUND_MSG_RETRY 4
+#define OUTBOUND_MSG_RETRY 5
 /** RTT band, within this amount from the best, servers are chosen randomly.
  * Chosen so that the UNKNOWN_SERVER_NICENESS falls within the band of a 
  * fast server, this causes server exploration as a side benefit. msec. */
@@ -91,6 +92,9 @@ struct iter_env {
 
 	/** A set of inetaddrs that should never be queried. */
 	struct iter_donotq* donotq;
+
+	/** private address space and private domains */
+	struct iter_priv* priv;
 
 	/** The maximum dependency depth that this resolver will pursue. */
 	int max_dependency_depth;
@@ -206,6 +210,8 @@ struct iter_qstate {
 	struct query_info qchase;
 	/** query flags to use when chasing the answer (i.e. RD flag) */
 	uint16_t chase_flags;
+	/** true if we set RD bit because of last resort recursion lame query*/
+	int chase_to_rd;
 
 	/** 
 	 * This is the current delegation point for an in-progress query. This
@@ -213,6 +219,13 @@ struct iter_qstate {
 	 * (sub)queried for vs which ones have already been visited.
 	 */
 	struct delegpt* dp;
+
+	/** state for 0x20 fallback when capsfail happens, 0 not a fallback */
+	int caps_fallback;
+	/** state for capsfail: current server number to try */
+	size_t caps_server;
+	/** state for capsfail: stored query for comparisons */
+	struct reply_info* caps_reply;
 
 	/** Current delegation message - returned for non-RD queries */
 	struct dns_msg* deleg_msg;

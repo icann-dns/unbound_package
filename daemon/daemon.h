@@ -62,12 +62,18 @@ struct ub_randstate;
 struct daemon {
 	/** The config settings */
 	struct config_file* cfg;
+	/** the chroot dir in use, NULL if none */
+	char* chroot;
 	/** pidfile that is used */
 	char* pidfile;
 	/** port number that has ports opened. */
 	int listening_port;
 	/** listening ports, opened, to be shared by threads */
 	struct listen_port* ports;
+	/** port number fore remote that has ports opened. */
+	int rc_port;
+	/** listening ports for remote control */
+	struct listen_port* rc_ports;
 	/** num threads allocated */
 	int num;
 	/** the worker entries */
@@ -86,6 +92,10 @@ struct daemon {
 	struct acl_list* acl;
 	/** local authority zones */
 	struct local_zones* local_zones;
+	/** last time of statistics printout */
+	struct timeval time_last_stat;
+	/** time when daemon started */
+	struct timeval time_boot;
 };
 
 /**

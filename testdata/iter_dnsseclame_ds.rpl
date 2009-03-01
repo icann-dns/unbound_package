@@ -27,11 +27,11 @@ K.ROOT-SERVERS.NET.	IN	A	193.0.14.129
 ENTRY_END
 
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode subdomain
+ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-www.sub.example.com. IN A
+com. IN A
 SECTION AUTHORITY
 com.	IN NS	a.gtld-servers.net.
 SECTION ADDITIONAL
@@ -39,11 +39,11 @@ a.gtld-servers.net.	IN 	A	192.5.6.30
 ENTRY_END
 
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode subdomain
+ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-ns.example.net. IN A
+net. IN A
 SECTION AUTHORITY
 net.	IN NS	e.gtld-servers.net.
 SECTION ADDITIONAL
@@ -71,7 +71,19 @@ MATCH opcode qtype qname
 ADJUST copy_id
 REPLY QR NOERROR
 SECTION QUESTION
-www.sub.example.com. IN A
+com. IN NS
+SECTION ANSWER
+com.	IN NS	a.gtld-servers.net.
+SECTION ADDITIONAL
+a.gtld-servers.net.	IN 	A	192.5.6.30
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode subdomain
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+example.com. IN A
 SECTION AUTHORITY
 example.com.	IN NS	ns.example.com.
 SECTION ADDITIONAL
@@ -82,6 +94,36 @@ RANGE_END
 ; e.gtld-servers.net.
 RANGE_BEGIN 0 100
 	ADDRESS 192.12.94.30
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR NOERROR
+SECTION QUESTION
+net. IN NS
+SECTION ANSWER
+net.	IN NS	e.gtld-servers.net.
+SECTION ADDITIONAL
+e.gtld-servers.net.	IN 	A	192.12.94.30
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+e.gtld-servers.net. IN AAAA
+SECTION ANSWER
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+a.gtld-servers.net. IN AAAA
+SECTION ANSWER
+ENTRY_END
+
 ENTRY_BEGIN
 MATCH opcode qtype qname
 ADJUST copy_id
@@ -110,6 +152,18 @@ RANGE_END
 ; ns.example.net.
 RANGE_BEGIN 0 100
 	ADDRESS 1.2.3.44
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR NOERROR
+SECTION QUESTION
+example.net. IN NS
+SECTION ANSWER
+example.net.	IN NS	ns.example.net.
+SECTION ADDITIONAL
+ns.example.net.		IN 	A	1.2.3.44
+ENTRY_END
+
 ENTRY_BEGIN
 MATCH opcode qtype qname
 ADJUST copy_id
@@ -152,6 +206,21 @@ ns.sub.example.com. IN A 1.2.3.6
 ns.sub.example.com.     3600    IN      RRSIG   A 5 4 3600 20070926134150 20070829134150 30899 sub.example.com. UF7shD/gt1FOp2UHgLTNbPzVykklSXFMEtJ1xD+Hholwf/PIzd7zoaIttIYibNa4fUXCqMg22H9P7MRhfmFe6g== ;{id = 30899}
 ENTRY_END
 
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+sub.example.com. IN NS
+SECTION ANSWER
+sub.example.com. IN NS ns.sub.example.com.
+sub.example.com. IN NS ns.example.net.
+sub.example.com.	3600	IN	RRSIG	NS 5 3 3600 20070926134150 20070829134150 30899 sub.example.com. C/0b+sqlsdSTkhd+aDXb6ELyuQreosIGBzLCtWxYGD+Q9QGB5rN8uB+4+48yhw36pd3MfeAn06AgAnJ6eu8tJg== ;{id = 30899}
+SECTION ADDITIONAL
+ns.sub.example.com. IN A 1.2.3.6
+ns.sub.example.com.	3600	IN	RRSIG	A 5 4 3600 20070926134150 20070829134150 30899 sub.example.com. UF7shD/gt1FOp2UHgLTNbPzVykklSXFMEtJ1xD+Hholwf/PIzd7zoaIttIYibNa4fUXCqMg22H9P7MRhfmFe6g== ;{id = 30899}
+ENTRY_END
+
 ; response to query of interest
 ENTRY_BEGIN
 MATCH opcode qtype qname
@@ -165,11 +234,32 @@ www.sub.example.com.    3600    IN      RRSIG   A 5 4 3600 20070926134150 200708
 SECTION AUTHORITY
 SECTION ADDITIONAL
 ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+ns.sub.example.com. IN AAAA
+SECTION ANSWER
+ENTRY_END
 RANGE_END
 
 ; ns.example.com.
 RANGE_BEGIN 0 100
 	ADDRESS 1.2.3.55
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR NOERROR
+SECTION QUESTION
+example.com. IN NS
+SECTION ANSWER
+example.com.	IN NS	ns.example.com.
+SECTION ADDITIONAL
+ns.example.com. IN A	1.2.3.55
+ENTRY_END
+
 ENTRY_BEGIN
 MATCH opcode qtype qname
 ADJUST copy_id
@@ -203,13 +293,14 @@ example.com.    IN NS   ns.example.com.
 example.com.    3600    IN      RRSIG   NS 3 2 3600 20070926134150 20070829134150 2854 example.com. MC0CFQCN+qHdJxoI/2tNKwsb08pra/G7aAIUAWA5sDdJTbrXA1/3OaesGBAO3sI= ;{id = 2854}
 ENTRY_END
 
+
 ; correct delegation with DS
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode subdomain
+ADJUST copy_id copy_query
 REPLY QR AA NOERROR
 SECTION QUESTION
-www.sub.example.com. IN A
+sub.example.com. IN A
 SECTION ANSWER
 SECTION AUTHORITY
 sub.example.com. IN NS ns.sub.example.com.
@@ -243,6 +334,20 @@ RANGE_END
 RANGE_BEGIN 0 100
         ADDRESS 1.2.3.6
 
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+sub.example.com. IN NS
+SECTION ANSWER
+sub.example.com. IN NS ns.sub.example.com.
+sub.example.com. IN NS ns.example.net.
+SECTION ADDITIONAL
+ns.sub.example.com. IN A 1.2.3.6
+ENTRY_END
+
+
 ; response to DNSKEY priming query
 ; sub.example.com.        3600    IN      DS      30899 RSASHA1 1 f7ed618f24d5e5202927e1d27bc2e84a141cb4b3
 ENTRY_BEGIN
@@ -258,6 +363,15 @@ sub.example.com. IN     NS ns.sub.example.com.
 sub.example.com. IN     NS ns.example.net.
 SECTION ADDITIONAL
 ns.sub.example.com. IN A 1.2.3.6
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qtype qname
+ADJUST copy_id
+REPLY QR AA NOERROR
+SECTION QUESTION
+ns.sub.example.com. IN AAAA
+SECTION ANSWER
 ENTRY_END
 
 ; response to query of interest
@@ -297,5 +411,4 @@ SECTION ANSWER
 www.sub.example.com. IN A       11.11.11.11
 www.sub.example.com.    3600    IN      RRSIG   A 5 4 3600 20070926134150 20070829134150 30899 sub.example.com. 0DqqRfRtm7VSEQ4mmBbzrKRqQAay3JAE8DPDGmjtokrrjN9F1G/HxozDV7bjdIh2EChlQea8FPwf/GepJMUVxg== ;{id = 30899}
 ENTRY_END
-
 SCENARIO_END

@@ -1,14 +1,3 @@
-# Do you want to start unbound?
-#  only allowed values are "true" and "false".
-#  if you already use other DNS server, they would listen port 53,
-#  so unbound fails to start. Please set UNBOUND_ENABLE to "false".
-
 UNBOUND_ENABLE=true
 
-# config file path
 #DAEMON_OPTS="-c /etc/unbound/unbound.conf"
-
-# automatic chroot setup in the init script
-# set to 'no' to disable
-# see /usr/share/doc/unbound/README.Debian
-#CHROOT=yes

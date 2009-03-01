@@ -124,10 +124,15 @@ need_to_update_rrset(void* nd, void* cd, uint32_t timenow, int equal)
 {
 	struct packed_rrset_data* newd = (struct packed_rrset_data*)nd;
 	struct packed_rrset_data* cached = (struct packed_rrset_data*)cd;
-	/* 	o store if rrset has been validated */
-	if( newd->security > cached->security) {
+	/* 	o store if rrset has been validated 
+	 *  		everything better than bogus data 
+	 *  		secure is preferred */
+	if( newd->security == sec_status_secure &&
+		cached->security != sec_status_secure)
 		return 1;
-	}
+	if( cached->security == sec_status_bogus && 
+		newd->security != sec_status_bogus && !equal)
+		return 1;
         /*      o if current RRset is more trustworthy - insert it */
         if( newd->trust > cached->trust ) {
 		/* if the cached rrset is bogus, and this one equal,
@@ -329,9 +334,13 @@ rrset_update_sec_status(struct rrset_cache* r,
 	}
 	/* update the cached rrset */
 	if(updata->security > cachedata->security) {
-		cachedata->trust = updata->trust;
+		size_t i;
+		if(updata->trust > cachedata->trust)
+			cachedata->trust = updata->trust;
 		cachedata->security = updata->security;
 		cachedata->ttl = updata->ttl + now;
+		for(i=0; i<cachedata->count+cachedata->rrsig_count; i++)
+			cachedata->rr_ttl[i] = updata->rr_ttl[i]+now;
 	}
 	lock_rw_unlock(&e->lock);
 }
@@ -358,9 +367,31 @@ rrset_check_sec_status(struct rrset_cache* r,
 	}
 	if(cachedata->security > updata->security) {
 		updata->security = cachedata->security;
-		if(cachedata->security == sec_status_bogus)
+		if(cachedata->security == sec_status_bogus) {
+			size_t i;
 			updata->ttl = cachedata->ttl - now;
-		updata->trust = cachedata->trust;
+			for(i=0; i<cachedata->count+cachedata->rrsig_count; i++)
+				if(cachedata->rr_ttl[i] < now)
+					updata->rr_ttl[i] = 0;
+				else updata->rr_ttl[i] = 
+					cachedata->rr_ttl[i]-now;
+		}
+		if(cachedata->trust > updata->trust)
+			updata->trust = cachedata->trust;
 	}
 	lock_rw_unlock(&e->lock);
+}
+
+void rrset_cache_remove(struct rrset_cache* r, uint8_t* nm, size_t nmlen,
+	uint16_t type, uint16_t dclass, uint32_t flags)
+{
+	struct ub_packed_rrset_key key;
+	key.entry.key = &key;
+	key.rk.dname = nm;
+	key.rk.dname_len = nmlen;
+	key.rk.rrset_class = htons(dclass);
+	key.rk.type = htons(type);
+	key.rk.flags = flags;
+	key.entry.hash = rrset_key_hash(&key.rk);
+	slabhash_remove(&r->table, key.entry.hash, &key);
 }

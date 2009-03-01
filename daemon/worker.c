@@ -45,6 +45,7 @@
 #include "util/random.h"
 #include "daemon/worker.h"
 #include "daemon/daemon.h"
+#include "daemon/remote.h"
 #include "daemon/acl_list.h"
 #include "util/netevent.h"
 #include "util/config_file.h"
@@ -63,6 +64,7 @@
 #include "util/data/msgencode.h"
 #include "util/data/dname.h"
 #include "util/fptr_wlist.h"
+#include "util/tube.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #  include <sys/types.h>
@@ -190,17 +192,12 @@ worker_mem_report(struct worker* ATTR_UNUSED(worker),
 }
 
 void 
-worker_send_cmd(struct worker* worker, ldns_buffer* buffer,
-	enum worker_commands cmd)
+worker_send_cmd(struct worker* worker, enum worker_commands cmd)
 {
-	ldns_buffer_clear(buffer);
-	/* like DNS message, length data */
-	ldns_buffer_write_u16(buffer, sizeof(uint32_t));
-	ldns_buffer_write_u32(buffer, (uint32_t)cmd);
-	ldns_buffer_flip(buffer);
-	if(!write_socket(worker->cmd_send_fd, ldns_buffer_begin(buffer),
-		ldns_buffer_limit(buffer)))
-		log_err("write socket: %s", strerror(errno));
+	uint32_t c = (uint32_t)htonl(cmd);
+	if(!tube_write_msg(worker->cmd, (uint8_t*)&c, sizeof(c), 0)) {
+		log_err("worker send cmd %d failed", (int)cmd);
+	}
 }
 
 int 
@@ -214,7 +211,7 @@ worker_handle_reply(struct comm_point* c, void* arg, int error,
 	e.qsent = NULL;
 
 	if(error != 0) {
-		mesh_report_reply(worker->env.mesh, &e, 0, reply_info);
+		mesh_report_reply(worker->env.mesh, &e, reply_info, error);
 		worker_mem_report(worker, NULL);
 		return 0;
 	}
@@ -225,11 +222,12 @@ worker_handle_reply(struct comm_point* c, void* arg, int error,
 		|| LDNS_QDCOUNT(ldns_buffer_begin(c->buffer)) > 1) {
 		/* error becomes timeout for the module as if this reply
 		 * never arrived. */
-		mesh_report_reply(worker->env.mesh, &e, 0, reply_info);
+		mesh_report_reply(worker->env.mesh, &e, reply_info, 
+			NETEVENT_TIMEOUT);
 		worker_mem_report(worker, NULL);
 		return 0;
 	}
-	mesh_report_reply(worker->env.mesh, &e, 1, reply_info);
+	mesh_report_reply(worker->env.mesh, &e, reply_info, NETEVENT_NOERROR);
 	worker_mem_report(worker, NULL);
 	return 0;
 }
@@ -244,7 +242,7 @@ worker_handle_service_reply(struct comm_point* c, void* arg, int error,
 
 	verbose(VERB_ALGO, "worker svcd callback for qstate %p", e->qstate);
 	if(error != 0) {
-		mesh_report_reply(worker->env.mesh, e, 0, reply_info);
+		mesh_report_reply(worker->env.mesh, e, reply_info, error);
 		worker_mem_report(worker, sq);
 		return 0;
 	}
@@ -256,11 +254,12 @@ worker_handle_service_reply(struct comm_point* c, void* arg, int error,
 		/* error becomes timeout for the module as if this reply
 		 * never arrived. */
 		verbose(VERB_ALGO, "worker: bad reply handled as timeout");
-		mesh_report_reply(worker->env.mesh, e, 0, reply_info);
+		mesh_report_reply(worker->env.mesh, e, reply_info, 
+			NETEVENT_TIMEOUT);
 		worker_mem_report(worker, sq);
 		return 0;
 	}
-	mesh_report_reply(worker->env.mesh, e, 1, reply_info);
+	mesh_report_reply(worker->env.mesh, e, reply_info, NETEVENT_NOERROR);
 	worker_mem_report(worker, sq);
 	return 0;
 }
@@ -318,33 +317,43 @@ worker_check_request(ldns_buffer* pkt, struct worker* worker)
 	return 0;
 }
 
-int 
-worker_handle_control_cmd(struct comm_point* c, void* arg, int error, 
-	struct comm_reply* ATTR_UNUSED(reply_info))
+void 
+worker_handle_control_cmd(struct tube* ATTR_UNUSED(tube), uint8_t* msg,
+	size_t len, int error, void* arg)
 {
 	struct worker* worker = (struct worker*)arg;
 	enum worker_commands cmd;
 	if(error != NETEVENT_NOERROR) {
+		free(msg);
 		if(error == NETEVENT_CLOSED)
 			comm_base_exit(worker->base);
 		else	log_info("control event: %d", error);
-		return 0;
+		return;
 	}
-	if(ldns_buffer_limit(c->buffer) != sizeof(uint32_t)) {
-		fatal_exit("bad control msg length %d", 
-			(int)ldns_buffer_limit(c->buffer));
+	if(len != sizeof(uint32_t)) {
+		fatal_exit("bad control msg length %d", (int)len);
 	}
-	cmd = ldns_buffer_read_u32(c->buffer);
+	cmd = ldns_read_uint32(msg);
+	free(msg);
 	switch(cmd) {
 	case worker_cmd_quit:
 		verbose(VERB_ALGO, "got control cmd quit");
 		comm_base_exit(worker->base);
 		break;
+	case worker_cmd_stats:
+		verbose(VERB_ALGO, "got control cmd stats");
+		server_stats_reply(worker);
+		break;
+#ifdef THREADS_DISABLED
+	case worker_cmd_remote:
+		verbose(VERB_ALGO, "got control cmd remote");
+		daemon_remote_exec(worker);
+		break;
+#endif
 	default:
 		log_err("bad command %d", (int)cmd);
 		break;
 	}
-	return 0;
 }
 
 /** check if a delegation is secure */
@@ -440,6 +449,10 @@ answer_norec_from_cache(struct worker* worker, struct query_info* qinfo,
 			error_encode(repinfo->c->buffer, LDNS_RCODE_SERVFAIL, 
 				&msg->qinfo, id, flags, edns);
 			regional_free_all(worker->scratchpad);
+			if(worker->stats.extended) {
+				worker->stats.ans_bogus++;
+				worker->stats.ans_rcode[LDNS_RCODE_SERVFAIL]++;
+			}
 			return 1;
 		case sec_status_secure:
 			/* all rrsets are secure */
@@ -469,6 +482,10 @@ answer_norec_from_cache(struct worker* worker, struct query_info* qinfo,
 			&msg->qinfo, id, flags, edns);
 	}
 	regional_free_all(worker->scratchpad);
+	if(worker->stats.extended) {
+		if(secure) worker->stats.ans_secure++;
+		server_stats_insrcode(&worker->stats, repinfo->c->buffer);
+	}
 	return 1;
 }
 
@@ -520,7 +537,7 @@ answer_from_cache(struct worker* worker, struct query_info* qinfo,
 	int secure;
 	int must_validate = !(flags&BIT_CD) && worker->env.need_to_validate;
 	/* see if it is possible */
-	if(rep->ttl <= timenow) {
+	if(rep->ttl < timenow) {
 		/* the rrsets may have been updated in the meantime.
 		 * we will refetch the message format from the
 		 * authoritative server 
@@ -556,6 +573,10 @@ answer_from_cache(struct worker* worker, struct query_info* qinfo,
 		rrset_array_unlock_touch(worker->env.rrset_cache, 
 			worker->scratchpad, rep->ref, rep->rrset_count);
 		regional_free_all(worker->scratchpad);
+		if(worker->stats.extended) {
+			worker->stats.ans_bogus ++;
+			worker->stats.ans_rcode[LDNS_RCODE_SERVFAIL] ++;
+		}
 		return 1;
 	} else if( rep->security == sec_status_unchecked && must_validate) {
 		verbose(VERB_ALGO, "Cache reply: unchecked entry needs "
@@ -589,6 +610,10 @@ answer_from_cache(struct worker* worker, struct query_info* qinfo,
 	rrset_array_unlock_touch(worker->env.rrset_cache, worker->scratchpad,
 		rep->ref, rep->rrset_count);
 	regional_free_all(worker->scratchpad);
+	if(worker->stats.extended) {
+		if(secure) worker->stats.ans_secure++;
+		server_stats_insrcode(&worker->stats, repinfo->c->buffer);
+	}
 	/* go and return this buffer to the client */
 	return 1;
 }
@@ -703,6 +728,8 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 		repinfo->addrlen);
 	if(acl == acl_deny) {
 		comm_point_drop_reply(repinfo);
+		if(worker->stats.extended)
+			worker->stats.unwanted_queries++;
 		return 0;
 	} else if(acl == acl_refuse) {
 		ldns_buffer_set_limit(c->buffer, LDNS_HEADER_SIZE);
@@ -714,6 +741,8 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 		log_addr(VERB_ALGO, "refused query from",
 			&repinfo->addr, repinfo->addrlen);
 		log_buf(VERB_ALGO, "refuse", c->buffer);
+		if(worker->stats.extended)
+			worker->stats.unwanted_queries++;
 		return 1;
 	}
 	if((ret=worker_check_request(c->buffer, worker)) != 0) {
@@ -730,9 +759,11 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 	/* see if query is in the cache */
 	if(!query_info_parse(&qinfo, c->buffer)) {
 		verbose(VERB_ALGO, "worker parse request: formerror.");
+		ldns_buffer_rewind(c->buffer);
 		LDNS_QR_SET(ldns_buffer_begin(c->buffer));
 		LDNS_RCODE_SET(ldns_buffer_begin(c->buffer), 
 			LDNS_RCODE_FORMERR);
+		server_stats_insrcode(&worker->stats, c->buffer);
 		return 1;
 	}
 	if(qinfo.qtype == LDNS_RR_TYPE_AXFR || 
@@ -741,12 +772,18 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 		LDNS_QR_SET(ldns_buffer_begin(c->buffer));
 		LDNS_RCODE_SET(ldns_buffer_begin(c->buffer), 
 			LDNS_RCODE_REFUSED);
+		if(worker->stats.extended) {
+			worker->stats.qtype[qinfo.qtype]++;
+			server_stats_insrcode(&worker->stats, c->buffer);
+		}
 		return 1;
 	}
 	if((ret=parse_edns_from_pkt(c->buffer, &edns)) != 0) {
 		verbose(VERB_ALGO, "worker parse edns: formerror.");
+		ldns_buffer_rewind(c->buffer);
 		LDNS_QR_SET(ldns_buffer_begin(c->buffer));
 		LDNS_RCODE_SET(ldns_buffer_begin(c->buffer), ret);
+		server_stats_insrcode(&worker->stats, c->buffer);
 		return 1;
 	}
 	if(edns.edns_present && edns.edns_version != 0) {
@@ -779,15 +816,38 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 		ldns_buffer_flip(c->buffer);
 		return 1;
 	}
+	if(worker->stats.extended)
+		server_stats_insquery(&worker->stats, c, qinfo.qtype,
+			qinfo.qclass, &edns, repinfo);
 	if(c->type != comm_udp)
 		edns.udp_size = 65535; /* max size for TCP replies */
 	if(qinfo.qclass == LDNS_RR_CLASS_CH && answer_chaos(worker, &qinfo,
 		&edns, c->buffer)) {
+		server_stats_insrcode(&worker->stats, c->buffer);
 		return 1;
 	}
 	if(local_zones_answer(worker->daemon->local_zones, &qinfo, &edns, 
 		c->buffer, worker->scratchpad)) {
-		return (ldns_buffer_limit(c->buffer) != 0);
+		if(ldns_buffer_limit(c->buffer) == 0) {
+			comm_point_drop_reply(repinfo);
+			return 0;
+		}
+		server_stats_insrcode(&worker->stats, c->buffer);
+		return 1;
+	}
+	if(!(LDNS_RD_WIRE(ldns_buffer_begin(c->buffer))) &&
+		acl != acl_allow_snoop ) {
+		ldns_buffer_set_limit(c->buffer, LDNS_HEADER_SIZE);
+		ldns_buffer_write_at(c->buffer, 4, 
+			(uint8_t*)"\0\0\0\0\0\0\0\0", 8);
+		LDNS_QR_SET(ldns_buffer_begin(c->buffer));
+		LDNS_RCODE_SET(ldns_buffer_begin(c->buffer), 
+			LDNS_RCODE_REFUSED);
+		ldns_buffer_flip(c->buffer);
+		server_stats_insrcode(&worker->stats, c->buffer);
+		log_addr(VERB_ALGO, "refused nonrec (cache snoop) query from",
+			&repinfo->addr, repinfo->addrlen);
+		return 1;
 	}
 	h = query_info_hash(&qinfo);
 	if((e=slabhash_lookup(worker->env.msg_cache, h, &qinfo, 0))) {
@@ -817,16 +877,11 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 	server_stats_querymiss(&worker->stats, worker);
 
 	/* grab a work request structure for this new request */
-	if(worker->env.mesh->all.count > worker->request_size) {
-		verbose(VERB_ALGO, "Too many requests active. "
-			"dropping incoming query.");
-		worker->stats.num_query_list_exceeded++;
-		comm_point_drop_reply(repinfo);
-		return 0;
-	} else if(worker->env.mesh->num_reply_addrs>worker->request_size*16) {
+	if(worker->env.mesh->num_reply_addrs>worker->request_size*16) {
+		/* protect our memory usage from storing reply addresses */
 		verbose(VERB_ALGO, "Too many requests queued. "
 			"dropping incoming query.");
-		worker->stats.num_query_list_exceeded++;
+		worker->env.mesh->stats_dropped++;
 		comm_point_drop_reply(repinfo);
 		return 0;
 	}
@@ -890,12 +945,13 @@ worker_restart_timer(struct worker* worker)
 void worker_stat_timer_cb(void* arg)
 {
 	struct worker* worker = (struct worker*)arg;
-	server_stats_log(&worker->stats, worker->thread_num);
+	server_stats_log(&worker->stats, worker, worker->thread_num);
 	mesh_stats(worker->env.mesh, "mesh has");
 	worker_mem_report(worker, NULL);
 	if(!worker->daemon->cfg->stat_cumulative) {
-		server_stats_init(&worker->stats);
+		server_stats_init(&worker->stats, worker->env.cfg);
 		mesh_stats_clear(worker->env.mesh);
+		worker->back->unwanted_replies = 0;
 	}
 	/* start next timer */
 	worker_restart_timer(worker);
@@ -916,24 +972,10 @@ worker_create(struct daemon* daemon, int id, int* ports, int n)
 	}
 	worker->daemon = daemon;
 	worker->thread_num = id;
-	worker->cmd_send_fd = -1;
-	worker->cmd_recv_fd = -1;
-	if(id != 0) {
-		int sv[2];
-		/* create socketpair to communicate with worker */
-		if(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
-			free(worker);
-			log_err("socketpair: %s", strerror(errno));
-			return NULL;
-		}
-		if(!fd_set_nonblock(sv[0]) || !fd_set_nonblock(sv[1])) {
-			close(sv[0]);
-			close(sv[1]);
-			free(worker);
-			return NULL;
-		}
-		worker->cmd_send_fd = sv[0];
-		worker->cmd_recv_fd = sv[1];
+	if(!(worker->cmd = tube_create())) {
+		free(worker->ports);
+		free(worker);
+		return NULL;
 	}
 	return worker;
 }
@@ -944,7 +986,7 @@ worker_init(struct worker* worker, struct config_file *cfg,
 {
 	unsigned int seed;
 	worker->need_to_exit = 0;
-	worker->base = comm_base_create();
+	worker->base = comm_base_create(do_sigs);
 	if(!worker->base) {
 		log_err("could not create event handling base");
 		worker_delete(worker);
@@ -976,8 +1018,18 @@ worker_init(struct worker* worker, struct config_file *cfg,
 			return 0;
 		}
 #endif /* LIBEVENT_SIGNAL_PROBLEM */
+		if(!(worker->rc = daemon_remote_create(worker))) {
+			worker_delete(worker);
+			return 0;
+		}
+		if(!daemon_remote_open_accept(worker->rc, 
+			worker->daemon->rc_ports)) {
+			worker_delete(worker);
+			return 0;
+		}
 	} else { /* !do_sigs */
-		worker->comsig = 0;
+		worker->comsig = NULL;
+		worker->rc = NULL;
 	}
 	seed = (unsigned int)time(NULL) ^ (unsigned int)getpid() ^
 		(((unsigned int)worker->thread_num)<<17);
@@ -1002,21 +1054,19 @@ worker_init(struct worker* worker, struct config_file *cfg,
 		cfg->out_ifs, cfg->num_out_ifs, cfg->do_ip4, cfg->do_ip6, 
 		cfg->do_tcp?cfg->outgoing_num_tcp:0, 
 		worker->daemon->env->infra_cache, worker->rndstate,
-		cfg->use_caps_bits_for_id, worker->ports, worker->numports);
+		cfg->use_caps_bits_for_id, worker->ports, worker->numports,
+		cfg->unwanted_threshold, &worker_alloc_cleanup, worker);
 	if(!worker->back) {
 		log_err("could not create outgoing sockets");
 		worker_delete(worker);
 		return 0;
 	}
-	if(worker->thread_num != 0) {
-		/* start listening to commands */
-		if(!(worker->cmd_com=comm_point_create_local(worker->base, 
-			worker->cmd_recv_fd, cfg->msg_buffer_size, 
-			worker_handle_control_cmd, worker))) {
-			log_err("could not create control compt.");
-			worker_delete(worker);
-			return 0;
-		}
+	/* start listening to commands */
+	if(!tube_setup_bg_listen(worker->cmd, worker->base,
+		&worker_handle_control_cmd, worker)) {
+		log_err("could not create control compt.");
+		worker_delete(worker);
+		return 0;
 	}
 	worker->stat_timer = comm_timer_create(worker->base, 
 		worker_stat_timer_cb, worker);
@@ -1034,7 +1084,7 @@ worker_init(struct worker* worker, struct config_file *cfg,
 	}
 	worker->request_size = cfg->num_queries_per_thread;
 
-	server_stats_init(&worker->stats);
+	server_stats_init(&worker->stats, cfg);
 	alloc_init(&worker->alloc, &worker->daemon->superalloc, 
 		worker->thread_num);
 	alloc_set_id_cleanup(&worker->alloc, &worker_alloc_cleanup, worker);
@@ -1080,7 +1130,7 @@ worker_delete(struct worker* worker)
 	if(!worker) 
 		return;
 	if(worker->env.mesh && verbosity >= VERB_OPS) {
-		server_stats_log(&worker->stats, worker->thread_num);
+		server_stats_log(&worker->stats, worker, worker->thread_num);
 		mesh_stats(worker->env.mesh, "mesh has");
 		worker_mem_report(worker, NULL);
 	}
@@ -1089,21 +1139,14 @@ worker_delete(struct worker* worker)
 	listen_delete(worker->front);
 	outside_network_delete(worker->back);
 	comm_signal_delete(worker->comsig);
-	comm_point_delete(worker->cmd_com);
+	tube_delete(worker->cmd);
 	comm_timer_delete(worker->stat_timer);
+	daemon_remote_delete(worker->rc);
 	free(worker->ports);
 	if(worker->thread_num == 0)
 		log_set_time(NULL);
 	comm_base_delete(worker->base);
 	ub_randfree(worker->rndstate);
-	/* close fds after deleting commpoints, to be sure.
-	   Also epoll does not like closing fd before event_del */
-	if(worker->cmd_send_fd != -1)
-		close(worker->cmd_send_fd);
-	worker->cmd_send_fd = -1;
-	if(worker->cmd_recv_fd != -1)
-		close(worker->cmd_recv_fd);
-	worker->cmd_recv_fd = -1;
 	alloc_clear(&worker->alloc);
 	regional_destroy(worker->scratchpad);
 	free(worker);
@@ -1197,6 +1240,13 @@ int libworker_handle_service_reply(struct comm_point* ATTR_UNUSED(c),
 {
 	log_assert(0);
 	return 0;
+}
+
+void libworker_handle_control_cmd(struct tube* ATTR_UNUSED(tube),
+        uint8_t* ATTR_UNUSED(buffer), size_t ATTR_UNUSED(len),
+        int ATTR_UNUSED(error), void* ATTR_UNUSED(arg))
+{
+	log_assert(0);
 }
 
 int context_query_cmp(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))

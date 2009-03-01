@@ -1,26 +1,586 @@
-6 August 2008: Wouter
-	- patch for scrubber that removes ends of CNAMEs, no more DNAMEs
-	  from cache. Remove more irrelevant rrsets from the message.
-	- 1.0.2 svn tag created.
+5 February 2009: Wouter
+	- ldns 1.5.0 rc as tarball included.
+
+4 February 2009: Wouter
+	- tag for release 1.2.1.
+
+3 February 2009: Wouter
+	- noted feature requests in doc/TODO.
+	- printout more detailed errors on ssl certificate loading failures.
+	- updated IANA portlist.
+
+16 January 2009: Wouter
+	- more quiet about ipv6 network failures, i.e. when ipv6 is not
+	  available (network unreachable). Debug still printed on high
+	  verbosity.
+	- unbound-host -4 and -6 options. Stops annoying ipv6 errors when
+	  debugging with unbound-host -4 -d ... 
+	- more cycle detection for NS-check, addr-check, root-prime and
+	  stub-prime queries in the iterator.  Avoids possible deadlock
+	  when priming fails.
+
+15 January 2009: Wouter
+	- bug #229: fixup configure checks for compilation with Solaris 
+	  Sun cc compiler, ./configure CC=/opt/SUNWspro/bin/cc
+	- fixup suncc warnings.
+	- fix bug where unbound could crash using libevent 1.3 and older.
+	- update testset for recent retry change.
+
+14 January 2009: Wouter
+	- 1.2.1 feature: negative caching for failed queries.
+	  Queries that failed are cached for 5 seconds (NORR_TTL).
+	  If the failure is local, like out of memory, it is not cached.
+	- the TTL comparison for the cache used different comparisons,
+	  causing many cache responses that used the iterator and validator
+	  state machines unnecessarily.
+	- retry from 4 to 5 so that EDNS drop retry is part of the first
+	  query resolve attempt, and cached error does not stop EDNS fallback.
+	- remove debug prints that protect against bad referrals.
+	- honor QUIET=no on make commandline (or QUIET=yes ).
+
+13 January 2009: Wouter
+	- fixed bug in lameness marking, removed printouts.
+	- find NS rrset more cleanly for qtype NS.
+	- Moved changes to 1.2.0 for release. Thanks to Mark Zealey for
+	  reporting and logs.
+	- 1.2.1 feature: stops resolving AAAAs promiscuously when they
+	  are in the negative cache.
+
+12 January 2009: Wouter
+	- fixed bug in infrastructure lameness cache, did not lowercase
+	  name of zone to hash when setting lame.
+	- lameness debugging printouts.
+
+9 January 2009: Wouter
+	- created svn tag for 1.2.0 release.
+	- svn trunk contains 1.2.1 version number.
+	- iana portlist updated for todays list.
+	- removed debug print.
+
+8 January 2009: Wouter
+	- new version of ldns-trunk (today) included as tarball, fixed 
+	  bug #224, building with -j race condition.
+	- remove possible race condition in the test for race conditions.
+
+7 January 2009: Wouter
+	- version 1.2.0 in preparation.
+	- feature to allow wildcards (*, ?, [], {}. ~) in trusted-keys-file
+	  statements. (Adapted from patch by Paul Wouters).
+	- typo fix and iana portlist updated.
+	- porting testsuite; unused var warning, and type fixup.
+
+6 January 2009: Wouter
+	- fixup packet-of-death when compiled with --enable-debug.
+	  A malformed packet could cause an internal assertion failure.
+	- added test for HINFO canonicalisation behaviour.
+	- fixup reported problem with transparent local-zone data where
+	  queries with different type could get nxdomain. Now queries
+	  with a different name get resolved normally, with different type
+	  get a correct NOERROR/NODATA answer.
+	- HINFO no longer downcased for validation, making unbound compatible
+	  with bind and ldns.
+	- fix reading included config files when chrooted.
+	  Give full path names for include files.
+	  Relative path names work if the start dir equals the working dir.
+	- fix libunbound message transport when no packet buffer is available.
+
+5 January 2009: Wouter
+	- fixup getaddrinfo failure handling for remote control port.
+	- added L.ROOT-SERVERS.NET. AAAA 2001:500:3::42 to builtin root hints.
+	- fixup so it works with libev-3.51 from http://dist.schmorp.de/libev/
+	- comm_timer_set performs base_set operation after event_add.
+
+18 December 2008: Wouter
+	- fixed bug reported by Duane Wessels: error in DLV lookup, would make
+	  some zones that had correct DLV keys as insecure.
+	- follows -rc makedist from ldns changes (no _rc).
+	- ldns tarball updated with 1.4.1rc for DLV unit test.
+	- verbose prints about recursion lame detection and server selection.
+	- fixup BSD port for infra host storage. It hashed wrongly.
+	- fixup makedist snapshot name generation.
+	- do not reopen syslog to avoid dev/log dependency.
+
+17 December 2008: Wouter
+	- follows ldns makedist.sh. -rc option. autom4te dir removed.
+	- unbound-control status command.
+	- extended statistics has a number of ipv6 queries counter.
+	  contrib/unbound_munin_ was updated to draw ipv6 in the hits graph.
+
+16 December 2008: Wouter
+	- follow makedist improvements from ldns, for maintainers prereleases.
+	- snapshot version uses _ not - to help rpm distinguish the
+	  version number.
+
+11 December 2008: Wouter
+	- better fix for bug #219: use LOG_NDELAY with openlog() call.
+	  Thanks to Tamas Tevesz.
+
+9 December 2008: Wouter
+	- bug #221 fixed: unbound checkconf checks if key files exist if
+	  remote control is enabled. Also fixed NULL printf when not chrooted.
+	- iana portlist updated.
+
+3 December 2008: Wouter
+	- Fix problem reported by Jaco Engelbrecht where unbound-control stats
+	  freezes up unbound if this was compiled without threading, and
+	  was using multiple processes.
+	- iana portlist updated.
+	- test for remote control with interprocess communication.
+	- created command distribution mechanism so that remote control
+	  commands other than 'stats' work on all processes in a nonthreaded
+	  compiled version. dump/load cache work, on the first process.
+	- fixup remote control local_data addition memory corruption bug.
+
+1 December 2008: Wouter
+	- SElinux policy files in contrib/selinux for the unbound daemon,
+	  by Paul Wouters and Adam Tkac.
+
+25 November 2008: Wouter
+	- configure complains when --without-ssl is given (bug #220).
+	- skip unsupported feature tests on vista/mingw.
+	- fixup testcode/streamtcp to work on vista/mingw.
+	- root-hints test checks version of dig required.
+	- blacklisted servers are polled at a low rate (1%) to see if they
+	  come back up. But not if there is some other working server.
+
+24 November 2008: Wouter
+	- document that the user of the server daemon needs read privileges
+	  on the keys and certificates generated by unbound-control-setup.
+	  This is different per system or distribution, usually, running the
+	  script under the same username as the server uses suffices.
+	  i.e.  sudo -u unbound unbound-control-setup
+	- testset port to vista/mingw.
+	- tcp_sigpipe to freebsd port.
+
+21 November 2008: Wouter
+	- fixed tcp accept, errors were printed when they should not.
+	- unbound-control-setup.sh removes read/write permissions other
+	  from the keys it creates (as suggested by Dmitriy Demidov).
+
+20 November 2008: Wouter
+	- fixup fatal error due to faulty error checking after tcp accept.
+	- add check in rlimit to avoid integer underflow.
+	- rlimit check with new formula; better estimate for number interfaces
+	- nicer comments in rlimit check.
+	- tag 1.1.1 created in svn.
+	- trunk label is 1.1.2
+
+19 November 2008: Wouter
+	- bug #219: fixed so that syslog which delays opening until the first
+	  log line is written, gets a log line while not chroot'ed yet.
+
+18 November 2008: Wouter
+	- iana portlist updated.
+	- removed cast in unit test debug print that was not 64bit safe.
+	- trunk back to 1.1.0; copied to tags 1.1.0 release.
+	- trunk to has version number 1.1.1 again.
+	- in 1.1.1; make clean nicer. grammar in manpage.
+
+17 November 2008: Wouter
+	- theoretical fix for problems reported on mailing list.
+	  If a delegation point has no A but only AAAA and do-ip6 is no,
+	  resolution would fail. Fixed to ask for the A and AAAA records.
+	  It has to ask for both always, so that it can fail quietly, from
+	  TLD perspective, when a zone is only reachable on one transport.
+	- test for above, only AAAA and doip6 is no. Fix causes A record
+	  for nameserver to be fetched.
+	- fixup address duplication on cache fillup for delegation points.
+	- testset updated for new query answer requirements.
+
+14 November 2008: Wouter
+	- created 1.1.0 release tag in svn.
+	- trunk moved to 1.1.1
+	- fixup unittest-neg for locking.
+
+13 November 2008: Wouter
+	- added fedora init and specfile to contrib (by Paul Wouters).
+	- added configure check for ldns 1.4.0 (using its compat funcs).
+	- neater comments in worker.h.
+	- removed doc/plan and updated doc/TODO.
+	- silenced EHOSTDOWN (verbosity 2 or higher to see it).
+	- review comments from Jelte, Matthijs. Neater code.
+
+12 November 2008: Wouter
+	- add unbound-control manpage to makedist replace list.
+
+11 November 2008: Wouter
+	- unit test for negative cache, stress tests the refcounting.
+	- fix for refcounting error that could cause fptr_wlist fatal exit
+	  in the negative cache rbtree (upcoming 1.1 feature). (Thanks to 
+	  Attila Nagy for testing).
+	- nicer comments in cachedump about failed RR to string conversion.
+	- fix 32bit wrap around when printing large (4G and more) mem usage
+	  for extended statistics.
+
+10 November 2008: Wouter
+	- fixup the getaddrinfo compat code rename.
+
+8 November 2008: Wouter
+	- added configure check for eee build warning.
+
+7 November 2008: Wouter
+	- fix bug 217: fixed, setreuid and setregid do not work on MacOSX10.4.
+	- detect nonblocking problems in network stack in configure script.
+
+6 November 2008: Wouter
+	- dname_priv must decompress the name before comparison.
+	- iana portlist updated.
+
+5 November 2008: Wouter
+	- fixed possible memory leak in key_entry_key deletion.
+	  Would leak a couple bytes when trust anchors were replaced.
+	- if query and reply qname overlap, the bytes are skipped not copied.
+	- fixed file descriptor leak when messages were jostled out that
+	  had outstanding (TCP) replies.
+	- DNAMEs used from cache have their synthesized CNAMEs initialized
+	  properly.
+	- fixed file descriptor leak for localzone type deny (for TCP).
+	- fixed memleak at exit for nsec3 negative cached zones.
+	- fixed memleak for the keyword 'nodefault' when reading config.
+	- made verbosity of 'edns incapable peer' warning higher, so you
+	  do not get spammed by it.
+	- caught elusive Bad file descriptor error bug, that would print the
+	  error while unnecessarily try to listen to a closed fd. Fixed.
+
+4 November 2008: Wouter
+	- fixed -Wwrite-strings warnings that result in better code.
+
+3 November 2008: Wouter
+	- fixup build process for Mac OSX linker, use ldns b32 compat funcs.
+	- generated configure with autoconf-2.61.
+	- iana portlist updated.
+	- detect if libssl needs libdl.  For static linking with libssl.
+	- changed to use new algorithm identifiers for sha256/sha512
+	  from ldns 1.4.0 (need very latest version).
+	- updated the included ldns tarball.
+	- proper detection of SHA256 and SHA512 functions (not just sizes).
+
+23 October 2008: Wouter
+	- a little more debug info for failure on signer names. prints names.
+
+22 October 2008: Wouter
+	- CFLAGS are picked up by configure from the environment.
+	- iana portlist updated.
+	- updated ldns to use 1.4.0-pre20081022 so it picks up CFLAGS too.
+	- new stub-prime: yesno option. Default is off, so it does not prime.
+	  can be turned on to get same behaviour as previous unbound release.
+	- made automated test that checks if builtin root hints are uptodate.
+	- finished draft-wijngaards-dnsext-resolver-side-mitigation
+	  implementation. The unwanted-reply-threshold can be set.
+	- fixup so fptr_whitelist test in alloc.c works.
+
+21 October 2008: Wouter
+	- fix update-anchors.sh, so it does not report different RR order
+	  as an update.  Sorts the keys in the file.  Updated copyright.
+	- fixup testbound on windows, the command control pipe doesn't exist.
+	- skip 08hostlib test on windows, no fork() available.
+	- made unbound-remote work on windows.
+
+20 October 2008: Wouter
+	- quench a log message that is debug only.
+	- iana portlist updated.
+	- do not query bogus nameservers.  It is like nameservers that have 
+	  the NS or A or AAAA record bogus are listed as donotquery.
+	- if server selection is faced with only bad choices, it will
+	  attempt to get more options to be fetched.
+	- changed bogus-ttl default value from 900 to 60 seconds.
+	  In anticipation that operator caused failures are more likely than
+	  actual attacks at this time.  And thus repeated validation helps
+	  the operators get the problem fixed sooner.  It makes validation
+	  failures go away sooner (60 seconds after the zone is fixed).
+	  Also it is likely to try different nameserver targets every minute,
+	  so that if a zone is bad on one server but not another, it is 
+	  likely to pick up the 'correct' one after a couple minutes,
+	  and if the TTL is big enough that solves validation for the zone.
+	- fixup unbound-control compilation on windows.
+
+17 October 2008: Wouter
+	- port Leopard/G5: fixup type conversion size_t/uint32.
+	  please ranlib, stop file without symbols warning.
+	- harden referral path now also validates the root after priming.
+	  It looks up the root NS authoritatively as well as the root servers
+	  and attemps to validate the entries.
+
+16 October 2008: Wouter
+	- Fixup negative TTL values appearing (reported by Attila Nagy).
+
+15 October 2008: Wouter
+	- better documentation for 0x20; remove fallback TODO, it is done.
+	- harden-referral-path feature includes A, AAAA queries for glue,
+	  as well as very careful NS caching (only when doing NS query).
+	  A, AAAA use the delegation from the NS-query.
+
+14 October 2008: Wouter
+	- fwd_three.tpkg test was flaky.  If the three requests hit the
+	  wrong threads by chance (or bad OS) then the test would fail.
+	  Made less flaky by increasing number of retries.
+	- stub_udp.tpkg changed to work, give root hints. fixed ldns_dname_abs.
+	- ldns tarball is snapshot of ldns r2759 (1.4.0-pre-20081014).
+	  Which includes the ldns_dname_absolute fix.
+	- fwd_three test remains flaky now that unbound does not stop
+	  listening when full.  Thus, removed timeout problem.
+	  It may be serviced by three threads, or maybe by one.
+	  Mostly only useful for lock-check testing now.
+
+13 October 2008: Wouter
+	- fixed recursion servers deployed as authoritative detection, so
+	  that as a last resort, a +RD query is sent there to get the 
+	  correct answer.
+	- iana port list update.
+	- ldns tarball is snapshot of ldns r2759 (1.4.0-pre-20081013).
+
+10 October 2008: Wouter
+	- fixup tests - the negative cache contained the correct NSEC3s for
+	  two tests that are supposed to fail to validate.
+
+9 October 2008: Wouter
+	- negative cache caps max iterations of NSEC3 done.
+	- NSEC3 negative cache for qtype DS works.
+
+8 October 2008: Wouter
+	- NSEC negative cache for DS.
+
+6 October 2008: Wouter
+	- jostle-timeout option, so you can config for slow links.
+	- 0x20 fallback code.  Tries 3xnumber of nameserver addresses
+	  queries that must all be the same.  Sent to random nameservers.
+	- documented choices for DoS, EDNS, 0x20.
+
+2 October 2008: Wouter
+	- fixup unlink of pidfile.
+	- fixup SHA256 algorithm collation code.
+	- contrib/update-anchor.sh does not overwrite anchors if not needed.
+	  exits 0 when a restart is needed, other values if not.
+	  so,  update-anchor.sh -d mydir && /etc/rc.d/unbound restart
+	  can restart unbound exactly when needed.
+
+30 September 2008: Wouter
+	- fixup SHA256 DS downgrade, no longer possible to downgrade to SHA1.
+	- tests for sha256 support and downgrade resistance.
+	- RSASHA256 and RSASHA512 support (using the draft in dnsext),
+	  using the drafted protocol numbers.
+	- when using stub on localhost (127.0.0.1@10053) unbound works.
+	  Like when running NSD to host a local zone, on the same machine.
+	  The noprime feature. manpages more explanation. Added a test for it.
+	- shorthand for reverse PTR,  local-data-ptr: "1.2.3.4 www.ex.com"
+
+29 September 2008: Wouter
+	- EDNS lameness detection, if EDNS packets are dropped this is
+	  detected, eventually.
+	- multiple query timeout rtt backoff does not backoff too much.
+
+26 September 2008: Wouter
+	- tests for remote-control.
+	- small memory leak in exception during remote control fixed.
+	- fixup for lock checking but not unchecking in remote control.
+	- iana portlist updated.
+
+23 September 2008: Wouter
+	- Msg cache is loaded. A cache load enables cache responses.
+	- unbound-control flush [name], flush_type and flush_zone.
+
+22 September 2008: Wouter
+	- dump_cache and load_cache statements in unbound-control.
+	  RRsets are dumped and loaded correctly.
+	  Msg cache is dumped.
+
+19 September 2008: Wouter
+	- locking on the localdata structure.
+	- add and remove local zone and data with unbound-control.
+	- ldns trunk snapshot updated, make tests work again.
+
+18 September 2008: Wouter
+	- fixup error in time calculation.
+	- munin plugin improvements.
+	- nicer abbreviations for high query types values (ixfr, axfr, any...)
+	- documented the statistics output in unbound-control man page.
+	- extended statistics prints out histogram, over unbound-control.
+
+17 September 2008: Wouter
+	- locking for threadsafe bogus rrset counter.
+	- ldns trunk no longer exports b32 functions, provide compat.
+	- ldns tarball updated.
+	- testcode/ldns-testpkts.c const fixups.
+	- fixed rcode stat printout.
+	- munin plugin in contrib.
+	- stats always printout uptime, because stats plugins need it.
+
+16 September 2008: Wouter
+	- extended-statistics: yesno config option.
+	- unwanted replies spoof nearmiss detector.
+	- iana portlist updated.
+
+15 September 2008: Wouter
+	- working start, stop, reload commands for unbound-control.
+	- test for unbound-control working; better exit value for control.
+	- verbosity control via unbound-control.
+	- unbound-control stats.
+
+12 September 2008: Wouter
+	- removed browser control mentions. Proto speccy.
+
+11 September 2008: Wouter
+	- set nonblocking on new TCP streams, because linux does not inherit
+	  the socket options to the accepted socket.
+	- fix TCP timeouts.
+	- SSL protected connection between server and unbound-control.
+
+10 September 2008: Wouter
+	- remove memleak in privacy addresses on reloads and quits.
+	- remote control work.
+
+9 September 2008: Wouter
+	- smallapp/unbound-control-setup.sh script to set up certificates.
+
+4 September 2008: Wouter
+	- scrubber scrubs away private addresses.
+	- test for private addresses. man page entry.
+	- code refactored for name and address tree lookups.
+
+3 September 2008: Wouter
+	- options for 'DNS Rebinding' protection: private-address and
+	  private-domain.
+	- dnstree for reuse of routines that help with domain, addr lookups.
+	- private-address and private-domain config option read, stored.
+
+2 September 2008: Wouter
+	- DoS protection features. Queries are jostled out to make room.
+	- testbound can pass time, increasing the internal timer.
+	- do not mark unsigned additionals bogus, leave unchecked, which
+	  is removed too.
+
+1 September 2008: Wouter
+	- disallow nonrecursive queries for cache snooping by default.
+	  You can allow is using access-control: <subnet> allow_snoop.
+	  The defaults do allow access no authoritative data without RD bit.
+	- two tests for it and fixups of tests for nonrec refused.
+
+29 August 2008: Wouter
+	- version 1.1 number in trunk.
+	- harden-referral-path option for query for NS records.
+	  Default turns off expensive, experimental option.
+
+28 August 2008: Wouter
+	- fixup logfile handling; it is created with correct permissions
+	  again. (from bugfix#199).
+	  Some errors are not written to logfile (pidfile writing, forking),
+	  and these are only visible by using the -d commandline flag.
+
+27 August 2008: Wouter
+	- daemon(3) is causing problems for people. Reverting the patch.
+	  bug#200, and 199 and 203 contain sideline discussion on it.
+	- bug#199 fixed: pidfile can be outside chroot. openlog is done before
+	  chroot and drop permissions.
+	- config option to set size of aggressive negative cache,
+	  neg-cache-size.
+	- bug#203 fixed: dlv has been implemented.
+
+26 August 2008: Wouter
+	- test for insecure zone when DLV is in use, also does negative cache.
+	- test for trustanchor when DLV is in use (the anchor works).
+	- test for DLV used for a zone below a trustanchor.
+	- added scrub filter for overreaching NSEC records and unit test.
+	- iana portlist update
+	- use of setresuid or setreuid when available.
+	- use daemon(3) if available.
+
+25 August 2008: Wouter
+	- realclean patch from Robert Edmonds.
+
+22 August 2008: Wouter
+	- nicer debuglogging of DLV.
+	- test with secure delegation inside the DLV repository.
+
+21 August 2008: Wouter
+	- negative cache code linked into validator, for DLV use.
+	  negative cache works for DLV.
+	- iana portlist update.
+	- dlv-anchor option for unit tests.
+	- fixup NSEC_AT_APEX classification for short typemaps.
+	- ldns-testns has subdomain checks, for unit tests.
+
+20 August 2008: Wouter
+	- negative cache code, reviewed.
+
+18 August 2008: Wouter
+	- changes info: in logfile to notice: info: or debug: depending on 
+	  the verbosity of the statements.  Better logfile message
+	  classification.
+	- bug #208: extra rc.d unbound flexibility for freebsd/nanobsd.
+
+15 August 2008: Wouter
+	- DLV nsec code fixed for better detection of closest existing 
+	  enclosers from NSEC responses.
+	- DLV works, straight to the dlv repository, so not for production.
+	- Iana port update.
+
+14 August 2008: Wouter
+	- synthesize DLV messages from the rrset cache, like done for DS.
+
+13 August 2008: Wouter
+	- bug #203: nicer do-auto log message when user sets incompatible
+	  options.
+	- bug #204: variable name ameliorated in log.c.
+	- bug #206: in iana_update, no egrep, but awk use.
+	- ldns snapshot r2699 taken (includes DLV type).
+	- DLV work, config file element, trust anchor read in.
+
+12 August 2008: Wouter
+	- finished adjusting testset to provide qtype NS answers.
+
+11 August 2008: Wouter
+	- Fixup rrset security updates overwriting 2181 trust status.
+	  This makes validated to be insecure data just as worthless as
+	  nonvalidated data, and 2181 rules prevent cache overwrites to them.
+	- Fix assertion fail on bogus key handling.
+	- dnssec lameness detection works on first query at trust apex.
+	- NS queries get proper cache and dnssec lameness treatment.
+	- fixup compilation without pthreads on linux.
+
+8 August 2008: Wouter
+	- NS queries are done after every referral.
+	  validator is used on those NS records (if anchors enabled).
+
+7 August 2008: Wouter
+	- Scrubber more strict. CNAME chains, DNAMEs from cache, other 
+	  irrelevant rrsets removed.
+	- 1.0.2 released from 1.0 support branch.
+	- fixup update-anchor.sh to work both in BSD shell and bash.
 
 5 August 2008: Wouter
-	- fixup DS test so apex nodata works again (from trunk).
+	- fixup DS test so apex nodata works again.
 
 4 August 2008: Wouter
-	- Bug #201 fixup from trunk; fixes segfault on exit cleanup
-	- iana port nrs updated.
+	- iana port update. 
+	- TODO update.
+	- fix bug 201: null ptr deref on cleanup while udp pkts wait for port.
+	- added explanatory text for outgoing-port-permit in manpage.
 
 30 July 2008: Wouter
-	- fixup DS qtype validation bug. (fix taken from trunk).
+	- fixup bug qtype DS for unsigned zone and signed parent validation.
+
+25 July 2008: Wouter
+	- added original copyright statement of OpenBSD arc4random code.
+	- created tube signaling solution on windows, as a pipe replacement.
+	  this makes background asynchronous resolution work on windows.
+	- removed very insecure socketpair compat code. It also did not
+	  work with event_waiting. Solved by pipe replacement.
+	- unbound -h prints openssl version number as well.
+
+22 July 2008: Wouter
+	- moved pipe actions to util/tube.c. easier porting and shared code.
+	- check _raw() commpoint callbacks with fptr_wlist.
+	- iana port update.
 
 21 July 2008: Wouter
 	- #198: nicer entropy warning message. manpage OS hints.
 
 19 July 2008: Wouter
-	- #198: fixup manpage to suggest entropy chroot fix.
+	- #198: fixup man page to suggest chroot entropy fix.
 
 18 July 2008: Wouter
 	- branch for 1.0 support.
+	- trunk work on tube.c.
 
 17 July 2008: Wouter
 	- fix bug #196, compile outside source tree.

@@ -28,15 +28,16 @@ K.ROOT-SERVERS.NET.	IN	A	193.0.14.129
 ENTRY_END
 
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode subdomain
+ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-www.example.com. IN A
+com. IN A
 SECTION AUTHORITY
 com.	IN NS	a.gtld-servers.net.
 
 ; sneak in some data into the cache to simulate partial data after timeouts
+; gets scrubbed anyway.
 example.net.	NS	ns.example.net.
 
 SECTION ADDITIONAL
@@ -44,11 +45,11 @@ a.gtld-servers.net.	IN 	A	192.5.6.30
 ENTRY_END
 
 ENTRY_BEGIN
-MATCH opcode qname
+MATCH opcode subdomain
 ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-ns.example.net. IN A
+net. IN A
 SECTION AUTHORITY
 net.	IN NS	a.gtld-servers.net.
 SECTION ADDITIONAL
@@ -61,17 +62,50 @@ RANGE_BEGIN 0 100
 	ADDRESS 192.5.6.30
 ; com zone
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode qname
+ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-www.example.com. IN A
+com. IN NS
+SECTION ANSWER
+com.	IN NS	a.gtld-servers.net.
+SECTION ADDITIONAL
+a.gtld-servers.net.	IN 	A	192.5.6.30
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode subdomain
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+example.com. IN A
 SECTION AUTHORITY
 example.com.	IN NS	ns.example.net.
 SECTION ADDITIONAL
 ENTRY_END
 
 ; net zone
+ENTRY_BEGIN
+MATCH opcode qname
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+net. IN NS
+SECTION ANSWER
+net.	IN NS	a.gtld-servers.net.
+SECTION ADDITIONAL
+a.gtld-servers.net.	IN 	A	192.5.6.30
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qname
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+a.gtld-servers.net. IN AAAA
+SECTION ANSWER
+ENTRY_END
+
 ENTRY_BEGIN
 MATCH opcode qname
 ADJUST copy_id copy_query
@@ -89,6 +123,18 @@ RANGE_END
 RANGE_BEGIN 0 100
 	ADDRESS 1.2.3.4
 ; example.net. zone
+ENTRY_BEGIN
+MATCH opcode qname
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+example.net. IN NS
+SECTION ANSWER
+example.net. NS ns.example.net.
+SECTION ADDITIONAL
+ns.example.net. IN A 1.2.3.4
+ENTRY_END
+
 ENTRY_BEGIN
 MATCH opcode qtype qname
 ADJUST copy_id
@@ -109,6 +155,30 @@ SECTION ANSWER
 ENTRY_END
 
 ; example.com. zone
+ENTRY_BEGIN
+MATCH opcode qname qtype
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+example.com. IN NS
+SECTION ANSWER
+example.com.	IN NS	ns.example.com.
+example.com.    3600    IN      RRSIG   NS 3 2 3600 20070926134150 20070829134150 2854 example.com. MC0CFQCN+qHdJxoI/2tNKwsb08pra/G7aAIUAWA5sDdJTbrXA1/3OaesGBAO3sI= ;{id = 2854}
+SECTION ADDITIONAL
+ns.example.com.		IN 	A	1.2.3.4
+ns.example.com. 3600    IN      RRSIG   A 3 3 3600 20070926135752 20070829135752 2854 example.com. MC0CFQCMSWxVehgOQLoYclB9PIAbNP229AIUeH0vNNGJhjnZiqgIOKvs1EhzqAo= ;{id = 2854}
+ENTRY_END
+
+ENTRY_BEGIN
+MATCH opcode qname qtype
+ADJUST copy_id copy_query
+REPLY QR NOERROR
+SECTION QUESTION
+ns.example.com. IN AAAA
+SECTION ANSWER
+; bogus
+ENTRY_END
+
 ; response to DNSKEY priming query
 ENTRY_BEGIN
 MATCH opcode qtype qname

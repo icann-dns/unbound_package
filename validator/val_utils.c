@@ -150,13 +150,7 @@ rrsig_get_signer(uint8_t* data, size_t len, uint8_t** sname, size_t* slen)
 	*sname = data;
 }
 
-/**
- * Find the signer name for an RRset.
- * @param rrset: the rrset.
- * @param sname: signer name is returned or NULL if not signed.
- * @param slen: length of sname (or 0).
- */
-static void 
+void 
 val_find_rrset_signer(struct ub_packed_rrset_key* rrset, uint8_t** sname,
 	size_t* slen)
 {
@@ -343,10 +337,16 @@ val_verify_rrset(struct module_env* env, struct val_env* ve,
 		if(sec == sec_status_secure)
 			d->trust = rrset_trust_validated;
 		else if(sec == sec_status_bogus) {
+			size_t i;
 			/* update ttl for rrset to fixed value. */
 			d->ttl = ve->bogus_ttl;
+			for(i=0; i<d->count+d->rrsig_count; i++)
+				d->rr_ttl[i] = ve->bogus_ttl;
 			/* leave RR specific TTL: not used for determine
 			 * if RRset timed out and clients see proper value. */
+			lock_basic_lock(&ve->bogus_lock);
+			ve->num_rrset_bogus++;
+			lock_basic_unlock(&ve->bogus_lock);
 		}
 		/* if status updated - store in cache for reuse */
 		rrset_update_sec_status(env->rrset_cache, rrset, *env->now);
@@ -424,6 +424,7 @@ val_verify_new_DNSKEYs(struct regional* region, struct module_env* env,
 	/* as long as this is false, we can consider this DS rrset to be
 	 * equivalent to no DS rrset. */
 	int has_useful_ds = 0;
+	int d, digest_algo = 0; /* DS digest algo 0 is not used. */
 	size_t i, num;
 	enum sec_status sec;
 
@@ -438,10 +439,22 @@ val_verify_new_DNSKEYs(struct regional* region, struct module_env* env,
 	}
 
 	num = rrset_get_count(ds_rrset);
+	/* find favority algo, for now, highest number supported */
 	for(i=0; i<num; i++) {
-		/* Check to see if we can understand this DS. */
 		if(!ds_digest_algo_is_supported(ds_rrset, i) ||
 			!ds_key_algo_is_supported(ds_rrset, i)) {
+			continue;
+		}
+		d = ds_get_digest_algo(ds_rrset, i);
+		if(d > digest_algo)
+			digest_algo = d;
+	}
+	for(i=0; i<num; i++) {
+		/* Check to see if we can understand this DS. 
+		 * And check it is the strongest digest */
+		if(!ds_digest_algo_is_supported(ds_rrset, i) ||
+			!ds_key_algo_is_supported(ds_rrset, i) ||
+			ds_get_digest_algo(ds_rrset, i) != digest_algo) {
 			continue;
 		}
 
