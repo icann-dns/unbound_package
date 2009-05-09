@@ -173,7 +173,6 @@ server:
 	#
 	# If you give "" no chroot is performed. The path must not end in a /.
 	# chroot: "@UNBOUND_CHROOT_DIR@"
-	chroot: ""
 
 	# if given, user privileges are dropped (after binding port),
 	# and the given username is assumed. Default is user "unbound".
