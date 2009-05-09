@@ -3,10 +3,12 @@
 %:
 	dh $@
 
-build: build-stamp
+include /usr/share/quilt/quilt.make
+
+build: patch build-stamp
 build-stamp:
 	dh build --before configure
-	autoreconf -i
+	autoreconf -fvi
 	dh_auto_configure -- \
 		--disable-rpath \
 		--with-chroot-dir=/var/lib/unbound \
@@ -15,7 +17,7 @@ build-stamp:
 	dh build --after test
 	touch $@
 
-clean:
+clean: unpatch
 	dh clean
 
 install: build

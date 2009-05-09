@@ -1,0 +1,13 @@
+Index: unbound-1.2.1/Makefile.in
+===================================================================
+--- unbound-1.2.1.orig/Makefile.in	2009-05-09 16:39:59.232932234 -0400
++++ unbound-1.2.1/Makefile.in	2009-05-09 16:40:04.674986821 -0400
+@@ -145,7 +145,7 @@
+ 
+ libunbound.la:	$(LIBUNBOUND_OBJ)
+ 	$(INFO) Link $@
+-	$Q$(LINK_LIB) --export-symbols $(srcdir)/libunbound/ubsyms.def -o $@ $(sort $(LIBUNBOUND_OBJ)) -rpath $(libdir) $(LIBS)
++	$Q$(LINK_LIB) -export-symbols $(srcdir)/libunbound/ubsyms.def -o $@ $(sort $(LIBUNBOUND_OBJ)) -rpath $(libdir) $(LIBS)
+ 
+ ifeq ($(patsubst ldns-src%,ldns-src,$(ldnsdir)),ldns-src)
+ ldnslib=$(ldnsdir)/lib/libldns.a

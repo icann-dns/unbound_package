@@ -1,0 +1,12 @@
+Index: unbound-1.2.1/doc/example.conf.in
+===================================================================
+--- unbound-1.2.1.orig/doc/example.conf.in	2009-05-09 16:42:10.188932340 -0400
++++ unbound-1.2.1/doc/example.conf.in	2009-05-09 16:42:21.815509323 -0400
+@@ -173,6 +173,7 @@
+ 	#
+ 	# If you give "" no chroot is performed. The path must not end in a /.
+ 	# chroot: "@UNBOUND_CHROOT_DIR@"
++	chroot: ""
+ 
+ 	# if given, user privileges are dropped (after binding port),
+ 	# and the given username is assumed. Default is user "unbound".
