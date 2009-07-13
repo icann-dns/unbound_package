@@ -43,7 +43,6 @@
 #ifndef DAEMON_WORKER_H
 #define DAEMON_WORKER_H
 
-#include "config.h"
 #include "util/netevent.h"
 #include "util/locks.h"
 #include "util/alloc.h"
@@ -67,6 +66,8 @@ enum worker_commands {
 	worker_cmd_quit,
 	/** obtain statistics */
 	worker_cmd_stats,
+	/** obtain statistics without statsclear */
+	worker_cmd_stats_noreset,
 	/** execute remote control command */
 	worker_cmd_remote
 };
@@ -100,8 +101,6 @@ struct worker {
 	struct comm_point* cmd_com;
 	/** timer for statistics */
 	struct comm_timer* stat_timer;
-	/** remote control state (for first thread only) */
-	struct daemon_remote* rc;
 
 	/** number of requests that can be handled by this worker */
 	size_t request_size;
@@ -227,6 +226,12 @@ int worker_handle_service_reply(struct comm_point* c, void* arg, int error,
 
 /** cleanup the cache to remove all rrset IDs from it, arg is worker */
 void worker_alloc_cleanup(void* arg);
+
+/**
+ * Init worker stats - includes server_stats_init, outside network and mesh.
+ * @param worker: the worker to init
+ */
+void worker_stats_clear(struct worker* worker);
 
 /** statistics timer callback handler */
 void worker_stat_timer_cb(void* arg);

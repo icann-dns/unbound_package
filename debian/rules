@@ -12,7 +12,7 @@ build-stamp:
 	dh_auto_configure -- \
 		--disable-rpath \
 		--with-chroot-dir=/var/lib/unbound \
-		--with-pidfile=/var/lib/unbound/unbound.pid
+		--with-pidfile=/var/run/unbound.pid
 	dh_auto_build
 	dh build --after test
 	touch $@

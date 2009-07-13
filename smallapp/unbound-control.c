@@ -61,7 +61,9 @@ usage()
 	printf("  start				start server; runs unbound(8)\n");
 	printf("  stop				stops the server\n");
 	printf("  reload			reloads the server\n");
+	printf("  				(this flushes data, stats, requestlist)\n");
 	printf("  stats				print statistics\n");
+	printf("  stats_noreset			peek at statistics\n");
 	printf("  status			display status of server\n");
 	printf("  verbosity [number]		change logging detail\n");
 	printf("  local_zone [name] [type] 	add new local zone\n");
@@ -78,6 +80,12 @@ usage()
 	printf("  flush_type [name] [type]	flush name, type from cache\n");
 	printf("  flush_zone [name]		flush everything at or under name\n");
 	printf("  				from rr and dnssec caches\n");
+	printf("  flush_stats 			flush statistics, make zero\n");
+	printf("  flush_requestlist 		drop queries that are worked on\n");
+	printf("  dump_requestlist		show what is worked on\n");
+	printf("  forward [off | addr ...]	without arg show forward setup\n");
+	printf("				or off to turn off root forwarding\n");
+	printf("				or give list of ip addresses\n");
 	printf("Version %s\n", PACKAGE_VERSION);
 	printf("BSD licensed, see LICENSE in source package for details.\n");
 	printf("Report bugs to %s\n", PACKAGE_BUGREPORT);
@@ -294,7 +302,11 @@ go(const char* cfgfile, char* svr, int argc, char* argv[])
 	ret = go_cmd(ssl, argc, argv);
 
 	SSL_free(ssl);
+#ifndef USE_WINSOCK
 	close(fd);
+#else
+	closesocket(fd);
+#endif
 	SSL_CTX_free(ctx);
 	config_delete(cfg);
 	return ret;

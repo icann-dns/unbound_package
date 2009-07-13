@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Feb 10, 2009" "NLnet Labs" "unbound 1.2.1"
+.TH "unbound.conf" "5" "Jul 13, 2009" "NLnet Labs" "unbound 1.3.2"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -86,10 +86,9 @@ clause.
 The verbosity number, level 0 means no verbosity, only errors. Level 1 
 gives operational information. Level 2 gives detailed operational
 information. Level 3 gives query level information, output per query. 
-Level 4 gives algorithm level information.  
-Default is level 1. The verbosity can also be increased from the commandline,
-see
-\fIunbound\fR(8).
+Level 4 gives algorithm level information.  Level 5 logs client 
+identification for cache misses.  Default is level 1. 
+The verbosity can also be increased from the commandline, see \fIunbound\fR(8).
 .TP
 .B statistics\-interval: \fI<seconds>
 The number of seconds between printing statistics to the log for every thread.
@@ -215,6 +214,14 @@ When the internal TTL expires, the cache item has expired.
 Can be set lower to force the resolver to query for data often, and not
 trust (very large) TTL values.
 .TP
+.B cache\-min\-ttl: \fI<seconds>
+Time to live minimum for RRsets and messages in the cache. Default is 0.
+If the the minimum kicks in, the data is cached for longer than the domain
+owner intended, and thus less queries are made to look up the data.
+Zero makes sure the data in the cache is as the domain owner intended,
+higher values, especially more than an hour or so, can lead to trouble as 
+the data in the cache does not match up with the actual data any more.
+.TP
 .B infra\-host\-ttl: \fI<seconds>
 Time to live for entries in the host cache. The host cache contains 
 roundtrip timing and EDNS support information. Default is 900.
@@ -337,6 +344,11 @@ Sets unbound to send log messages to the syslogd, using
 The log facility LOG_DAEMON is used, with identity "unbound".
 The logfile setting is overridden when use\-syslog is turned on.
 The default is to log to syslog.
+.TP
+.B log\-time\-ascii: \fI<yes or no>
+Sets logfile lines to use a timestamp in UTC ascii. Default is no, which
+prints the seconds since 1970 in brackets. No effect if using syslog, in
+that case syslog formats the timestamp printed into the log files.
 .TP
 .B pidfile: \fI<filename>
 The process id is written to the file. Default is "@UNBOUND_PIDFILE@". 
@@ -471,6 +483,7 @@ Module configuration, a list of module names separated by spaces, surround
 the string with quotes (""). The modules can be validator, iterator.
 Setting this to "iterator" will result in a non\-validating server.
 Setting this to "validator iterator" will turn on DNSSEC validation.
+The ordering of the modules is important.
 You must also set trust\-anchors for validation to be useful.
 .TP
 .B trust\-anchor\-file: \fI<filename>
@@ -504,11 +517,38 @@ means that it is a lookaside for the root. Default is "", or no dlv anchor file.
 .B dlv\-anchor: \fI<"Resource Record">
 Much like trust\-anchor, this is a DLV anchor with the DS or DNSKEY inline.
 .TP
+.B domain\-insecure: \fI<domain name>
+Sets domain name to be insecure, DNSSEC chain of trust is ignored towards
+the domain name.  So a trust anchor above the domain name can not make the
+domain secure with a DS record, such a DS record is then ignored.
+Also keys from DLV are ignored for the domain.  Can be given multiple times
+to specify multiple domains that are treated as if unsigned.  If you set
+trust anchors for the domain they override this setting (and the domain 
+is secured).
+.IP
+This can be useful if you want to make sure a trust anchor for external
+lookups does not affect an (unsigned) internal domain.  A DS record 
+externally can create validation failures for that internal domain.
+.TP
 .B val\-override\-date: \fI<rrsig\-style date spec>
 Default is "" or "0", which disables this debugging feature. If enabled by
 giving a RRSIG style date, that date is used for verifying RRSIG inception
 and expiration dates, instead of the current date. Do not set this unless 
 you are debugging signature inception and expiration.
+.TP
+.B val\-sig\-skew\-min: \fI<seconds>
+Minimum number of seconds of clock skew to apply to validated signatures.
+A value of 10% of the signature lifetime is used, capped by this setting.  
+Default is 3600 (1 hour) which allows for daylight savings differences.  
+Lower this value for more strict checking of short lived signatures.
+.TP
+.B val\-sig\-skew\-max: \fI<seconds>
+Maximum number of seconds of clock skew to apply to validated signatures.
+A value of 10% of the signature lifetime is used, capped by this setting.  
+Default is 86400 (24 hours) which allows for timezone setting problems in 
+stable domains.  Setting both min and max very low disables the clock skew 
+allowances.  Setting both min and max very high makes the validator check
+the signature timestamps less strictly.
 .TP
 .B val\-bogus\-ttl: \fI<number>
 The time to live for bogus data. This is data that has failed validation;
@@ -805,6 +845,18 @@ Name of server to forward to. Is itself resolved before it is used.
 .B forward\-addr: \fI<IP address>
 IP address of server to forward to. Can be IP 4 or IP 6.
 To use a nondefault port for DNS communication append '@' with the port number.
+.SS "Python Module Options"
+.LP
+The
+.B python:
+clause gives the settings for the \fIpython\fR(1) script module.  This module
+acts like the iterator and validator modules do, on queries and answers.
+To enable the script module it has to be compiled into the daemon,
+and the word "python" has to be put in the \fBmodule\-conf:\fR option
+(usually first, or between the validator and iterator).
+.TP
+.B python\-script: \fI<python file>\fR
+The script file to load. 
 .SH "MEMORY CONTROL EXAMPLE"
 In the example config settings below memory usage is reduced. Some service
 levels are lower, notable very large data and a high TCP load are no longer

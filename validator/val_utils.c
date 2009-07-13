@@ -663,6 +663,21 @@ val_check_nonsecure(struct val_env* ve, struct reply_info* rep)
 			 * But this rrset did not verify.
 			 * Therefore the message is bogus.
 			 */
+
+			/* check if authority consists of only an NS record
+			 * which is bad, and there is an answer section with
+			 * data.  In that case, delete NS and additional to 
+			 * be lenient and make a minimal response */
+			if(rep->an_numrrsets != 0 && rep->ns_numrrsets == 1 &&
+				ntohs(rep->rrsets[i]->rk.type) 
+				== LDNS_RR_TYPE_NS) {
+				verbose(VERB_ALGO, "truncate to minimal");
+				rep->ns_numrrsets = 0;
+				rep->ar_numrrsets = 0;
+				rep->rrset_count = rep->an_numrrsets;
+				return;
+			}
+
 			log_nametypeclass(VERB_QUERY, "message is bogus, "
 				"non secure rrset",
 				rep->rrsets[i]->rk.dname, 
@@ -718,16 +733,15 @@ val_mark_indeterminate(struct reply_info* rep, struct val_anchors* anchors,
 }
 
 void 
-val_mark_insecure(struct reply_info* rep, struct key_entry_key* kkey,
+val_mark_insecure(struct reply_info* rep, uint8_t* kname,
 	struct rrset_cache* r, struct module_env* env)
 {
 	size_t i;
 	struct packed_rrset_data* d;
-	log_assert(key_entry_isnull(kkey));
 	for(i=0; i<rep->rrset_count; i++) {
 		d = (struct packed_rrset_data*)rep->rrsets[i]->entry.data;
 		if(d->security == sec_status_unchecked &&
-		   dname_subdomain_c(rep->rrsets[i]->rk.dname, kkey->name)) {
+		   dname_subdomain_c(rep->rrsets[i]->rk.dname, kname)) {
 			/* mark as insecure */
 			d->security = sec_status_insecure;
 			rrset_update_sec_status(r, rep->rrsets[i], *env->now);

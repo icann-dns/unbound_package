@@ -42,11 +42,6 @@
 #ifndef UTIL_LOG_H
 #define UTIL_LOG_H
 
-#include "config.h"
-#ifdef HAVE_STDARG_H
-#include <stdarg.h>
-#endif
-
 /**
  * verbosity value:
  */
@@ -60,7 +55,9 @@ enum verbosity_value {
  /** 3 - query level information */
  	VERB_QUERY,
  /** 4 - algorithm level information */
- 	VERB_ALGO
+ 	VERB_ALGO,
+ /** 5 - querier client information */
+	VERB_CLIENT
 };
 
 /** The global verbosity setting */
@@ -111,6 +108,14 @@ void log_ident_set(const char* id);
  * 	if NULL, time(2) is used.
  */
 void log_set_time(uint32_t* t);
+
+/**
+ * Set if the time value is printed ascii or decimal in log entries.
+ * @param use_asc: if true, ascii is printed, otherwise decimal.
+ *	If the conversion fails or you have no time functions, 
+ *	decimal is printed.
+ */
+void log_set_time_asc(int use_asc);
 
 /**
  * Log informational message.

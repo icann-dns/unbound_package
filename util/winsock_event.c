@@ -95,6 +95,17 @@ find_fd(struct event_base* base, int fd)
 	return -1;
 }
 
+/** Find ptr in base array */
+static int
+zero_waitfor(WSAEVENT waitfor[], WSAEVENT x)
+{
+	int i;
+	for(i=0; i<WSK_MAX_ITEMS; i++) {
+		if(waitfor[i] == x)
+			waitfor[i] = 0;
+	}
+}
+
 void *event_init(uint32_t* time_secs, struct timeval* time_tv)
 {
         struct event_base* base = (struct event_base*)malloc(
@@ -128,6 +139,7 @@ void *event_init(uint32_t* time_secs, struct timeval* time_tv)
         }
 	base->tcp_stickies = 0;
 	base->tcp_reinvigorated = 0;
+	verbose(VERB_CLIENT, "winsock_event inited");
         return base;
 }
 
@@ -149,6 +161,7 @@ static void handle_timeouts(struct event_base* base, struct timeval* now,
 #ifndef S_SPLINT_S
         wait->tv_sec = (time_t)-1;
 #endif
+	verbose(VERB_CLIENT, "winsock_event handle_timeouts");
 
         while((rbnode_t*)(p = (struct event*)rbtree_first(base->times))
                 !=RBTREE_NULL) {
@@ -166,6 +179,8 @@ static void handle_timeouts(struct event_base* base, struct timeval* now,
                                 wait->tv_usec = p->ev_timeout.tv_usec
                                         - now->tv_usec;
                         }
+			verbose(VERB_CLIENT, "winsock_event wait=%d.%6.6d",
+				(int)wait->tv_sec, (int)wait->tv_usec);
                         return;
                 }
 #endif
@@ -175,6 +190,34 @@ static void handle_timeouts(struct event_base* base, struct timeval* now,
                 fptr_ok(fptr_whitelist_event(p->ev_callback));
                 (*p->ev_callback)(p->ev_fd, EV_TIMEOUT, p->ev_arg);
         }
+	verbose(VERB_CLIENT, "winsock_event wait=(-1)");
+}
+
+/** handle is_signal events and see if signalled */
+static void handle_signal(struct event* ev)
+{
+	DWORD ret;
+	log_assert(ev->is_signal && ev->hEvent);
+	/* see if the event is signalled */
+	ret = WSAWaitForMultipleEvents(1, &ev->hEvent, 0 /* any object */,
+		0 /* return immediately */, 0 /* not alertable for IOcomple*/);
+	if(ret == WSA_WAIT_IO_COMPLETION || ret == WSA_WAIT_FAILED) {
+		log_err("WSAWaitForMultipleEvents(signal) failed: %s",
+			wsa_strerror(WSAGetLastError()));
+		return;
+	}
+	if(ret == WSA_WAIT_TIMEOUT) {
+		/* not signalled */
+		return;
+	}
+
+	/* reset the signal */
+	if(!WSAResetEvent(ev->hEvent))
+		log_err("WSAResetEvent failed: %s",
+			wsa_strerror(WSAGetLastError()));
+	/* do the callback (which may set the signal again) */
+	fptr_ok(fptr_whitelist_event(ev->ev_callback));
+	(*ev->ev_callback)(ev->ev_fd, ev->ev_events, ev->ev_arg);
 }
 
 /** call select and callbacks for that */
@@ -182,12 +225,13 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 {
 	DWORD timeout = 0; /* in milliseconds */	
 	DWORD ret;
-	WSAEVENT waitfor[WSK_MAX_ITEMS];
 	struct event* eventlist[WSK_MAX_ITEMS];
 	WSANETWORKEVENTS netev;
 	int i, numwait = 0, startidx = 0, was_timeout = 0;
 	int newstickies = 0;
 	struct timeval nultm;
+
+	verbose(VERB_CLIENT, "winsock_event handle_select");
 
 #ifndef S_SPLINT_S
         if(wait->tv_sec==(time_t)-1)
@@ -207,9 +251,13 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 		if(base->items[i]->ev_fd == -1 && !base->items[i]->is_signal)
 			continue; /* skip timer only events */
 		eventlist[numwait] = base->items[i];
-		waitfor[numwait++] = base->items[i]->hEvent;
+		base->waitfor[numwait++] = base->items[i]->hEvent;
+		if(numwait == WSK_MAX_ITEMS)
+			break; /* sanity check */
 	}
 	log_assert(numwait <= WSA_MAXIMUM_WAIT_EVENTS);
+	verbose(VERB_CLIENT, "winsock_event bmax=%d numwait=%d wait=%x "
+		"timeout=%d", base->max, numwait, (int)wait, (int)timeout);
 
 	/* do the wait */
 	if(numwait == 0) {
@@ -219,7 +267,7 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 		}
 		was_timeout = 1;
 	} else {
-		ret = WSAWaitForMultipleEvents(numwait, waitfor,
+		ret = WSAWaitForMultipleEvents(numwait, base->waitfor,
 			0 /* do not wait for all, just one will do */,
 			wait?timeout:WSA_INFINITE,
 			0); /* we are not alertable (IO completion events) */
@@ -235,6 +283,8 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 		} else
 			startidx = ret - WSA_WAIT_EVENT_0;
 	}
+	verbose(VERB_CLIENT, "winsock_event wake was_timeout=%d startidx=%d", 
+		was_timeout, startidx);
 
 	/* get new time after wait */
         if(settime(base) < 0)
@@ -243,21 +293,38 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 	/* callbacks */
 	if(base->tcp_stickies)
 		startidx = 0; /* process all events, some are sticky */
+	for(i=startidx; i<numwait; i++)
+		eventlist[i]->just_checked = 1;
 
+	verbose(VERB_CLIENT, "winsock_event signals");
+	for(i=startidx; i<numwait; i++) {
+		if(!base->waitfor[i])
+			continue; /* was deleted */
+		if(eventlist[i]->is_signal) {
+			eventlist[i]->just_checked = 0;
+			handle_signal(eventlist[i]);
+		}
+	}
+	/* early exit - do not process network, exit quickly */
+	if(base->need_to_exit)
+		return 0;
+
+	verbose(VERB_CLIENT, "winsock_event net");
 	for(i=startidx; i<numwait; i++) {
 		short bits = 0;
 		/* eventlist[i] fired */
-		if(eventlist[i]->is_signal) {
-			/* not a network event at all */
-			fptr_ok(fptr_whitelist_event(
-                                eventlist[i]->ev_callback));
-                        (*eventlist[i]->ev_callback)(eventlist[i]->ev_fd,
-                                eventlist[i]->ev_events, 
-				eventlist[i]->ev_arg);
-			continue;
-		}
+		/* see if eventlist[i] is still valid and just checked from
+		 * WSAWaitForEvents */
+		if(!base->waitfor[i])
+			continue; /* was deleted */
+		if(!eventlist[i]->just_checked)
+			continue; /* added by other callback */
+		if(eventlist[i]->is_signal)
+			continue; /* not a network event at all */
+		eventlist[i]->just_checked = 0;
+
 		if(WSAEnumNetworkEvents(eventlist[i]->ev_fd, 
-			waitfor[i], /* reset the event handle */
+			base->waitfor[i], /* reset the event handle */
 			/*NULL,*/ /* do not reset the event handle */
 			&netev) != 0) {
 			log_err("WSAEnumNetworkEvents failed: %s", 
@@ -341,11 +408,14 @@ static int handle_select(struct event_base* base, struct timeval* wait)
 				(eventlist[i]->old_events&EV_READ)?"EV_READ":"",
 				(eventlist[i]->old_events&EV_WRITE)?"EV_WRITE":"");
 	}
+	verbose(VERB_CLIENT, "winsock_event net");
 	if(base->tcp_reinvigorated) {
+		verbose(VERB_CLIENT, "winsock_event reinvigorated");
 		base->tcp_reinvigorated = 0;
 		newstickies = 1;
 	}
 	base->tcp_stickies = newstickies;
+	verbose(VERB_CLIENT, "winsock_event handle_select end");
         return 0;
 }
 
@@ -373,12 +443,14 @@ int event_base_dispatch(struct event_base *base)
 int event_base_loopexit(struct event_base *base, 
 	struct timeval * ATTR_UNUSED(tv))
 {
+	verbose(VERB_CLIENT, "winsock_event loopexit");
         base->need_to_exit = 1;
         return 0;
 }
 
 void event_base_free(struct event_base *base)
 {
+	verbose(VERB_CLIENT, "winsock_event event_base_free");
         if(!base)
                 return;
 	if(base->items)
@@ -399,6 +471,7 @@ void event_set(struct event *ev, int fd, short bits,
         ev->ev_callback = cb;
         fptr_ok(fptr_whitelist_event(ev->ev_callback));
         ev->ev_arg = arg;
+	ev->just_checked = 0;
         ev->added = 0;
 }
 
@@ -422,17 +495,20 @@ int event_add(struct event *ev, struct timeval *tv)
         if(ev->added)
                 event_del(ev);
 	log_assert(ev->ev_fd==-1 || find_fd(ev->ev_base, ev->ev_fd) == -1);
-	if(ev->ev_base->max == ev->ev_base->cap)
-		return -1;
-	ev->idx = ev->ev_base->max++;
-	ev->ev_base->items[ev->idx] = ev;
 	ev->is_tcp = 0;
 	ev->is_signal = 0;
+	ev->just_checked = 0;
 
         if((ev->ev_events&(EV_READ|EV_WRITE)) && ev->ev_fd != -1) {
 		BOOL b=0;
 		int t, l;
 		long events = 0;
+
+		if(ev->ev_base->max == ev->ev_base->cap)
+			return -1;
+		ev->idx = ev->ev_base->max++;
+		ev->ev_base->items[ev->idx] = ev;
+
 		if( (ev->ev_events&EV_READ) )
 			events |= FD_READ;
 		if( (ev->ev_events&EV_WRITE) )
@@ -500,17 +576,20 @@ int event_del(struct event *ev)
 		(ev->ev_events&EV_TIMEOUT)?" EV_TIMEOUT":"");
 	if(!ev->added)
 		return 0;
-	log_assert(ev->added && ev->ev_base->max > 0)
-	/* remove item and compact the list */
-	ev->ev_base->items[ev->idx] = ev->ev_base->items[ev->ev_base->max-1];
-	ev->ev_base->items[ev->ev_base->max-1] = NULL;
-	ev->ev_base->max--;
-	if(ev->idx < ev->ev_base->max)
-		ev->ev_base->items[ev->idx]->idx = ev->idx;
-
+	log_assert(ev->added);
         if((ev->ev_events&EV_TIMEOUT))
                 (void)rbtree_delete(ev->ev_base->times, &ev->node);
         if((ev->ev_events&(EV_READ|EV_WRITE)) && ev->ev_fd != -1) {
+		log_assert(ev->ev_base->max > 0);
+		/* remove item and compact the list */
+		ev->ev_base->items[ev->idx] = 
+			ev->ev_base->items[ev->ev_base->max-1];
+		ev->ev_base->items[ev->ev_base->max-1] = NULL;
+		ev->ev_base->max--;
+		if(ev->idx < ev->ev_base->max)
+			ev->ev_base->items[ev->idx]->idx = ev->idx;
+		zero_waitfor(ev->ev_base->waitfor, ev->hEvent);
+
 		if(WSAEventSelect(ev->ev_fd, ev->hEvent, 0) != 0)
 			log_err("WSAEventSelect(disable) failed: %s",
 				wsa_strerror(WSAGetLastError()));
@@ -518,6 +597,7 @@ int event_del(struct event *ev)
 			log_err("WSACloseEvent failed: %s",
 				wsa_strerror(WSAGetLastError()));
 	}
+	ev->just_checked = 0;
         ev->added = 0;
         return 0;
 }

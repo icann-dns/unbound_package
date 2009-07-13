@@ -171,6 +171,8 @@ struct config_file {
 
 	/** should log messages be sent to syslogd */
 	int use_syslog;
+	/** log timestamp in ascii UTC */
+	int log_time_ascii;
 
 	/** do not report identity (id.server, hostname.bind) */
 	int hide_identity;
@@ -194,11 +196,19 @@ struct config_file {
 	char* dlv_anchor_file;
 	/** DLV anchor inline */
 	struct config_strlist* dlv_anchor_list;
+	/** insecure domain list */
+	struct config_strlist* domain_insecure;
 
 	/** the number of seconds maximal TTL used for RRsets and messages */
 	int max_ttl;
+	/** the number of seconds minimum TTL used for RRsets and messages */
+	int min_ttl;
 	/** if not 0, this value is the validation date for RRSIGs */
 	int32_t val_date_override;
+	/** the minimum for signature clock skew */
+	int32_t val_sig_skew_min;
+	/** the maximum for signature clock skew */
+	int32_t val_sig_skew_max;
 	/** this value sets the number of seconds before revalidating bogus */
 	int bogus_ttl; 
 	/** should validator clean additional section for secure msgs */
@@ -236,6 +246,9 @@ struct config_file {
 	char* control_key_file;
 	/** certificate file for unbound-control */
 	char* control_cert_file;
+
+	/** Python script file */
+	char* python_script;
 
 	/** daemonize, i.e. fork into the background. */
 	int do_daemonize;
@@ -389,6 +402,14 @@ int cfg_count_numbers(const char* str);
  * is logged).
  */
 int cfg_parse_memsize(const char* str, size_t* res);
+
+/**
+ * Parse local-zone directive into two strings and register it in the config.
+ * @param cfg: to put it in.
+ * @param val: argument strings to local-zone, "example.com nodefault".
+ * @return: false on failure
+ */
+int cfg_parse_local_zone(struct config_file* cfg, const char* val);
 
 /**
  * Mark "number" or "low-high" as available or not in ports array.

@@ -99,12 +99,18 @@ struct reply_info {
 	uint16_t flags;
 
 	/**
+	 * This flag informs unbound the answer is authoritative and 
+	 * the AA flag should be preserved. 
+	 */
+	uint8_t authoritative;
+
+	/**
 	 * Number of RRs in the query section.
 	 * If qdcount is not 0, then it is 1, and the data that appears
 	 * in the reply is the same as the query_info.
 	 * Host byte order.
 	 */
-	uint16_t qdcount;
+	uint8_t qdcount;
 
 	/** 
 	 * TTL of the entire reply (for negative caching).
@@ -127,8 +133,7 @@ struct reply_info {
 	size_t an_numrrsets;
 
 	/** Count of authority section RRsets */
-	size_t ns_numrrsets;
-
+	size_t ns_numrrsets; 
 	/** Count of additional section RRsets */
 	size_t ar_numrrsets;
 
@@ -323,6 +328,21 @@ int parse_copy_decompress_rrset(ldns_buffer* pkt, struct msg_parse* msg,
  */
 uint8_t* reply_find_final_cname_target(struct query_info* qinfo,
 	struct reply_info* rep);
+
+/**
+ * Check if cname chain in cached reply is still valid.
+ * @param rep: reply to check.
+ * @return: true if valid, false if invalid.
+ */
+int reply_check_cname_chain(struct reply_info* rep);
+
+/**
+ * Check security status of all RRs in the message.
+ * @param rep: reply to check
+ * @return: true if all RRs are secure. False if not.
+ *    True if there are zero RRs.
+ */
+int reply_all_rrsets_secure(struct reply_info* rep);
 
 /**
  * Find answer rrset in reply, the one matching qinfo. Follows CNAMEs, so the

@@ -89,7 +89,6 @@ iter_deinit(struct module_env* env, int id)
 	free(iter_env->target_fetch_policy);
 	priv_delete(iter_env->priv);
 	hints_delete(iter_env->hints);
-	forwards_delete(iter_env->fwds);
 	donotq_delete(iter_env->donotq);
 	free(iter_env);
 	env->modinfo[id] = NULL;
@@ -460,15 +459,13 @@ handle_cname_response(struct module_qstate* qstate, struct iter_qstate* iq,
  * @param subq_ret: if newly allocated, the subquerystate, or NULL if it does
  * 	not need initialisation.
  * @param v: if true, validation is done on the subquery.
- * @param detcyc: if true, cycle detection is done on the subquery.
  * @return false on error (malloc).
  */
 static int
 generate_sub_request(uint8_t* qname, size_t qnamelen, uint16_t qtype, 
 	uint16_t qclass, struct module_qstate* qstate, int id,
 	struct iter_qstate* iq, enum iter_state initial_state, 
-	enum iter_state final_state, struct module_qstate** subq_ret, int v,
-	int detcyc)
+	enum iter_state final_state, struct module_qstate** subq_ret, int v)
 {
 	struct module_qstate* subq = NULL;
 	struct iter_qstate* subiq = NULL;
@@ -491,13 +488,11 @@ generate_sub_request(uint8_t* qname, size_t qnamelen, uint16_t qtype,
 	if(!v)
 		qflags |= BIT_CD;
 	
-	if(detcyc) {
-		fptr_ok(fptr_whitelist_modenv_detect_cycle(
-			qstate->env->detect_cycle));
-		if((*qstate->env->detect_cycle)(qstate, &qinf, qflags, prime)){
-			log_query_info(VERB_DETAIL, "cycle detected", &qinf);
-			return 0;
-		}
+	fptr_ok(fptr_whitelist_modenv_detect_cycle(
+		qstate->env->detect_cycle));
+	if((*qstate->env->detect_cycle)(qstate, &qinf, qflags, prime)){
+		log_query_info(VERB_DETAIL, "cycle detected", &qinf);
+		return 0;
 	}
 
 	/* attach subquery, lookup existing or make a new one */
@@ -556,25 +551,28 @@ prime_root(struct module_qstate* qstate, struct iter_qstate* iq,
 		verbose(VERB_ALGO, "Cannot prime due to lack of hints");
 		return 0;
 	}
-	/* copy dp; to avoid messing up available list for other thr/queries */
-	dp = delegpt_copy(dp, qstate->region);
-	if(!dp) {
-		log_err("out of memory priming root, copydp");
-		return 0;
-	}
 	/* Priming requests start at the QUERYTARGETS state, skipping 
 	 * the normal INIT state logic (which would cause an infloop). */
 	if(!generate_sub_request((uint8_t*)"\000", 1, LDNS_RR_TYPE_NS, 
 		qclass, qstate, id, iq, QUERYTARGETS_STATE, PRIME_RESP_STATE,
-		&subq, 0, 1)) {
+		&subq, 0)) {
 		verbose(VERB_ALGO, "could not prime root");
 		return 0;
 	}
 	if(subq) {
 		struct iter_qstate* subiq = 
 			(struct iter_qstate*)subq->minfo[id];
-		/* Set the initial delegation point to the hint. */
-		subiq->dp = dp;
+		/* Set the initial delegation point to the hint.
+		 * copy dp, it is now part of the root prime query. 
+		 * dp was part of in the fixed hints structure. */
+		subiq->dp = delegpt_copy(dp, subq->region);
+		if(!subiq->dp) {
+			log_err("out of memory priming root, copydp");
+			fptr_ok(fptr_whitelist_modenv_kill_sub(
+				qstate->env->kill_sub));
+			(*qstate->env->kill_sub)(subq);
+			return 0;
+		}
 		/* there should not be any target queries. */
 		subiq->num_target_queries = 0; 
 		subiq->dnssec_expected = iter_indicates_dnssec(
@@ -594,21 +592,27 @@ prime_root(struct module_qstate* qstate, struct iter_qstate* iq,
  * @param iq: iterator query state.
  * @param ie: iterator global state.
  * @param id: module id.
- * @param qname: request name.
- * @param qclass: the class to prime.
+ * @param q: request name.
  * @return true if a priming subrequest was made, false if not. The will only
  *         issue a priming request if it detects an unprimed stub.
  */
 static int
 prime_stub(struct module_qstate* qstate, struct iter_qstate* iq, 
-	struct iter_env* ie, int id, uint8_t* qname, uint16_t qclass)
+	struct iter_env* ie, int id, struct query_info* q)
 {
 	/* Lookup the stub hint. This will return null if the stub doesn't 
 	 * need to be re-primed. */
-	struct iter_hints_stub* stub = hints_lookup_stub(ie->hints, 
-		qname, qclass, iq->dp);
+	struct iter_hints_stub* stub;
 	struct delegpt* stub_dp;
 	struct module_qstate* subq;
+	uint8_t* delname = q->qname;
+	size_t delnamelen = q->qname_len;
+
+	if(q->qtype == LDNS_RR_TYPE_DS && !dname_is_root(q->qname))
+		/* remove first label, but not for root */
+		dname_remove_label(&delname, &delnamelen);
+
+	stub = hints_lookup_stub(ie->hints, delname, q->qclass, iq->dp);
 	/* The stub (if there is one) does not need priming. */
 	if(!stub)
 		return 0;
@@ -616,6 +620,8 @@ prime_stub(struct module_qstate* qstate, struct iter_qstate* iq,
 
 	/* is it a noprime stub (always use) */
 	if(stub->noprime) {
+		/* copy the dp out of the fixed hints structure, so that
+		 * it can be changed when servicing this query */
 		iq->dp = delegpt_copy(stub_dp, qstate->region);
 		if(!iq->dp) {
 			log_err("out of memory priming stub");
@@ -623,19 +629,19 @@ prime_stub(struct module_qstate* qstate, struct iter_qstate* iq,
 			return 1; /* return 1 to make module stop, with error */
 		}
 		log_nametypeclass(VERB_DETAIL, "use stub", stub_dp->name, 
-			LDNS_RR_TYPE_NS, qclass);
+			LDNS_RR_TYPE_NS, q->qclass);
 		return 0;
 	}
 
 	/* Otherwise, we need to (re)prime the stub. */
 	log_nametypeclass(VERB_DETAIL, "priming stub", stub_dp->name, 
-		LDNS_RR_TYPE_NS, qclass);
+		LDNS_RR_TYPE_NS, q->qclass);
 
 	/* Stub priming events start at the QUERYTARGETS state to avoid the
 	 * redundant INIT state processing. */
 	if(!generate_sub_request(stub_dp->name, stub_dp->namelen, 
-		LDNS_RR_TYPE_NS, qclass, qstate, id, iq,
-		QUERYTARGETS_STATE, PRIME_RESP_STATE, &subq, 0, 1)) {
+		LDNS_RR_TYPE_NS, q->qclass, qstate, id, iq,
+		QUERYTARGETS_STATE, PRIME_RESP_STATE, &subq, 0)) {
 		verbose(VERB_ALGO, "could not prime stub");
 		(void)error_response(qstate, id, LDNS_RCODE_SERVFAIL);
 		return 1; /* return 1 to make module stop, with error */
@@ -713,7 +719,7 @@ generate_a_aaaa_check(struct module_qstate* qstate, struct iter_qstate* iq,
 		if(!generate_sub_request(s->rk.dname, s->rk.dname_len, 
 			ntohs(s->rk.type), ntohs(s->rk.rrset_class),
 			qstate, id, iq,
-			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
 			verbose(VERB_ALGO, "could not generate addr check");
 			return;
 		}
@@ -748,7 +754,7 @@ generate_ns_check(struct module_qstate* qstate, struct iter_qstate* iq, int id)
 		iq->dp->name, LDNS_RR_TYPE_NS, iq->qchase.qclass);
 	if(!generate_sub_request(iq->dp->name, iq->dp->namelen, 
 		LDNS_RR_TYPE_NS, iq->qchase.qclass, qstate, id, iq,
-		INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+		INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
 		verbose(VERB_ALGO, "could not generate ns check");
 		return;
 	}
@@ -775,16 +781,20 @@ generate_ns_check(struct module_qstate* qstate, struct iter_qstate* iq, int id)
  * 
  * @param qstate: query state.
  * @param iq: iterator query state.
- * @param ie: iterator shared global environment.
  * @return true if the request is forwarded, false if not.
  * 	If returns true but, iq->dp is NULL then a malloc failure occurred.
  */
 static int
-forward_request(struct module_qstate* qstate, struct iter_qstate* iq,
-	struct iter_env* ie)
+forward_request(struct module_qstate* qstate, struct iter_qstate* iq)
 {
-	struct delegpt* dp = forwards_lookup(ie->fwds, iq->qchase.qname,
-		iq->qchase.qclass);
+	struct delegpt* dp;
+	uint8_t* delname = iq->qchase.qname;
+	size_t delnamelen = iq->qchase.qname_len;
+	/* strip one label off of DS query to lookup higher for it */
+	if(iq->qchase.qtype == LDNS_RR_TYPE_DS 
+		&& !dname_is_root(iq->qchase.qname))
+		dname_remove_label(&delname, &delnamelen);
+	dp = forwards_lookup(qstate->env->fwds, delname, iq->qchase.qclass);
 	if(!dp) 
 		return 0;
 	/* send recursion desired to forward addr */
@@ -862,9 +872,11 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		/* handle positive cache response */
 		enum response_type type = response_type_from_cache(msg, 
 			&iq->qchase);
-		if(verbosity >= VERB_ALGO)
+		if(verbosity >= VERB_ALGO) {
 			log_dns_msg("msg from cache lookup", &msg->qinfo, 
 				msg->rep);
+			verbose(VERB_ALGO, "msg ttl is %d", (int)msg->rep->ttl);
+		}
 
 		if(type == RESPONSE_TYPE_CNAME) {
 			uint8_t* sname = 0;
@@ -892,7 +904,7 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 	}
 	
 	/* attempt to forward the request */
-	if(forward_request(qstate, iq, ie))
+	if(forward_request(qstate, iq))
 	{
 		if(!iq->dp) {
 			log_err("alloc failure for forward dp");
@@ -1030,8 +1042,7 @@ processInitRequest2(struct module_qstate* qstate, struct iter_qstate* iq,
 		&qstate->qinfo);
 
 	/* Check to see if we need to prime a stub zone. */
-	if(prime_stub(qstate, iq, ie, id, iq->qchase.qname, 
-		iq->qchase.qclass)) {
+	if(prime_stub(qstate, iq, ie, id, &iq->qchase)) {
 		/* A priming sub request was made */
 		return 0;
 	}
@@ -1097,7 +1108,7 @@ generate_target_query(struct module_qstate* qstate, struct iter_qstate* iq,
 {
 	struct module_qstate* subq;
 	if(!generate_sub_request(name, namelen, qtype, qclass, qstate, 
-		id, iq, INIT_REQUEST_STATE, FINISHED_STATE, &subq, 0, 0))
+		id, iq, INIT_REQUEST_STATE, FINISHED_STATE, &subq, 0))
 		return 0;
 	if(subq) {
 		struct iter_qstate* subiq = 
@@ -1258,7 +1269,10 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 	}
 
 	tf_policy = 0;
-	if(iq->depth <= ie->max_dependency_depth) {
+	/* < not <=, because although the array is large enough for <=, the
+	 * generated query will immediately be discarded due to depth and
+	 * that servfail is cached, which is not good as opportunism goes. */
+	if(iq->depth < ie->max_dependency_depth) {
 		tf_policy = ie->target_fetch_policy[iq->depth];
 	}
 
@@ -1295,14 +1309,14 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 	/* if there is a policy to fetch missing targets 
 	 * opportunistically, do it. we rely on the fact that once a 
 	 * query (or queries) for a missing name have been issued, 
-	 * they will not be show up again. */
+	 * they will not show up again. */
 	} else if(tf_policy != 0) {
 		int extra = 0;
 		verbose(VERB_ALGO, "attempt to get extra %d targets", 
 			tf_policy);
-		if(!query_for_targets(qstate, iq, ie, id, tf_policy, &extra)) {
-			return error_response(qstate, id, LDNS_RCODE_SERVFAIL);
-		}
+		(void)query_for_targets(qstate, iq, ie, id, tf_policy, &extra);
+		/* errors ignored, these targets are not strictly necessary for
+		 * this result, we do not have to reply with SERVFAIL */
 		iq->num_target_queries += extra;
 	}
 
@@ -1499,9 +1513,14 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			   /* we know that all other NS rrsets are scrubbed
 			    * away, thus on referral only one is left.
 			    * see if that equals the query name... */
-			&& reply_find_rrset_section_ns(iq->response->rep,
+			&& ( /* auth section, but sometimes in answer section*/
+			  reply_find_rrset_section_ns(iq->response->rep,
 				qstate->qinfo.qname, qstate->qinfo.qname_len,
 				LDNS_RR_TYPE_NS, qstate->qinfo.qclass)
+			  || reply_find_rrset_section_an(iq->response->rep,
+				qstate->qinfo.qname, qstate->qinfo.qname_len,
+				LDNS_RR_TYPE_NS, qstate->qinfo.qclass)
+			  )
 		    )) {
 			/* Store the referral under the current query */
 			if(!iter_dns_store(qstate->env, &iq->response->qinfo,
@@ -1732,7 +1751,7 @@ processPrimeResponse(struct module_qstate* qstate, int id)
 		if(!generate_sub_request(qstate->qinfo.qname, 
 			qstate->qinfo.qname_len, qstate->qinfo.qtype,
 			qstate->qinfo.qclass, qstate, id, iq,
-			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1, 1)) {
+			INIT_REQUEST_STATE, FINISHED_STATE, &subq, 1)) {
 			verbose(VERB_ALGO, "could not generate prime check");
 		}
 		generate_a_aaaa_check(qstate, iq, id);
@@ -1771,16 +1790,17 @@ processTargetResponse(struct module_qstate* qstate, int id,
 	log_query_info(VERB_ALGO, "processTargetResponse super", &forq->qinfo);
 
 	/* check to see if parent event is still interested (in orig name).  */
+	if(!foriq->dp) {
+		verbose(VERB_ALGO, "subq: parent not interested, was reset");
+		return; /* not interested anymore */
+	}
 	dpns = delegpt_find_ns(foriq->dp, qstate->qinfo.qname,
 			qstate->qinfo.qname_len);
 	if(!dpns) {
-		/* FIXME: maybe store this nameserver address in the cache
-		 * anyways? */
-		/* If not, just stop processing this event */
+		/* If not interested, just stop processing this event */
 		verbose(VERB_ALGO, "subq: parent not interested anymore");
-		/* this is an error, and will cause parent to be reactivated
-		 * even though nothing has happened */
-		log_assert(0);
+		/* could be because parent was jostled out of the cache,
+		   and a new identical query arrived, that does not want it*/
 		return;
 	}
 
@@ -2129,8 +2149,7 @@ iter_get_mem(struct module_env* env, int id)
 	if(!ie)
 		return 0;
 	return sizeof(*ie) + sizeof(int)*((size_t)ie->max_dependency_depth+1)
-		+ hints_get_mem(ie->hints) + forwards_get_mem(ie->fwds)
-		+ donotq_get_mem(ie->donotq);
+		+ hints_get_mem(ie->hints) + donotq_get_mem(ie->donotq);
 }
 
 /**

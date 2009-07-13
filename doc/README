@@ -1,4 +1,4 @@
-README for Unbound 1.2.1
+README for Unbound 1.3.2
 Copyright 2007 NLnet Labs
 http://unbound.net
 
@@ -58,24 +58,28 @@ This software is under BSD license, see LICENSE for details.
   * --with-username=user
   	Set default user name to change to,
 	the default is the "unbound" user.
+  * --with-pyunbound
+  	Create libunbound wrapper usable from python.
+	Needs python-devel and swig development tools.
+  * --with-pythonmodule
+  	Compile the python module that processes responses in the server.
+  * --enable-sha2
+  	Enable draft support for RSASHA256 and RSASHA512.
 
 * 'make test' attempts to run a series of tests, depending on the support
   programs that are installed.
 
 Known issues
 ------------
+o If there are no replies for a forward or stub zone, for a reverse zone,
+  you may need to add a local-zone: name transparent or nodefault to the
+  server: section of the config file to unblock the reverse zone.
+  Only happens for (sub)zones that are blocked by default; e.g. 10.in-addr.arpa
 o If libevent is older (before 1.3c), unbound will exit instead of reload
   on sighup. On a restart 'did not exit gracefully last time' warning is 
   printed. Perform ./configure --with-libevent=no or update libevent, rerun 
   configure and recompile unbound to make sighup work correctly.
-  It is strongly suggested to use the latest version of libevent (1.4 or more)
-  on Solaris, because of fixes in the solaris event port code in libevent.
-o If you receive no answers deploying unbound on a private network.
-  Check that the zone you configure as a stub zone is correct, listing working 
-  ip-addresses. Check that the NS data in the zone, those hostnames, are
-  in fact those same, working, ip-addresses. Unbound will fetch the NS data
-  from the zone and use that information in preference to the config 
-  information. 
+  It is strongly suggested to use a recent version of libevent.
 o If you are not receiving the correct source IP address on replies (e.g.
   you are running a multihomed, anycast server), the interface-automatic
   option can be enabled to set socket options to achieve the correct
@@ -87,6 +91,10 @@ o The warning 'openssl has no entropy, seeding with time', with chroot
 o On Solaris 5.10 some libtool packages from repositories do not work with
   gcc, showing errors gcc: unrecognized option `-KPIC'
   To solve this do ./configure libtool=./libtool [your options...].
+o If unbound-control (or munin graphs) do not work, this can often be because
+  the unbound-control-setup script creates the keys with restricted 
+  permissions, and the files need to be made readable or ownered by both the
+  unbound daemon and unbound-control.
 
 Acknowledgements
 ----------------
