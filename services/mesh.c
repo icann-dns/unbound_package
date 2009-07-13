@@ -188,10 +188,15 @@ mesh_create(struct module_stack* stack, struct module_env* env)
 
 /** help mesh delete delete mesh states */
 static void
-mesh_delete_helper(rbnode_t* n, void* ATTR_UNUSED(arg))
+mesh_delete_helper(rbnode_t* n)
 {
 	struct mesh_state* mstate = (struct mesh_state*)n->key;
-	mesh_state_cleanup(mstate);
+	/* perform a full delete, not only 'cleanup' routine,
+	 * because other callbacks expect a clean state in the mesh.
+	 * For 're-entrant' calls */
+	mesh_state_delete(&mstate->s);
+	/* but because these delete the items from the tree, postorder
+	 * traversal and rbtree rebalancing do not work together */
 }
 
 void 
@@ -200,9 +205,30 @@ mesh_delete(struct mesh_area* mesh)
 	if(!mesh)
 		return;
 	/* free all query states */
-	traverse_postorder(&mesh->all, &mesh_delete_helper, NULL);
+	while(mesh->all.count)
+		mesh_delete_helper(mesh->all.root);
 	timehist_delete(mesh->histogram);
 	free(mesh);
+}
+
+void
+mesh_delete_all(struct mesh_area* mesh)
+{
+	/* free all query states */
+	while(mesh->all.count)
+		mesh_delete_helper(mesh->all.root);
+	mesh->stats_dropped += mesh->num_reply_addrs;
+	/* clear mesh area references */
+	rbtree_init(&mesh->run, &mesh_state_compare);
+	rbtree_init(&mesh->all, &mesh_state_compare);
+	mesh->num_reply_addrs = 0;
+	mesh->num_reply_states = 0;
+	mesh->num_detached_states = 0;
+	mesh->num_forever_states = 0;
+	mesh->forever_first = NULL;
+	mesh->forever_last = NULL;
+	mesh->jostle_first = NULL;
+	mesh->jostle_last = NULL;
 }
 
 int mesh_make_new_space(struct mesh_area* mesh)
@@ -439,8 +465,14 @@ mesh_state_cleanup(struct mesh_state* mstate)
 	/* drop unsent replies */
 	if(!mstate->replies_sent) {
 		struct mesh_reply* rep;
+		struct mesh_cb* cb;
 		for(rep=mstate->reply_list; rep; rep=rep->next) {
 			comm_point_drop_reply(&rep->query_reply);
+		}
+		for(cb=mstate->cb_list; cb; cb=cb->next) {
+			fptr_ok(fptr_whitelist_mesh_cb(cb->cb));
+			(*cb->cb)(cb->cb_arg, LDNS_RCODE_SERVFAIL, NULL,
+				sec_status_unchecked);
 		}
 	}
 
@@ -592,6 +624,7 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
 		rcode = LDNS_RCODE_SERVFAIL;
 	/* send the reply */
 	if(rcode) {
+		fptr_ok(fptr_whitelist_mesh_cb(r->cb));
 		(*r->cb)(r->cb_arg, rcode, r->buf, sec_status_unchecked);
 	} else {
 		size_t udp_size = r->edns.udp_size;
@@ -605,11 +638,14 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
 			m->s.env->scratch, udp_size, &r->edns, 
 			(int)(r->edns.bits & EDNS_DO), secure)) 
 		{
+			fptr_ok(fptr_whitelist_mesh_cb(r->cb));
 			(*r->cb)(r->cb_arg, LDNS_RCODE_SERVFAIL, r->buf,
 				sec_status_unchecked);
-		}
-		else	(*r->cb)(r->cb_arg, LDNS_RCODE_NOERROR, r->buf,
+		} else {
+			fptr_ok(fptr_whitelist_mesh_cb(r->cb));
+			(*r->cb)(r->cb_arg, LDNS_RCODE_NOERROR, r->buf,
 				rep->security);
+		}
 	}
 	m->s.env->mesh->num_reply_addrs--;
 }
@@ -754,6 +790,7 @@ int mesh_state_add_cb(struct mesh_state* s, struct edns_data* edns,
 	if(!r)
 		return 0;
 	r->buf = buf;
+	log_assert(fptr_whitelist_mesh_cb(cb)); /* early failure ifmissing*/
 	r->cb = cb;
 	r->cb_arg = cb_arg;
 	r->edns = *edns;

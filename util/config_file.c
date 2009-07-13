@@ -46,6 +46,7 @@
 #include "util/config_file.h"
 #include "util/configparser.h"
 #include "util/net_help.h"
+#include "util/data/msgparse.h"
 /** global config during parsing */
 struct config_parser_state* cfg_parser = 0;
 /** lex in file */
@@ -83,13 +84,16 @@ config_create()
 	cfg->do_udp = 1;
 	cfg->do_tcp = 1;
 	cfg->use_syslog = 1;
+	cfg->log_time_ascii = 0;
 #ifndef USE_WINSOCK
 	cfg->outgoing_num_ports = 256;
-#else
-	cfg->outgoing_num_ports = 16; /* windows is limited in num fds */
-#endif
 	cfg->outgoing_num_tcp = 10;
 	cfg->incoming_num_tcp = 10;
+#else
+	cfg->outgoing_num_ports = 48; /* windows is limited in num fds */
+	cfg->outgoing_num_tcp = 2; /* leaves 64-52=12 for: 4if,1stop,thread4 */
+	cfg->incoming_num_tcp = 2; 
+#endif
 	cfg->msg_buffer_size = 65552; /* 64 k + a small margin */
 	cfg->msg_cache_size = 4 * 1024 * 1024;
 	cfg->msg_cache_slabs = 4;
@@ -100,6 +104,7 @@ config_create()
 	cfg->host_ttl = 900;
 	cfg->lame_ttl = 900;
 	cfg->bogus_ttl = 60;
+	cfg->min_ttl = 0;
 	cfg->max_ttl = 3600 * 24;
 	cfg->infra_cache_slabs = 4;
 	cfg->infra_cache_numhosts = 10000;
@@ -145,7 +150,10 @@ config_create()
 	cfg->trusted_keys_file_list = NULL;
 	cfg->dlv_anchor_file = NULL;
 	cfg->dlv_anchor_list = NULL;
+	cfg->domain_insecure = NULL;
 	cfg->val_date_override = 0;
+	cfg->val_sig_skew_min = 3600; /* at least daylight savings trouble */
+	cfg->val_sig_skew_max = 86400; /* at most timezone settings trouble */
 	cfg->val_clean_additional = 1;
 	cfg->val_permissive_mode = 0;
 	cfg->key_cache_size = 4 * 1024 * 1024;
@@ -154,7 +162,7 @@ config_create()
 	cfg->local_zones = NULL;
 	cfg->local_zones_nodefault = NULL;
 	cfg->local_data = NULL;
-
+	cfg->python_script = NULL;
 	cfg->remote_control_enable = 0;
 	cfg->control_ifs = NULL;
 	cfg->control_port = 953;
@@ -349,6 +357,8 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "dlv-anchor:") == 0) {
 		return cfg_strlist_insert(&cfg->dlv_anchor_list, 
 			strdup(val));
+	} else if(strcmp(opt, "domain-insecure:") == 0) {
+		return cfg_strlist_insert(&cfg->domain_insecure, strdup(val));
 	} else if(strcmp(opt, "val-override-date:") == 0) {
 		if(strcmp(val, "") == 0 || strcmp(val, "0") == 0) {
 			cfg->val_date_override = 0;
@@ -380,6 +390,8 @@ int config_set_option(struct config_file* cfg, const char* opt,
 		return cfg_parse_memsize(val, &cfg->neg_cache_size);
 	} else if(strcmp(opt, "local-data:") == 0) {
 		return cfg_strlist_insert(&cfg->local_data, strdup(val));
+	} else if(strcmp(opt, "local-zone:") == 0) {
+		return cfg_parse_local_zone(cfg, val);
 	} else if(strcmp(opt, "control-enable:") == 0) {
 		IS_YES_OR_NO;
 		cfg->remote_control_enable = (strcmp(val, "yes") == 0);
@@ -403,6 +415,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "module-config:") == 0) {
 		free(cfg->module_conf);
 		return (cfg->module_conf = strdup(val)) != NULL;
+	} else if(strcmp(opt, "python-script:") == 0) {
+		free(cfg->python_script);
+		return (cfg->python_script = strdup(val)) != NULL;
 	} else {
 		/* unknown or unsupported (from the library interface) */
 		return 0;
@@ -523,6 +538,7 @@ config_delete(struct config_file* cfg)
 	config_delstrlist(cfg->trust_anchor_file_list);
 	config_delstrlist(cfg->trusted_keys_file_list);
 	config_delstrlist(cfg->trust_anchor_list);
+	config_delstrlist(cfg->domain_insecure);
 	free(cfg->dlv_anchor_file);
 	config_delstrlist(cfg->dlv_anchor_list);
 	config_deldblstrlist(cfg->acls);
@@ -798,13 +814,12 @@ cfg_parse_memsize(const char* str, size_t* res)
 	return 1;
 }
 
-/** the MAX_TTL global */
-extern uint32_t MAX_TTL;
-
 void 
 config_apply(struct config_file* config)
 {
 	MAX_TTL = (uint32_t)config->max_ttl;
+	MIN_TTL = (uint32_t)config->min_ttl;
+	log_set_time_asc(config->log_time_ascii);
 }
 
 /** 
@@ -833,6 +848,11 @@ strlen_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
 		slashit = 1;
 	}
 	/* chdir */
+#ifdef UB_ON_WINDOWS
+	if(fname[0] != 0 && fname[1] == ':') {
+		/* full path, no chdir */
+	} else
+#endif
 	if(fname[0] == '/' || !use_chdir) {
 		/* full path, no chdir */
 	} else if(cfg->directory && cfg->directory[0]) {
@@ -876,6 +896,11 @@ fname_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
 		strncpy(buf, cfg->chrootdir, len);
 		slashit = 1;
 	}
+#ifdef UB_ON_WINDOWS
+	if(fname[0] != 0 && fname[1] == ':') {
+		/* full path, no chdir */
+	} else
+#endif
 	/* chdir */
 	if(fname[0] == '/' || !use_chdir) {
 		/* full path, no chdir */
@@ -901,7 +926,7 @@ fname_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
 }
 
 /** return next space character in string */
-static char* next_space_pos(char* str)
+static char* next_space_pos(const char* str)
 {
 	char* sp = strchr(str, ' ');
 	char* tab = strchr(str, '\t');
@@ -913,7 +938,7 @@ static char* next_space_pos(char* str)
 }
 
 /** return last space character in string */
-static char* last_space_pos(char* str)
+static char* last_space_pos(const char* str)
 {
 	char* sp = strrchr(str, ' ');
 	char* tab = strrchr(str, '\t');
@@ -922,6 +947,49 @@ static char* last_space_pos(char* str)
 	if(!sp) return tab;
 	if(!tab) return sp;
 	return (sp>tab)?sp:tab;
+}
+
+int 
+cfg_parse_local_zone(struct config_file* cfg, const char* val)
+{
+	const char *type, *name_end, *name;
+	char buf[256];
+
+	/* parse it as: [zone_name] [between stuff] [zone_type] */
+	name = val;
+	while(*name && isspace(*name))
+		name++;
+	if(!*name) {
+		log_err("syntax error: too short: %s", val);
+		return 0;
+	}
+	name_end = next_space_pos(name);
+	if(!name_end || !*name_end) {
+		log_err("syntax error: expected zone type: %s", val);
+		return 0;
+	}
+	if (name_end - name > 255) {
+		log_err("syntax error: bad zone name: %s", val);
+		return 0;
+	}
+	strncpy(buf, name, (size_t)(name_end-name));
+	buf[name_end-name] = '\0';
+
+	type = last_space_pos(name_end);
+	while(type && *type && isspace(*type))
+		type++;
+	if(!type || !*type) {
+		log_err("syntax error: expected zone type: %s", val);
+		return 0;
+	}
+
+	if(strcmp(type, "nodefault")==0) {
+		return cfg_strlist_insert(&cfg->local_zones_nodefault, 
+			strdup(name));
+	} else {
+		return cfg_str2list_insert(&cfg->local_zones, strdup(buf),
+			strdup(type));
+	}
 }
 
 char* cfg_ptr_reverse(char* str)
@@ -966,7 +1034,7 @@ char* cfg_ptr_reverse(char* str)
 	 * IPv6: (h.){32}.ip6.arpa.  */
 
 	if(addr_is_ip6(&addr, addrlen)) {
-		struct in6_addr* ad = &((struct sockaddr_in6*)&addr)->sin6_addr;
+		void* ad = &((struct sockaddr_in6*)&addr)->sin6_addr;
 		const char* hex = "0123456789abcdef";
 		char *p = buf;
 		int i;

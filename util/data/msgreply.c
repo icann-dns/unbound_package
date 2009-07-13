@@ -53,6 +53,8 @@
 
 /** MAX TTL default for messages and rrsets */
 uint32_t MAX_TTL = 3600 * 24 * 10; /* ten days */
+/** MIN TTL default for messages and rrsets */
+uint32_t MIN_TTL = 0;
 
 /** allocate qinfo, return 0 on error */
 static int
@@ -97,6 +99,7 @@ construct_reply_info_base(struct regional* region, uint16_t flags, size_t qd,
 	rep->ar_numrrsets = ar;
 	rep->rrset_count = total;
 	rep->security = sec;
+	rep->authoritative = 0;
 	/* array starts after the refs */
 	if(region)
 		rep->rrsets = (struct ub_packed_rrset_key**)&(rep->ref[0]);
@@ -158,6 +161,8 @@ rdata_copy(ldns_buffer* pkt, struct packed_rrset_data* data, uint8_t* to,
 	/* RFC 2181 Section 8. if msb of ttl is set treat as if zero. */
 	if(*rr_ttl & 0x80000000U)
 		*rr_ttl = 0;
+	if(*rr_ttl < MIN_TTL)
+		*rr_ttl = MIN_TTL;
 	if(*rr_ttl < data->ttl)
 		data->ttl = *rr_ttl;
 
@@ -784,4 +789,41 @@ log_query_info(enum verbosity_value v, const char* str,
 	struct query_info* qinf)
 {
 	log_nametypeclass(v, str, qinf->qname, qinf->qtype, qinf->qclass);
+}
+
+int
+reply_check_cname_chain(struct reply_info* rep) 
+{
+	/* check only answer section rrs for matching cname chain.
+	 * the cache may return changed rdata, but owner names are untouched.*/
+	size_t i;
+	uint8_t* sname = rep->rrsets[0]->rk.dname;
+	size_t snamelen = rep->rrsets[0]->rk.dname_len;
+	for(i=0; i<rep->an_numrrsets; i++) {
+		uint16_t t = ntohs(rep->rrsets[i]->rk.type);
+		if(t == LDNS_RR_TYPE_DNAME)
+			continue; /* skip dnames; note TTL 0 not cached */
+		/* verify that owner matches current sname */
+		if(query_dname_compare(sname, rep->rrsets[i]->rk.dname) != 0){
+			/* cname chain broken */
+			return 0;
+		}
+		/* if this is a cname; move on */
+		if(t == LDNS_RR_TYPE_CNAME) {
+			get_cname_target(rep->rrsets[i], &sname, &snamelen);
+		}
+	}
+	return 1;
+}
+
+int
+reply_all_rrsets_secure(struct reply_info* rep) 
+{
+	size_t i;
+	for(i=0; i<rep->rrset_count; i++) {
+		if( ((struct packed_rrset_data*)rep->rrsets[i]->entry.data)
+			->security != sec_status_secure )
+		return 0;
+	}
+	return 1;
 }

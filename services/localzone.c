@@ -119,8 +119,8 @@ local_data_cmp(const void* d1, const void* d2)
 		b->namelabs, &m);
 }
 
-/** form wireformat from text format domain name */
-static int
+/* form wireformat from text format domain name */
+int
 parse_dname(const char* str, uint8_t** res, size_t* len, int* labs)
 {
 	ldns_rdf* rdf;

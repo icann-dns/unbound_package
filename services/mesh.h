@@ -226,7 +226,7 @@ struct mesh_cb {
 	ldns_buffer* buf;
 
 	/** callback routine for results. if rcode != 0 buf has message.
-	 * called as cb(cb_arg, rcode, buf);
+	 * called as cb(cb_arg, rcode, buf, sec_state);
 	 */
 	mesh_cb_func_t cb;
 	/** user arg for callback */
@@ -390,6 +390,12 @@ struct mesh_state* mesh_state_create(struct module_env* env,
  * 	afterwards. Cleanup rbtrees before calling this function.
  */
 void mesh_state_cleanup(struct mesh_state* mstate);
+
+/**
+ * Delete all mesh states from the mesh.
+ * @param mesh: the mesh area to clear
+ */
+void mesh_delete_all(struct mesh_area* mesh);
 
 /**
  * Find a mesh state in the mesh area. Pass relevant flags.

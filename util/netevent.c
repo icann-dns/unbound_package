@@ -38,7 +38,7 @@
  *
  * This file contains event notification functions.
  */
-
+#include "config.h"
 #include "util/netevent.h"
 #include "util/log.h"
 #include "util/net_help.h"
@@ -160,7 +160,11 @@ comm_base_create(int sigs)
 		b->eb->base=(struct event_base *)ev_loop_new(EVFLAG_AUTO);
 #  else
 	(void)sigs;
+#    ifdef HAVE_EVENT_BASE_NEW
+	b->eb->base = event_base_new();
+#    else
 	b->eb->base = event_init();
+#    endif
 #  endif
 #endif
 	if(!b->eb->base) {
@@ -250,6 +254,12 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 		if(errno == ENETUNREACH && verbosity < VERB_ALGO)
 			return 0;
 #endif
+		/* squelch errors where people deploy AAAA ::ffff:bla for
+		 * authority servers, which we try for intranets. */
+		if(errno == EINVAL && addr_is_ip4mapped(
+			(struct sockaddr_storage*)addr, addrlen) &&
+			verbosity < VERB_DETAIL)
+			return 0;
 #ifndef USE_WINSOCK
 		verbose(VERB_OPS, "sendto failed: %s", strerror(errno));
 #else
@@ -866,6 +876,8 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
 				return 1;
 			log_err("tcp writev: %s", strerror(errno));
 #else
+			if(WSAGetLastError() == WSAENOTCONN)
+				return 1;
 			if(WSAGetLastError() == WSAEINPROGRESS)
 				return 1;
 			if(WSAGetLastError() == WSAEWOULDBLOCK) {
@@ -1385,7 +1397,11 @@ comm_point_close(struct comm_point* c)
 	/* close fd after removing from event lists, or epoll.. is messed up */
 	if(c->fd != -1 && !c->do_not_close) {
 		verbose(VERB_ALGO, "close fd %d", c->fd);
+#ifndef USE_WINSOCK
 		close(c->fd);
+#else
+		closesocket(c->fd);
+#endif
 	}
 	c->fd = -1;
 }
@@ -1485,8 +1501,13 @@ comm_point_start_listening(struct comm_point* c, int newfd, int sec)
 		else	c->ev->ev.ev_events |= EV_WRITE;
 	}
 	if(newfd != -1) {
-		if(c->fd != -1)
+		if(c->fd != -1) {
+#ifndef USE_WINSOCK
 			close(c->fd);
+#else
+			closesocket(c->fd);
+#endif
+		}
 		c->fd = newfd;
 		c->ev->ev.ev_fd = c->fd;
 	}

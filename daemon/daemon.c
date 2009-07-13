@@ -171,6 +171,8 @@ daemon_init()
 	/* init timezone info while we are not chrooted yet */
 	tzset();
 #endif
+	/* open /dev/random if needed */
+	ub_systemseed((unsigned)time(NULL)^(unsigned)getpid()^0xe67);
 	daemon->need_to_exit = 0;
 	modstack_init(&daemon->mods);
 	if(!(daemon->env = (struct module_env*)calloc(1, 
@@ -460,6 +462,7 @@ daemon_cleanup(struct daemon* daemon)
 	local_zones_delete(daemon->local_zones);
 	daemon->local_zones = NULL;
 	/* key cache is cleared by module desetup during next daemon_init() */
+	daemon_remote_clear(daemon->rc);
 	for(i=0; i<daemon->num; i++)
 		worker_delete(daemon->workers[i]);
 	free(daemon->workers);
@@ -474,6 +477,7 @@ daemon_delete(struct daemon* daemon)
 	if(!daemon)
 		return;
 	modstack_desetup(&daemon->mods, daemon->env);
+	daemon_remote_delete(daemon->rc);
 	listening_ports_free(daemon->ports);
 	listening_ports_free(daemon->rc_ports);
 	if(daemon->env) {
@@ -503,4 +507,28 @@ daemon_delete(struct daemon* daemon)
 			wsa_strerror(WSAGetLastError()));
 	}
 #endif
+}
+
+void daemon_apply_cfg(struct daemon* daemon, struct config_file* cfg)
+{
+        daemon->cfg = cfg;
+	config_apply(cfg);
+	if(!daemon->env->msg_cache ||
+	   cfg->msg_cache_size != slabhash_get_size(daemon->env->msg_cache) ||
+	   cfg->msg_cache_slabs != daemon->env->msg_cache->size) {
+		slabhash_delete(daemon->env->msg_cache);
+		daemon->env->msg_cache = slabhash_create(cfg->msg_cache_slabs,
+			HASH_DEFAULT_STARTARRAY, cfg->msg_cache_size,
+			msgreply_sizefunc, query_info_compare,
+			query_entry_delete, reply_info_delete, NULL);
+		if(!daemon->env->msg_cache) {
+			fatal_exit("malloc failure updating config settings");
+		}
+	}
+	if((daemon->env->rrset_cache = rrset_cache_adjust(
+		daemon->env->rrset_cache, cfg, &daemon->superalloc)) == 0)
+		fatal_exit("malloc failure updating config settings");
+	if((daemon->env->infra_cache = infra_adjust(daemon->env->infra_cache,
+		cfg))==0)
+		fatal_exit("malloc failure updating config settings");
 }

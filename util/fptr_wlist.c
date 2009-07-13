@@ -69,6 +69,13 @@
 #include "libunbound/libworker.h"
 #include "libunbound/context.h"
 #include "util/tube.h"
+#ifdef UB_ON_WINDOWS
+#include "winrc/win_svc.h"
+#endif
+
+#ifdef WITH_PYTHONMODULE
+#include "pythonmod/pythonmod.h"
+#endif
 
 int 
 fptr_whitelist_comm_point(comm_point_callback_t *fptr)
@@ -96,6 +103,9 @@ fptr_whitelist_comm_timer(void (*fptr)(void*))
 	if(fptr == &pending_udp_timer_cb) return 1;
 	else if(fptr == &outnet_tcptimer) return 1;
 	else if(fptr == &worker_stat_timer_cb) return 1;
+#ifdef UB_ON_WINDOWS
+	else if(fptr == &wsvc_cron_cb) return 1;
+#endif
 	return 0;
 }
 
@@ -118,6 +128,9 @@ fptr_whitelist_event(void (*fptr)(int, short, void *))
 	else if(fptr == &comm_point_local_handle_callback) return 1;
 	else if(fptr == &comm_point_raw_handle_callback) return 1;
 	else if(fptr == &tube_handle_signal) return 1;
+#ifdef UB_ON_WINDOWS
+	else if(fptr == &worker_win_stop_cb) return 1;
+#endif
 	return 0;
 }
 
@@ -286,6 +299,9 @@ fptr_whitelist_mod_init(int (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_init) return 1;
 	else if(fptr == &val_init) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_init) return 1;
+#endif
 	return 0;
 }
 
@@ -294,6 +310,9 @@ fptr_whitelist_mod_deinit(void (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_deinit) return 1;
 	else if(fptr == &val_deinit) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_deinit) return 1;
+#endif
 	return 0;
 }
 
@@ -303,6 +322,9 @@ fptr_whitelist_mod_operate(void (*fptr)(struct module_qstate* qstate,
 {
 	if(fptr == &iter_operate) return 1;
 	else if(fptr == &val_operate) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_operate) return 1;
+#endif
 	return 0;
 }
 
@@ -312,6 +334,9 @@ fptr_whitelist_mod_inform_super(void (*fptr)(
 {
 	if(fptr == &iter_inform_super) return 1;
 	else if(fptr == &val_inform_super) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_inform_super) return 1;
+#endif
 	return 0;
 }
 
@@ -321,6 +346,9 @@ fptr_whitelist_mod_clear(void (*fptr)(struct module_qstate* qstate,
 {
 	if(fptr == &iter_clear) return 1;
 	else if(fptr == &val_clear) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_clear) return 1;
+#endif
 	return 0;
 }
 
@@ -329,6 +357,9 @@ fptr_whitelist_mod_get_mem(size_t (*fptr)(struct module_env* env, int id))
 {
 	if(fptr == &iter_get_mem) return 1;
 	else if(fptr == &val_get_mem) return 1;
+#ifdef WITH_PYTHONMODULE
+	else if(fptr == &pythonmod_get_mem) return 1;
+#endif
 	return 0;
 }
 
@@ -343,5 +374,12 @@ int fptr_whitelist_tube_listen(tube_callback_t* fptr)
 {
 	if(fptr == &worker_handle_control_cmd) return 1;
 	else if(fptr == &libworker_handle_control_cmd) return 1;
+	return 0;
+}
+
+int fptr_whitelist_mesh_cb(mesh_cb_func_t fptr)
+{
+	if(fptr == &libworker_fg_done_cb) return 1;
+	else if(fptr == &libworker_bg_done_cb) return 1;
 	return 0;
 }

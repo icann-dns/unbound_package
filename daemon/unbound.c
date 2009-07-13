@@ -43,6 +43,7 @@
 #include "config.h"
 #include "util/log.h"
 #include "daemon/daemon.h"
+#include "daemon/remote.h"
 #include "util/config_file.h"
 #include "util/storage/slabhash.h"
 #include "services/listen_dnsport.h"
@@ -56,9 +57,15 @@
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
+#ifdef HAVE_GRP_H
+#include <grp.h>
+#endif
 
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
+#endif
+#ifdef HAVE_LOGIN_CAP_H
+#include <login_cap.h>
 #endif
 
 #ifdef USE_MINI_EVENT
@@ -71,12 +78,17 @@
 #  include <event.h>
 #endif
 
+#ifdef UB_ON_WINDOWS
+#  include "winrc/win_svc.h"
+#endif
+
 /** global debug value to keep track of heap memory allocation */
 void* unbound_start_brk = 0;
 
 /** print usage. */
 static void usage()
 {
+	const char** m;
 	printf("usage:  unbound [options]\n");
 	printf("	start unbound daemon DNS resolver.\n");
 	printf("-h	this help\n");
@@ -84,10 +96,26 @@ static void usage()
 	printf("	file format is described in unbound.conf(5).\n");
 	printf("-d	do not fork into the background.\n");
 	printf("-v	verbose (more times to increase verbosity)\n");
+#ifdef UB_ON_WINDOWS
+	printf("-w opt	windows option: \n");
+	printf("   	install, remove - manage the services entry\n");
+	printf("   	service - used to start from services control panel\n");
+#endif
 	printf("Version %s\n", PACKAGE_VERSION);
-	printf("libevent %s, libldns %s, %s\n", 
-		event_get_version(), ldns_version(), 
+	printf("linked libs: event %s, ldns %s, %s\n", 
+#ifdef USE_WINSOCK
+		"winsock",
+#elif defined(USE_MINI_EVENT)
+		"internal",
+#else
+		event_get_version(), 
+#endif
+		ldns_version(), 
 		SSLeay_version(SSLEAY_VERSION));
+	printf("linked modules:");
+	for(m = module_list_avail(); *m; m++)
+		printf(" %s", *m);
+	printf("\n");
 	printf("BSD licensed, see LICENSE in source package for details.\n");
 	printf("Report bugs to %s\n", PACKAGE_BUGREPORT);
 }
@@ -175,27 +203,8 @@ apply_settings(struct daemon* daemon, struct config_file* cfg,
 	int cmdline_verbose)
 {
 	/* apply if they have changed */
-	daemon->cfg = cfg;
 	verbosity = cmdline_verbose + cfg->verbosity;
-	config_apply(cfg);
-	if(!daemon->env->msg_cache ||
-	   cfg->msg_cache_size != slabhash_get_size(daemon->env->msg_cache) ||
-	   cfg->msg_cache_slabs != daemon->env->msg_cache->size) {
-		slabhash_delete(daemon->env->msg_cache);
-		daemon->env->msg_cache = slabhash_create(cfg->msg_cache_slabs, 
-			HASH_DEFAULT_STARTARRAY, cfg->msg_cache_size, 
-			msgreply_sizefunc, query_info_compare,
-			query_entry_delete, reply_info_delete, NULL);
-		if(!daemon->env->msg_cache) {
-			fatal_exit("malloc failure updating config settings");
-		}
-	}
-	if((daemon->env->rrset_cache = rrset_cache_adjust(
-		daemon->env->rrset_cache, cfg, &daemon->superalloc)) == 0)
-		fatal_exit("malloc failure updating config settings");
-	if((daemon->env->infra_cache = infra_adjust(daemon->env->infra_cache, 
-		cfg))==0)
-		fatal_exit("malloc failure updating config settings");
+	daemon_apply_cfg(daemon, cfg);
 	checkrlimits(cfg);
 }
 
@@ -291,6 +300,11 @@ checkoldpid(char* pidfile, int inchroot)
 static void
 detach(void)
 {
+#if defined(HAVE_DAEMON) && !defined(DEPRECATED_DAEMON)
+	/* use POSIX daemon(3) function */
+	if(daemon(1, 0) != 0)
+		fatal_exit("daemon failed: %s", strerror(errno));
+#else /* no HAVE_DAEMON */
 #ifdef HAVE_WORKING_FORK
 	int fd;
 	/* Take off... */
@@ -316,6 +330,7 @@ detach(void)
 			(void)close(fd);
 	}
 #endif /* HAVE_WORKING_FORK */
+#endif /* HAVE_DAEMON */
 }
 
 /** daemonize, drop user priviliges and chroot if needed */
@@ -324,6 +339,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	const char** cfgfile)
 {
 #ifdef HAVE_GETPWNAM
+	struct passwd *pwd = NULL;
 	uid_t uid;
 	gid_t gid;
 	/* initialize, but not to 0 (root) */
@@ -332,12 +348,11 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	log_assert(cfg);
 
 	if(cfg->username && cfg->username[0]) {
-		struct passwd *pwd;
 		if((pwd = getpwnam(cfg->username)) == NULL)
 			fatal_exit("user '%s' does not exist.", cfg->username);
 		uid = pwd->pw_uid;
 		gid = pwd->pw_gid;
-		endpwent();
+		/* endpwent below, in case we need pwd for setusercontext */
 	}
 #endif
 
@@ -351,6 +366,10 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	 * we cannot chown system logfiles, so we do not open at all.
 	 * So, using a logfile, the user does not see errors unless -d is
 	 * given to unbound on the commandline. */
+
+	/* read ssl keys while superuser and outside chroot */
+	if(!(daemon->rc = daemon_remote_create(cfg)))
+		fatal_exit("could not set up remote-control");
 
 #ifdef HAVE_KILL
 	/* check old pid file before forking */
@@ -387,11 +406,11 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 			/* delete of pidfile could potentially work,
 			 * chown to get permissions */
 			if(cfg->username && cfg->username[0]) {
-			if(chown(daemon->pidfile, uid, gid) == -1) {
+			  if(chown(daemon->pidfile, uid, gid) == -1) {
 				fatal_exit("cannot chown %u.%u %s: %s",
 					(unsigned)uid, (unsigned)gid,
 					daemon->pidfile, strerror(errno));
-			}
+			  }
 			}
 		}
 	}
@@ -451,6 +470,22 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	/* drop permissions after chroot, getpwnam, pidfile, syslog done*/
 #ifdef HAVE_GETPWNAM
 	if(cfg->username && cfg->username[0]) {
+#ifdef HAVE_SETUSERCONTEXT
+		/* setusercontext does initgroups, setuid, setgid, and
+		 * also resource limits from login config, but we
+		 * still call setresuid, setresgid to be sure to set all uid*/
+		if(setusercontext(NULL, pwd, uid, LOGIN_SETALL) != 0)
+			log_warn("unable to setusercontext %s: %s",
+				cfg->username, strerror(errno));
+#else /* !HAVE_SETUSERCONTEXT */
+#  ifdef HAVE_INITGROUPS
+		if(initgroups(cfg->username, gid) != 0)
+			log_warn("unable to initgroups %s: %s",
+				cfg->username, strerror(errno));
+#  endif /* HAVE_INITGROUPS */
+#endif /* HAVE_SETUSERCONTEXT */
+		endpwent();
+
 #ifdef HAVE_SETRESGID
 		if(setresgid(gid,gid,gid) != 0)
 #elif defined(HAVE_SETREGID) && !defined(DARWIN_BROKEN_SETREUID)
@@ -472,7 +507,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		verbose(VERB_QUERY, "drop user privileges, run as %s", 
 			cfg->username);
 	}
-#endif
+#endif /* HAVE_GETPWNAM */
 	/* file logging inited after chroot,chdir,setuid is done so that 
 	 * it would succeed on SIGHUP as well */
 	if(!cfg->use_syslog)
@@ -561,8 +596,10 @@ main(int argc, char* argv[])
 {
 	int c;
 	const char* cfgfile = CONFIGFILE;
+	const char* winopt = NULL;
 	int cmdline_verbose = 0;
 	int debug_mode = 0;
+	int cmdline_cfg = 0;
 
 #ifdef HAVE_SBRK
 	/* take debug snapshot of heap */
@@ -571,10 +608,11 @@ main(int argc, char* argv[])
 
 	log_init(NULL, 0, NULL);
 	/* parse the options */
-	while( (c=getopt(argc, argv, "c:dhv")) != -1) {
+	while( (c=getopt(argc, argv, "c:dhvw:")) != -1) {
 		switch(c) {
 		case 'c':
 			cfgfile = optarg;
+			cmdline_cfg = 1;
 			break;
 		case 'v':
 			cmdline_verbose ++;
@@ -582,6 +620,9 @@ main(int argc, char* argv[])
 			break;
 		case 'd':
 			debug_mode = 1;
+			break;
+		case 'w':
+			winopt = optarg;
 			break;
 		case '?':
 		case 'h':
@@ -592,6 +633,15 @@ main(int argc, char* argv[])
 	}
 	argc -= optind;
 	argv += optind;
+
+	if(winopt) {
+#ifdef UB_ON_WINDOWS
+		wsvc_command_option(winopt, cfgfile, cmdline_verbose, 
+			cmdline_cfg);
+#else
+		fatal_exit("option not supported");
+#endif
+	}
 
 	if(argc != 0) {
 		usage();

@@ -1,4 +1,4 @@
-.TH "unbound\-host" "1" "Feb 10, 2009" "NLnet Labs" "unbound 1.2.1"
+.TH "unbound\-host" "1" "Jul 13, 2009" "NLnet Labs" "unbound 1.3.2"
 .\"
 .\" unbound-host.1 -- unbound DNS lookup utility
 .\"
@@ -34,6 +34,10 @@
 uses the unbound validating resolver to query for the hostname and display
 results. With the \fB\-v\fR option it displays validation 
 status: secure, insecure, bogus (security failure).
+.P
+By default it reads no configuration file whatsoever.  It attempts to reach
+the internet root servers.  With \fB\-C\fR an unbound config file and with
+\fB\-r\fR resolv.conf can be read.
 .P
 The available options are:
 .TP

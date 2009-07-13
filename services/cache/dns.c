@@ -40,6 +40,7 @@
  */
 #include "config.h"
 #include "iterator/iter_delegpt.h"
+#include "validator/val_nsec.h"
 #include "services/cache/dns.h"
 #include "services/cache/rrset.h"
 #include "util/data/msgreply.h"
@@ -286,6 +287,10 @@ find_add_ds(struct module_env* env, struct regional* region,
 		/* Note: the PACKED_RRSET_NSEC_AT_APEX flag is not used.
 		 * since this is a referral, we need the NSEC at the parent
 		 * side of the zone cut, not the NSEC at apex side. */
+		if(rrset && nsec_has_type(rrset, LDNS_RR_TYPE_DS)) {
+			lock_rw_unlock(&rrset->entry.lock);
+			rrset = NULL; /* discard wrong NSEC */
+		}
 	}
 	if(rrset) {
 		/* add it to auth section. This is the second rrset. */
@@ -426,14 +431,27 @@ tomsg(struct module_env* env, struct msgreply_entry* e, struct reply_info* r,
 		return NULL;
 	msg->rep->flags = r->flags;
 	msg->rep->qdcount = r->qdcount;
-	msg->rep->ttl = r->ttl;
+	msg->rep->ttl = r->ttl - now;
 	msg->rep->security = r->security;
 	msg->rep->an_numrrsets = r->an_numrrsets;
 	msg->rep->ns_numrrsets = r->ns_numrrsets;
 	msg->rep->ar_numrrsets = r->ar_numrrsets;
 	msg->rep->rrset_count = r->rrset_count;
+        msg->rep->authoritative = r->authoritative;
 	if(!rrset_array_lock(r->ref, r->rrset_count, now))
 		return NULL;
+	if(r->an_numrrsets > 0 && (r->rrsets[0]->rk.type == htons(
+		LDNS_RR_TYPE_CNAME) || r->rrsets[0]->rk.type == htons(
+		LDNS_RR_TYPE_DNAME)) && !reply_check_cname_chain(r)) {
+		/* cname chain is now invalid, reconstruct msg */
+		rrset_array_unlock(r->ref, r->rrset_count);
+		return NULL;
+	}
+	if(r->security == sec_status_secure && !reply_all_rrsets_secure(r)) {
+		/* message rrsets have changed status, revalidate */
+		rrset_array_unlock(r->ref, r->rrset_count);
+		return NULL;
+	}
 	for(i=0; i<msg->rep->rrset_count; i++) {
 		msg->rep->rrsets[i] = packed_rrset_copy_region(r->rrsets[i], 
 			region, now);
@@ -461,6 +479,7 @@ rrset_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 	if(!msg)
 		return NULL;
 	msg->rep->flags = BIT_QR; /* reply, no AA, no error */
+        msg->rep->authoritative = 0; /* reply stored in cache can't be authoritative */
 	msg->rep->qdcount = 1;
 	msg->rep->ttl = d->ttl - now;
 	msg->rep->security = sec_status_unchecked;
@@ -495,6 +514,7 @@ synth_dname_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 	if(!msg)
 		return NULL;
 	msg->rep->flags = BIT_QR; /* reply, no AA, no error */
+        msg->rep->authoritative = 0; /* reply stored in cache can't be authoritative */
 	msg->rep->qdcount = 1;
 	msg->rep->ttl = d->ttl - now;
 	msg->rep->security = sec_status_unchecked;
