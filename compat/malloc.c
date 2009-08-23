@@ -3,7 +3,6 @@
 
 #include "config.h"
 #undef malloc
-
 #include <sys/types.h>
 
 void *malloc ();
@@ -12,7 +11,7 @@ void *malloc ();
    If N is zero, allocate a 1-byte block.  */
 
 void *
-rpl_malloc (size_t n)
+rpl_malloc_unbound (size_t n)
 {
   if (n == 0)
     n = 1;
