@@ -1,3 +1,10 @@
+unbound (1.3.3-1) unstable; urgency=low
+
+  * New upstream release.
+  * Drop .la file from libunbound-dev; closes: #541640.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 23 Aug 2009 13:25:53 -0400
+
 unbound (1.3.2-1) unstable; urgency=low
 
   * New upstream release.

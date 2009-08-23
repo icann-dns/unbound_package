@@ -246,13 +246,30 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 		log_err("error: send empty UDP packet");
 #endif
 	log_assert(addr && addrlen > 0);
-	sent = sendto(c->fd, ldns_buffer_begin(packet), 
+	sent = sendto(c->fd, (void*)ldns_buffer_begin(packet), 
 		ldns_buffer_remaining(packet), 0,
 		addr, addrlen);
 	if(sent == -1) {
-#ifdef ENETUNREACH
-		if(errno == ENETUNREACH && verbosity < VERB_ALGO)
-			return 0;
+		/* do not log transient errors (unless high verbosity) */
+#if defined(ENETUNREACH) || defined(EHOSTDOWN) || defined(EHOSTUNREACH) || defined(ENETDOWN)
+		switch(errno) {
+#  ifdef ENETUNREACH
+			case ENETUNREACH:
+#  endif
+#  ifdef EHOSTDOWN
+			case EHOSTDOWN:
+#  endif
+#  ifdef EHOSTUNREACH
+			case EHOSTUNREACH:
+#  endif
+#  ifdef ENETDOWN
+			case ENETDOWN:
+#  endif
+				if(verbosity < VERB_ALGO)
+					return 0;
+			default:
+				break;
+		}
 #endif
 		/* squelch errors where people deploy AAAA ::ffff:bla for
 		 * authority servers, which we try for intranets. */
@@ -530,7 +547,7 @@ comm_point_udp_callback(int fd, short event, void* arg)
 		rep.addrlen = (socklen_t)sizeof(rep.addr);
 		log_assert(fd != -1);
 		log_assert(ldns_buffer_remaining(rep.c->buffer) > 0);
-		recv = recvfrom(fd, ldns_buffer_begin(rep.c->buffer), 
+		recv = recvfrom(fd, (void*)ldns_buffer_begin(rep.c->buffer), 
 			ldns_buffer_remaining(rep.c->buffer), 0, 
 			(struct sockaddr*)&rep.addr, &rep.addrlen);
 		if(recv == -1) {
@@ -711,7 +728,7 @@ comm_point_tcp_handle_read(int fd, struct comm_point* c, int short_ok)
 	log_assert(fd != -1);
 	if(c->tcp_byte_count < sizeof(uint16_t)) {
 		/* read length bytes */
-		r = recv(fd, ldns_buffer_at(c->buffer, c->tcp_byte_count), 
+		r = recv(fd,(void*)ldns_buffer_at(c->buffer,c->tcp_byte_count),
 			sizeof(uint16_t)-c->tcp_byte_count, 0);
 		if(r == 0)
 			return 0;
@@ -760,7 +777,7 @@ comm_point_tcp_handle_read(int fd, struct comm_point* c, int short_ok)
 	}
 
 	log_assert(ldns_buffer_remaining(c->buffer) > 0);
-	r = recv(fd, ldns_buffer_current(c->buffer), 
+	r = recv(fd, (void*)ldns_buffer_current(c->buffer), 
 		ldns_buffer_remaining(c->buffer), 0);
 	if(r == 0) {
 		return 0;
@@ -902,7 +919,7 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
 		}
 	}
 	log_assert(ldns_buffer_remaining(c->buffer) > 0);
-	r = send(fd, ldns_buffer_current(c->buffer), 
+	r = send(fd, (void*)ldns_buffer_current(c->buffer), 
 		ldns_buffer_remaining(c->buffer), 0);
 	if(r == -1) {
 #ifndef USE_WINSOCK
