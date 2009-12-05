@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Oct  7, 2009" "NLnet Labs" "unbound 1.3.4"
+.TH "unbound.conf" "5" "Nov 26, 2009" "NLnet Labs" "unbound 1.4.0"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -52,8 +52,8 @@ server:
 	username: unbound
 	# make sure unbound can access entropy from inside the chroot.
 	# e.g. on linux the use these commands (on BSD, devfs(8) is used):
-	#      mount --bind -n /dev/random /etc/unbound/dev/random
-	# and  mount --bind -n /dev/log /etc/unbound/dev/log
+	#      mount \-\-bind \-n /dev/random /etc/unbound/dev/random
+	# and  mount \-\-bind \-n /dev/log /etc/unbound/dev/log
 	chroot: "/etc/unbound"
 	# logfile: "/etc/unbound/unbound.log"  #uncomment to use logfile.
 	pidfile: "/etc/unbound/unbound.pid"
@@ -115,10 +115,10 @@ Can be given multiple times to work on several interfaces. If none are
 given the default is to listen to localhost.
 The interfaces are not changed on a reload (kill \-HUP) but only on restart.
 .TP
-.B interface-automatic: \fI<yes or no>
+.B interface\-automatic: \fI<yes or no>
 Detect source interface on UDP queries and copy them to replies.  This 
 feature is experimental, and needs support in your OS for IPv6 
-(and its socket options) and IPv4 (and have source-interface socket options). 
+(and its socket options) and IPv4 (and have source\-interface socket options). 
 Default value is no.
 .TP
 .B outgoing\-interface: \fI<ip address>
@@ -142,7 +142,7 @@ Permit unbound to open this port or range of ports for use to send queries.
 A larger number of permitted outgoing ports increases resilience against
 spoofing attempts. Make sure these ports are not needed by other daemons. 
 By default only ports above 1024 that have not been assigned by IANA are used.
-Give a port number or a range of the form "low-high", without spaces.
+Give a port number or a range of the form "low\-high", without spaces.
 .IP
 The \fBoutgoing\-port\-permit\fR and \fBoutgoing\-port\-avoid\fR statements 
 are processed in the line order of the config file, adding the permitted ports 
@@ -155,7 +155,7 @@ Do not permit unbound to open this port or range of ports for use to send
 queries. Use this to make sure unbound does not grab a port that another
 daemon needs. The port is avoided on all outgoing interfaces, both IP4 and IP6.
 By default only ports above 1024 that have not been assigned by IANA are used.
-Give a port number or a range of the form "low-high", without spaces.
+Give a port number or a range of the form "low\-high", without spaces.
 .TP
 .B outgoing\-num\-tcp: \fI<number>
 Number of outgoing TCP buffers to allocate per thread. Default is 10. If set
@@ -164,6 +164,17 @@ to 0, or if do_tcp is "no", no TCP queries to authoritative servers are done.
 .B incoming\-num\-tcp: \fI<number>
 Number of incoming TCP buffers to allocate per thread. Default is 10. If set
 to 0, or if do_tcp is "no", no TCP queries from clients are accepted.
+.TP
+.B edns\-buffer\-size: \fI<number>
+Number of bytes size to advertise as the EDNS reassembly buffer size.
+This is the value put into datagrams over UDP towards peers.  The actual
+buffer size is determined by msg\-buffer\-size (both for TCP and UDP).  Do
+not set lower than that value.  Default is 4096 which is RFC recommended.
+If you have fragmentation reassembly problems, usually seen as timeouts,
+then a value of 1480 can fix it.  Setting to 512 bypasses even the most
+stringent path MTU problems, but is seen as extreme, since the amount
+of TCP fallback generated is excessive (probably also for this resolver,
+consider tuning the outgoing tcp number).
 .TP
 .B msg\-buffer\-size: \fI<number>
 Number of bytes size of the message buffers. Default is 65552 bytes, enough
@@ -196,6 +207,17 @@ arrive, then 50% of the queries are allowed to run to completion, and
 the other 50% are replaced with the new incoming query if they have already 
 spent more than their allowed time.  This protects against denial of 
 service by slow queries or high query rates.  Default 200 milliseconds.
+.TP
+.B so\-rcvbuf: \fI<number>
+If not 0, then set the SO_RCVBUF socket option to get more buffer
+space on UDP port 53 incoming queries.  So that short spikes on busy
+servers do not drop packets (see counter in netstat \-su).  Default is
+0 (use system value).  Otherwise, the number of bytes to ask for, try
+"4m" on a busy server.  The OS caps it at a maximum, on linux unbound
+needs root permission to bypass the limit, or the admin can use sysctl
+net.core.rmem_max.  On BSD change kern.ipc.maxsockbuf in /etc/sysctl.conf.
+On OpenBSD change header and recompile kernel. On Solaris ndd \-set
+/dev/udp udp_max_buf 8388608.
 .TP
 .B rrset\-cache\-size: \fI<number>
 Number of bytes size of the RRset cache. Default is 4 megabytes.
@@ -432,7 +454,7 @@ not RFC standard, and could lead to performance problems because of the
 extra query load that is generated.  Experimental option.
 .TP
 .B use\-caps\-for\-id: \fI<yes or no>
-Use 0x20-encoded random bits in the query to foil spoof attempts.
+Use 0x20\-encoded random bits in the query to foil spoof attempts.
 This perturbs the lowercase and uppercase of query names sent to 
 authority servers and checks if the reply still has the correct casing. 
 Disabled by default. 
@@ -443,7 +465,7 @@ Give IPv4 of IPv6 addresses or classless subnets. These are addresses
 on your private network, and are not allowed to be returned for public
 internet names.  Any occurence of such addresses are removed from
 DNS answers. Additionally, the DNSSEC validator may mark the answers
-bogus. This protects against so-called DNS Rebinding, where a user browser
+bogus. This protects against so\-called DNS Rebinding, where a user browser
 is turned into a network proxy, allowing remote access through the browser
 to other parts of your private network.  Some names can be allowed to
 contain your private addresses, by default all the \fBlocal\-data\fR
@@ -490,6 +512,13 @@ You must also set trust\-anchors for validation to be useful.
 File with trusted keys for validation. Both DS and DNSKEY entries can appear
 in the file. The format of the file is the standard DNS Zone file format.
 Default is "", or no trust anchor file.
+.TP
+.B auto\-trust\-anchor\-file: \fI<filename>
+File with trust anchor for one zone, which is tracked with RFC5011 probes.
+The probes are several times per month, thus the machine must be online
+frequently.  The initial file can be one with contents as described in
+\fBtrust\-anchor\-file\fR.  The file is written to when the anchor is updated,
+so the unbound user must have write permission.
 .TP
 .B trust\-anchor: \fI<"Resource Record">
 A DS or DNSKEY RR for a key to use for validation. Multiple entries can be
@@ -587,6 +616,26 @@ be in ascending order and have at least one entry. If you set it to
 "1024 65535" there is no restriction to NSEC3 iteration values.
 This table must be kept short; a very long list could cause slower operation.
 .TP
+.B add\-holddown: \fI<seconds>
+Instruct the \fBauto\-trust\-anchor\-file\fR probe mechanism for RFC5011
+autotrust updates to add new trust anchors only after they have been
+visible for this time.  Default is 30 days as per the RFC.
+.TP
+.B del\-holddown: \fI<seconds>
+Instruct the \fBauto\-trust\-anchor\-file\fR probe mechanism for RFC5011
+autotrust updates to remove revoked trust anchors after they have been
+kept in the revoked list for this long.  Default is 30 days as per
+the RFC.
+.TP
+.B keep\-missing: \fI<seconds>
+Instruct the \fBauto\-trust\-anchor\-file\fR probe mechanism for RFC5011
+autotrust updates to remove missing trust anchors after they have been
+unseen for this long.  This cleans up the state file if the target zone
+does not perform trust anchor revocation, so this makes the auto probe
+mechanism work with zones that perform regular (non\-5011) rollovers.
+The default is 366 days.  The value 0 does not remove missing anchors,
+as per the RFC.
+.TP
 .B key\-cache\-size: \fI<number>
 Number of bytes size of the key cache. Default is 4 megabytes.
 A plain number is in bytes, append 'k', 'm' or 'g' for kilobytes, megabytes
@@ -636,14 +685,16 @@ If no local\-zone is given local\-data causes a transparent zone
 to be created by default.
 .TP 10
 \h'5'\fIredirect\fR 
-The query is answered from the local data for the zone name. 
+The query is answered from the local data for the zone name.
 There may be no local data beneath the zone name.
 This answers queries for the zone, and all subdomains of the zone
 with the local data for the zone.
-It can be used to redirect a domain to a different address, with 
+It can be used to redirect a domain to return a different address record
+to the end user, with 
 local\-zone: "example.com." redirect and 
 local\-data: "example.com. A 127.0.0.1"
-queries for www.example.com and www.foo.example.com are redirected.
+queries for www.example.com and www.foo.example.com are redirected, so
+that users with web browsers cannot access sites with suffix example.com.
 .TP 10
 \h'5'\fInodefault\fR 
 Used to turn off default contents for AS112 zones. The other types
@@ -725,7 +776,7 @@ Reverse data for zones 8.E.F.ip6.arpa to B.E.F.ip6.arpa.
 Reverse data for zone 8.B.D.0.1.0.0.2.ip6.arpa. This zone is used for
 tutorials and examples. You can remove the block on this zone with:
 .nf
-  local-zone: 8.B.D.0.1.0.0.2.ip6.arpa. nodefault
+  local\-zone: 8.B.D.0.1.0.0.2.ip6.arpa. nodefault
 .fi
 This also works with the other default zones.
 .\" End of local-zone listing.
@@ -755,7 +806,7 @@ enabled, the \fIunbound\-control\fR(8) utility can be used to send
 commands to the running unbound server.  The server uses these clauses
 to setup SSLv3 / TLSv1 security for the connection.  The
 \fIunbound\-control\fR(8) utility also reads the \fBremote\-control\fR
-section for options.  To setup the correct self-signed certificates use the
+section for options.  To setup the correct self\-signed certificates use the
 \fIunbound\-control\-setup\fR(8) utility.
 .TP 5
 .B control\-enable:     \fI<yes or no>
@@ -799,6 +850,8 @@ There may be multiple
 .B stub\-zone:
 clauses. Each with a name: and zero or more hostnames or IP addresses.
 For the stub zone this list of nameservers is used. Class IN is assumed.
+The servers should be authority servers, not recursors; unbound performs
+the recursive processing itself for stub zones.
 .P
 The stub zone can be used to configure authoritative data to be used
 by the resolver that cannot be accessed using the public internet servers.
@@ -837,11 +890,16 @@ the resolver picks up a correct list online.
 .LP
 There may be multiple
 .B forward\-zone:
-clauses. Each with a name: and zero or more hostnames or IP addresses.
-For the forward zone this list of nameservers is used to forward the queries
-to. The servers have to handle further recursion for the query. Class IN is 
-assumed. A forward\-zone entry with name "." and a forward\-addr target will 
-forward all queries to that other server (unless it can answer from the cache).
+clauses. Each with a \fBname:\fR and zero or more hostnames or IP
+addresses.  For the forward zone this list of nameservers is used to
+forward the queries to. The servers listed as \fBforward\-host:\fR and
+\fBforward\-addr:\fR have to handle further recursion for the query.  Thus,
+those servers are not authority servers, but are (just like unbound is)
+recursive servers too; unbound does not perform recursion itself for the
+forward zone, it lets the remote server do it.  Class IN is assumed.
+A forward\-zone entry with name "." and a forward\-addr target will
+forward all queries to that other server (unless it can answer from
+the cache).
 .TP
 .B name: \fI<domain name>
 Name of the forward zone.
@@ -871,7 +929,7 @@ supported. Very large data and high TCP loads are exceptional for the DNS.
 DNSSEC validation is enabled, just add trust anchors.
 If you do not have to worry about programs using more than 3 Mb of memory,
 the below example is not for you. Use the defaults to receive full service,
-which on BSD-32bit tops out at 30-40 Mb after heavy usage. 
+which on BSD\-32bit tops out at 30\-40 Mb after heavy usage. 
 .P
 .nf
 # example settings that reduce memory usage

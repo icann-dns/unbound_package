@@ -130,6 +130,7 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 		return NULL;
 	}
 	w->env->worker = (struct worker*)w;
+	w->env->probe_timer = NULL;
 	seed = (unsigned int)time(NULL) ^ (unsigned int)getpid() ^
 		(((unsigned int)w->thread_num)<<17);
 	seed ^= (unsigned int)w->env->alloc->next_id;
@@ -168,7 +169,7 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 		cfg->do_tcp?cfg->outgoing_num_tcp:0,
 		w->env->infra_cache, w->env->rnd, cfg->use_caps_bits_for_id,
 		ports, numports, cfg->unwanted_threshold,
-		&libworker_alloc_cleanup, w);
+		&libworker_alloc_cleanup, w, cfg->do_udp);
 	if(!w->is_bg || w->is_bg_thread) {
 		lock_basic_unlock(&ctx->cfglock);
 	}
@@ -437,8 +438,10 @@ libworker_enter_result(struct ub_result* res, ldns_buffer* buf,
 /** fillup fg results */
 static void
 libworker_fillup_fg(struct ctx_query* q, int rcode, ldns_buffer* buf, 
-	enum sec_status s)
+	enum sec_status s, char* why_bogus)
 {
+	if(why_bogus)
+		q->res->why_bogus = strdup(why_bogus);
 	if(rcode != 0) {
 		q->res->rcode = rcode;
 		q->msg_security = s;
@@ -459,13 +462,14 @@ libworker_fillup_fg(struct ctx_query* q, int rcode, ldns_buffer* buf,
 }
 
 void
-libworker_fg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s)
+libworker_fg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s,
+	char* why_bogus)
 {
 	struct ctx_query* q = (struct ctx_query*)arg;
 	/* fg query is done; exit comm base */
 	comm_base_exit(q->w->base);
 
-	libworker_fillup_fg(q, rcode, buf, s);
+	libworker_fillup_fg(q, rcode, buf, s, why_bogus);
 }
 
 /** setup qinfo and edns */
@@ -514,8 +518,9 @@ int libworker_fg(struct ub_ctx* ctx, struct ctx_query* q)
 	ldns_buffer_write_u16_at(w->back->udp_buff, 2, qflags);
 	if(local_zones_answer(ctx->local_zones, &qinfo, &edns, 
 		w->back->udp_buff, w->env->scratch)) {
+		regional_free_all(w->env->scratch);
 		libworker_fillup_fg(q, LDNS_RCODE_NOERROR, 
-			w->back->udp_buff, sec_status_insecure);
+			w->back->udp_buff, sec_status_insecure, NULL);
 		libworker_delete(w);
 		free(qinfo.qname);
 		return UB_NOERROR;
@@ -538,7 +543,7 @@ int libworker_fg(struct ub_ctx* ctx, struct ctx_query* q)
 /** add result to the bg worker result queue */
 static void
 add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt, 
-	int err)
+	int err, char* reason)
 {
 	uint8_t* msg = NULL;
 	uint32_t len = 0;
@@ -546,6 +551,8 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 	/* serialize and delete unneeded q */
 	if(w->is_bg_thread) {
 		lock_basic_lock(&w->ctx->cfglock);
+		if(reason)
+			q->res->why_bogus = strdup(reason);
 		if(pkt) {
 			q->msg_len = ldns_buffer_remaining(pkt);
 			q->msg = memdup(ldns_buffer_begin(pkt), q->msg_len);
@@ -557,6 +564,8 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 		} else msg = context_serialize_answer(q, err, NULL, &len);
 		lock_basic_unlock(&w->ctx->cfglock);
 	} else {
+		if(reason)
+			q->res->why_bogus = strdup(reason);
 		msg = context_serialize_answer(q, err, pkt, &len);
 		(void)rbtree_delete(&w->ctx->queries, q->node.key);
 		w->ctx->num_async--;
@@ -574,7 +583,8 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 }
 
 void
-libworker_bg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s)
+libworker_bg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s,
+	char* why_bogus)
 {
 	struct ctx_query* q = (struct ctx_query*)arg;
 
@@ -595,7 +605,7 @@ libworker_bg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s)
 	if(rcode != 0) {
 		error_encode(buf, rcode, NULL, 0, BIT_RD, NULL);
 	}
-	add_bg_result(q->w, q, buf, UB_NOERROR);
+	add_bg_result(q->w, q, buf, UB_NOERROR, why_bogus);
 }
 
 
@@ -620,7 +630,7 @@ handle_newq(struct libworker* w, uint8_t* buf, uint32_t len)
 		return;
 	}
 	if(!setup_qinfo_edns(w, q, &qinfo, &edns)) {
-		add_bg_result(w, q, NULL, UB_SYNTAX);
+		add_bg_result(w, q, NULL, UB_SYNTAX, NULL);
 		return;
 	}
 	qid = 0;
@@ -630,8 +640,9 @@ handle_newq(struct libworker* w, uint8_t* buf, uint32_t len)
 	ldns_buffer_write_u16_at(w->back->udp_buff, 2, qflags);
 	if(local_zones_answer(w->ctx->local_zones, &qinfo, &edns, 
 		w->back->udp_buff, w->env->scratch)) {
+		regional_free_all(w->env->scratch);
 		q->msg_security = sec_status_insecure;
-		add_bg_result(w, q, w->back->udp_buff, UB_NOERROR);
+		add_bg_result(w, q, w->back->udp_buff, UB_NOERROR, NULL);
 		free(qinfo.qname);
 		return;
 	}
@@ -639,7 +650,7 @@ handle_newq(struct libworker* w, uint8_t* buf, uint32_t len)
 	/* process new query */
 	if(!mesh_new_callback(w->env->mesh, &qinfo, qflags, &edns, 
 		w->back->udp_buff, qid, libworker_bg_done_cb, q)) {
-		add_bg_result(w, q, NULL, UB_NOMEM);
+		add_bg_result(w, q, NULL, UB_NOMEM, NULL);
 	}
 	free(qinfo.qname);
 }
@@ -833,6 +844,11 @@ void worker_stat_timer_cb(void* ATTR_UNUSED(arg))
 	log_assert(0);
 }
 
+void worker_probe_timer_cb(void* ATTR_UNUSED(arg))
+{
+	log_assert(0);
+}
+
 int order_lock_cmp(const void* ATTR_UNUSED(e1), const void* ATTR_UNUSED(e2))
 {
 	log_assert(0);
@@ -844,6 +860,12 @@ codeline_cmp(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
 {
 	log_assert(0);
 	return 0;
+}
+
+int replay_var_compare(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
+{
+        log_assert(0);
+        return 0;
 }
 
 #ifdef UB_ON_WINDOWS

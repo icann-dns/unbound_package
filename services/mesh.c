@@ -61,9 +61,9 @@ static void
 timeval_subtract(struct timeval* d, const struct timeval* end, const struct timeval* start)
 {
 #ifndef S_SPLINT_S
-	time_t end_usec = end->tv_usec;;
+	time_t end_usec = end->tv_usec;
 	d->tv_sec = end->tv_sec - start->tv_sec;
-	while(end_usec < start->tv_usec) {
+	if(end_usec < start->tv_usec) {
 		end_usec += 1000000;
 		d->tv_sec--;
 	}
@@ -78,7 +78,7 @@ timeval_add(struct timeval* d, const struct timeval* add)
 #ifndef S_SPLINT_S
 	d->tv_sec += add->tv_sec;
 	d->tv_usec += add->tv_usec;
-	while(d->tv_usec > 1000000 ) {
+	if(d->tv_usec > 1000000 ) {
 		d->tv_usec -= 1000000;
 		d->tv_sec++;
 	}
@@ -472,7 +472,7 @@ mesh_state_cleanup(struct mesh_state* mstate)
 		for(cb=mstate->cb_list; cb; cb=cb->next) {
 			fptr_ok(fptr_whitelist_mesh_cb(cb->cb));
 			(*cb->cb)(cb->cb_arg, LDNS_RCODE_SERVFAIL, NULL,
-				sec_status_unchecked);
+				sec_status_unchecked, NULL);
 		}
 	}
 
@@ -615,6 +615,7 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
 	struct mesh_cb* r)
 {
 	int secure;
+	char* reason = NULL;
 	/* bogus messages are not made into servfail, sec_status passed 
 	 * to the callback function */
 	if(rep && rep->security == sec_status_secure)
@@ -622,10 +623,14 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
 	else	secure = 0;
 	if(!rep && rcode == LDNS_RCODE_NOERROR)
 		rcode = LDNS_RCODE_SERVFAIL;
+	if(!rcode && rep->security == sec_status_bogus) {
+		if(!(reason = errinf_to_str(&m->s)))
+			rcode = LDNS_RCODE_SERVFAIL;
+	}
 	/* send the reply */
 	if(rcode) {
 		fptr_ok(fptr_whitelist_mesh_cb(r->cb));
-		(*r->cb)(r->cb_arg, rcode, r->buf, sec_status_unchecked);
+		(*r->cb)(r->cb_arg, rcode, r->buf, sec_status_unchecked, NULL);
 	} else {
 		size_t udp_size = r->edns.udp_size;
 		ldns_buffer_clear(r->buf);
@@ -640,13 +645,14 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
 		{
 			fptr_ok(fptr_whitelist_mesh_cb(r->cb));
 			(*r->cb)(r->cb_arg, LDNS_RCODE_SERVFAIL, r->buf,
-				sec_status_unchecked);
+				sec_status_unchecked, NULL);
 		} else {
 			fptr_ok(fptr_whitelist_mesh_cb(r->cb));
 			(*r->cb)(r->cb_arg, LDNS_RCODE_NOERROR, r->buf,
-				rep->security);
+				rep->security, reason);
 		}
 	}
+	free(reason);
 	m->s.env->mesh->num_reply_addrs--;
 }
 
@@ -851,7 +857,7 @@ mesh_continue(struct mesh_area* mesh, struct mesh_state* mstate,
 			&mstate->s.qinfo);
 		s = module_error;
 	}
-	if(s == module_wait_module) {
+	if(s == module_wait_module || s == module_restart_next) {
 		/* start next module */
 		mstate->s.curmod++;
 		if(mesh->mods.num == mstate->s.curmod) {
@@ -860,6 +866,13 @@ mesh_continue(struct mesh_area* mesh, struct mesh_state* mstate,
 				&mstate->s.qinfo);
 			mstate->s.curmod--;
 			return mesh_continue(mesh, mstate, module_error, ev);
+		}
+		if(s == module_restart_next) {
+			fptr_ok(fptr_whitelist_mod_clear(
+				mesh->mods.mod[mstate->s.curmod]->clear));
+			(*mesh->mods.mod[mstate->s.curmod]->clear)
+				(&mstate->s, mstate->s.curmod);
+			mstate->s.minfo[mstate->s.curmod] = NULL;
 		}
 		*ev = module_event_pass;
 		return 1;

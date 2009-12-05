@@ -1,4 +1,4 @@
-.TH "libunbound" "3" "Oct  7, 2009" "NLnet Labs" "unbound 1.3.4"
+.TH "libunbound" "3" "Nov 26, 2009" "NLnet Labs" "unbound 1.4.0"
 .\"
 .\" libunbound.3 -- unbound library functions manual
 .\"
@@ -41,7 +41,7 @@
 .B ub_ctx_zone_remove,
 .B ub_ctx_data_add,
 .B ub_ctx_data_remove
-\- Unbound DNS validating resolver 1.3.4 functions.
+\- Unbound DNS validating resolver 1.4.0 functions.
 .SH "SYNOPSIS"
 .LP
 .B #include <unbound.h>
@@ -100,9 +100,7 @@
 \fIint\fR
 \fBub_resolve\fR(\fIstruct ub_ctx*\fR ctx, \fIchar*\fR name, 
 .br
-           \fIint\fR rrtype, \fIint\fR rrclass, \fIint*\fR secure, 
-.br
-           \fIint*\fR data, \fIstruct ub_result**\fR result);
+           \fIint\fR rrtype, \fIint\fR rrclass, \fIstruct ub_result**\fR result);
 .LP
 \fIint\fR
 \fBub_resolve_async\fR(\fIstruct ub_ctx*\fR ctx, \fIchar*\fR name, 
@@ -201,14 +199,16 @@ Usually "/etc/resolv.conf". Uses those nameservers as caching proxies.
 If they do not support DNSSEC, validation may fail.
 Only nameservers are picked up, the searchdomain, ndots and other
 settings from \fIresolv.conf\fR(5) are ignored.
-If fname NULL is passed, "/etc/resolv.conf" is used.
+If fname NULL is passed, "/etc/resolv.conf" is used (if on Windows, 
+the system\-wide configured nameserver is picked instead).
 At this time it is only possible to set configuration before the
 first resolve is done.
 .TP
 .B ub_ctx_hosts
 Read list of hosts from the filename given.
 Usually "/etc/hosts". When queried for, these addresses are not marked 
-DNSSEC secure. If fname NULL is passed, "/etc/hosts" is used.
+DNSSEC secure. If fname NULL is passed, "/etc/hosts" is used 
+(if on Windows, etc/hosts from WINDIR is picked instead).
 At this time it is only possible to set configuration before the
 first resolve is done.
 .TP
@@ -217,7 +217,7 @@ ub_ctx_add_ta
 Add a trust anchor to the given context.
 At this time it is only possible to add trusted keys before the
 first resolve is done.
-The format is a string, similar to the zone-file format,
+The format is a string, similar to the zone\-file format,
 [domainname] [type] [rdata contents]. Both DS and DNSKEY records are accepted.
 .TP
 .B ub_ctx_add_ta_file
@@ -228,13 +228,13 @@ first resolve is done.
 .TP
 .B ub_ctx_trustedkeys
 Add trust anchors to the given context.
-Pass the name of a bind-style config file with trusted-keys{}.
+Pass the name of a bind\-style config file with trusted\-keys{}.
 At this time it is only possible to add trusted keys before the
 first resolve is done.
 .TP
 .B ub_ctx_debugout
 Set debug and error log output to the given stream. Pass NULL to disable
-output. Default is stderr. File-names or using syslog can be enabled
+output. Default is stderr. File\-names or using syslog can be enabled
 using config options, this routine is for using your own stream.
 .TP
 .B ub_ctx_debuglevel
@@ -281,8 +281,6 @@ Will perform necessary callbacks.
 Perform resolution and validation of the target name.
 The name is a domain name in a zero terminated text string.
 The rrtype and rrclass are DNS type and class codes.
-The value secure returns true if the answer validated securely.
-The value data returns true if there was data.
 The result structure is newly allocated with the resulting data.
 .TP
 .B ub_resolve_async
@@ -349,6 +347,7 @@ The result of the DNS resolution and validation is returned as
 		int nxdomain; /* true if nodata because name does not exist */
 		int secure;  /* true if result is secure */
 		int bogus;   /* true if a security failure happened */
+		char* why_bogus; /* string with error if bogus */
 	};
 .fi
 .P
@@ -366,7 +365,7 @@ returns NULL on an error (a malloc failure).
 .B ub_poll
 returns true if some information may be available, false otherwise.
 .B ub_fd
-returns a file descriptor or -1 on error.
+returns a file descriptor or \-1 on error.
 .SH "SEE ALSO"
 \fIunbound.conf\fR(5), 
 \fIunbound\fR(8).

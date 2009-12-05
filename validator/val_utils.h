@@ -51,6 +51,7 @@ struct key_entry_key;
 struct regional;
 struct val_anchors;
 struct rrset_cache;
+struct sock_list;
 
 /**
  * Response classifications for the validator. The different types of proofs.
@@ -116,10 +117,12 @@ void val_find_signer(enum val_classification subtype,
  * @param ve: validator environment (verification settings)
  * @param rrset: what to verify
  * @param keys: dnskey rrset to verify with.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return security status of verification.
  */
 enum sec_status val_verify_rrset(struct module_env* env, struct val_env* ve,
-	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* keys);
+	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* keys,
+	char** reason);
 
 /**
  * Verify RRset with keys from a keyset.
@@ -127,11 +130,28 @@ enum sec_status val_verify_rrset(struct module_env* env, struct val_env* ve,
  * @param ve: validator environment (verification settings)
  * @param rrset: what to verify
  * @param kkey: key_entry to verify with.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return security status of verification.
  */
 enum sec_status val_verify_rrset_entry(struct module_env* env, 
 	struct val_env* ve, struct ub_packed_rrset_key* rrset, 
-	struct key_entry_key* kkey);
+	struct key_entry_key* kkey, char** reason);
+
+/**
+ * Verify DNSKEYs with DS rrset. Like val_verify_new_DNSKEYs but
+ * returns a sec_status instead of a key_entry.
+ * @param env: module environment (scratch buffer)
+ * @param ve: validator environment (verification settings)
+ * @param dnskey_rrset: DNSKEY rrset to verify
+ * @param ds_rrset: DS rrset to verify with.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
+ * @return: sec_status_secure if a DS matches.
+ *     sec_status_insecure if end of trust (i.e., unknown algorithms).
+ *     sec_status_bogus if it fails.
+ */
+enum sec_status val_verify_DNSKEY_with_DS(struct module_env* env, 
+	struct val_env* ve, struct ub_packed_rrset_key* dnskey_rrset, 
+	struct ub_packed_rrset_key* ds_rrset, char** reason);
 
 /**
  * Verify new DNSKEYs with DS rrset. The DS contains hash values that should
@@ -143,6 +163,7 @@ enum sec_status val_verify_rrset_entry(struct module_env* env,
  * @param ve: validator environment (verification settings)
  * @param dnskey_rrset: DNSKEY rrset to verify
  * @param ds_rrset: DS rrset to verify with.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return a KeyEntry. This will either contain the now trusted
  *         dnskey_rrset, a "null" key entry indicating that this DS
  *         rrset/DNSKEY pair indicate an secure end to the island of trust
@@ -155,7 +176,7 @@ enum sec_status val_verify_rrset_entry(struct module_env* env,
 struct key_entry_key* val_verify_new_DNSKEYs(struct regional* region, 
 	struct module_env* env, struct val_env* ve, 
 	struct ub_packed_rrset_key* dnskey_rrset, 
-	struct ub_packed_rrset_key* ds_rrset);
+	struct ub_packed_rrset_key* ds_rrset, char** reason);
 
 /**
  * Determine if DS rrset is usable for validator or not.
@@ -271,5 +292,33 @@ void val_find_rrset_signer(struct ub_packed_rrset_key* rrset, uint8_t** sname,
  * @return static string to describe the classification.
  */
 const char* val_classification_to_string(enum val_classification subtype);
+
+/**
+ * Add existing list to blacklist.
+ * @param blacklist: the blacklist with result
+ * @param region: the region where blacklist is allocated.
+ *	Allocation failures are logged.
+ * @param origin: origin list to add, if NULL, a cache-entry is added to
+ *   the blacklist to stop cache from being used.
+ * @param cross: if true this is a cross-qstate copy, and the 'origin'
+ *   list is not allocated in the same region as the blacklist.
+ */
+void val_blacklist(struct sock_list** blacklist, struct regional* region,
+	struct sock_list* origin, int cross);
+
+/**
+ * check if has dnssec info, and if it has signed nsecs. gives error reason.
+ * @param rep: reply to check.
+ * @param reason: returned on fail.
+ * @return false if message has no signed nsecs.  Can not prove negatives.
+ */
+int val_has_signed_nsecs(struct reply_info* rep, char** reason);
+
+/**
+ * Return algo number for favorite (best) algorithm that we support in DS.
+ * @param ds_rrset: the DSes in this rrset are inspected and best algo chosen.
+ * @return algo number or 0 if none supported. 0 is unused as algo number.
+ */
+int val_favorite_ds_algo(struct ub_packed_rrset_key* ds_rrset);
 
 #endif /* VALIDATOR_VAL_UTILS_H */
