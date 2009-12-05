@@ -470,7 +470,7 @@ outside_network_create(struct comm_base *base, size_t bufsize,
 	int do_ip6, size_t num_tcp, struct infra_cache* infra,
 	struct ub_randstate* rnd, int use_caps_for_id, int* availports, 
 	int numavailports, size_t unwanted_threshold,
-	void (*unwanted_action)(void*), void* unwanted_param)
+	void (*unwanted_action)(void*), void* unwanted_param, int do_udp)
 {
 	struct outside_network* outnet = (struct outside_network*)
 		calloc(1, sizeof(struct outside_network));
@@ -490,6 +490,7 @@ outside_network_create(struct comm_base *base, size_t bufsize,
 	outnet->unwanted_action = unwanted_action;
 	outnet->unwanted_param = unwanted_param;
 	outnet->use_caps_for_id = use_caps_for_id;
+	outnet->do_udp = do_udp;
 	if(numavailports == 0) {
 		log_err("no outgoing ports available");
 		outside_network_delete(outnet);
@@ -754,12 +755,12 @@ udp_sockport(struct sockaddr_storage* addr, socklen_t addrlen, int port,
 		struct sockaddr_in6* sa = (struct sockaddr_in6*)addr;
 		sa->sin6_port = (in_port_t)htons((uint16_t)port);
 		fd = create_udp_sock(AF_INET6, SOCK_DGRAM, 
-			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto);
+			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto, 0);
 	} else {
 		struct sockaddr_in* sa = (struct sockaddr_in*)addr;
 		sa->sin_port = (in_port_t)htons((uint16_t)port);
 		fd = create_udp_sock(AF_INET, SOCK_DGRAM, 
-			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto);
+			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto, 0);
 	}
 	return fd;
 }
@@ -892,8 +893,10 @@ randomize_and_send_udp(struct outside_network* outnet, struct pending* pend,
 
 	/* system calls to set timeout after sending UDP to make roundtrip
 	   smaller. */
+#ifndef S_SPLINT_S
 	tv.tv_sec = timeout/1000;
 	tv.tv_usec = (timeout%1000)*1000;
+#endif
 	comm_timer_set(pend->timer, &tv);
 	return 1;
 }
@@ -1009,8 +1012,10 @@ pending_tcp_query(struct outside_network* outnet, ldns_buffer* packet,
 	w->outnet = outnet;
 	w->cb = callback;
 	w->cb_arg = callback_arg;
+#ifndef S_SPLINT_S
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
+#endif
 	comm_timer_set(w->timer, &tv);
 	if(pend) {
 		/* we have a buffer available right now */
@@ -1425,6 +1430,8 @@ static void
 serviced_tcp_initiate(struct outside_network* outnet, 
 	struct serviced_query* sq, ldns_buffer* buff)
 {
+	verbose(VERB_ALGO, "initiate TCP query %s", 
+		sq->status==serviced_query_TCP_EDNS?"EDNS":"");
 	serviced_encode(sq, buff, sq->status == serviced_query_TCP_EDNS);
 	sq->pending = pending_tcp_query(outnet, buff, &sq->addr,
 		sq->addrlen, TCP_AUTH_QUERY_TIMEOUT, serviced_tcp_callback, 
@@ -1435,6 +1442,25 @@ serviced_tcp_initiate(struct outside_network* outnet,
 		log_err("serviced_tcp_initiate: failed to send tcp query");
 		serviced_callbacks(sq, NETEVENT_CLOSED, NULL, NULL);
 	}
+}
+
+/** Send serviced query over TCP return false on initial failure */
+static int
+serviced_tcp_send(struct serviced_query* sq, ldns_buffer* buff)
+{
+	int vs, rtt;
+	uint8_t edns_lame_known;
+	if(!infra_host(sq->outnet->infra, &sq->addr, sq->addrlen, 
+		*sq->outnet->now_secs, &vs, &edns_lame_known, &rtt))
+		return 0;
+	if(vs != -1)
+		sq->status = serviced_query_TCP_EDNS;
+	else 	sq->status = serviced_query_TCP;
+	serviced_encode(sq, buff, sq->status == serviced_query_TCP_EDNS);
+	sq->pending = pending_tcp_query(sq->outnet, buff, &sq->addr,
+		sq->addrlen, TCP_AUTH_QUERY_TIMEOUT, serviced_tcp_callback, 
+		sq);
+	return sq->pending != NULL;
 }
 
 int 
@@ -1527,7 +1553,7 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 		(now.tv_sec == sq->last_sent_time.tv_sec &&
 		now.tv_usec > sq->last_sent_time.tv_usec)) {
 		/* convert from microseconds to milliseconds */
-		int roundtime = (now.tv_sec - sq->last_sent_time.tv_sec)*1000
+		int roundtime = ((int)now.tv_sec - (int)sq->last_sent_time.tv_sec)*1000
 		  + ((int)now.tv_usec - (int)sq->last_sent_time.tv_usec)/1000;
 		verbose(VERB_ALGO, "measured roundtrip at %d msec", roundtime);
 		log_assert(roundtime >= 0);
@@ -1580,12 +1606,22 @@ outnet_serviced_query(struct outside_network* outnet,
 			return NULL;
 		}
 		/* perform first network action */
-		if(!serviced_udp_send(sq, buff)) {
-			(void)rbtree_delete(outnet->serviced, sq);
-			free(sq->qbuf);
-			free(sq);
-			free(cb);
-			return NULL;
+		if(outnet->do_udp) {
+			if(!serviced_udp_send(sq, buff)) {
+				(void)rbtree_delete(outnet->serviced, sq);
+				free(sq->qbuf);
+				free(sq);
+				free(cb);
+				return NULL;
+			}
+		} else {
+			if(!serviced_tcp_send(sq, buff)) {
+				(void)rbtree_delete(outnet->serviced, sq);
+				free(sq->qbuf);
+				free(sq);
+				free(cb);
+				return NULL;
+			}
 		}
 	}
 	/* add callback to list of callbacks */

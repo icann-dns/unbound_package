@@ -41,6 +41,7 @@
 #include "config.h"
 #include "validator/val_anchor.h"
 #include "validator/val_sigcrypt.h"
+#include "validator/autotrust.h"
 #include "util/data/packed_rrset.h"
 #include "util/data/dname.h"
 #include "util/log.h"
@@ -83,7 +84,27 @@ anchors_create()
 		anchors_delete(a);
 		return NULL;
 	}
+	a->autr = autr_global_create();
+	if(!a->autr) {
+		anchors_delete(a);
+		return NULL;
+	}
+	lock_basic_init(&a->lock);
+	lock_protect(&a->lock, a, sizeof(*a));
+	lock_protect(&a->lock, a->autr, sizeof(*a->autr));
 	return a;
+}
+
+/** destroy locks in tree and delete autotrust anchors */
+static void
+anchors_delfunc(rbnode_t* elem, void* ATTR_UNUSED(arg))
+{
+	struct trust_anchor* ta = (struct trust_anchor*)elem;
+	if(ta->autr) {
+		autr_point_delete(ta);
+	} else {
+		lock_basic_destroy(&ta->lock);
+	}
 }
 
 void 
@@ -91,21 +112,29 @@ anchors_delete(struct val_anchors* anchors)
 {
 	if(!anchors)
 		return;
+	lock_unprotect(&anchors->lock, anchors->autr);
+	lock_unprotect(&anchors->lock, anchors);
+	lock_basic_destroy(&anchors->lock);
+	traverse_postorder(anchors->tree, anchors_delfunc, NULL);
 	free(anchors->tree);
 	regional_destroy(anchors->region);
+	autr_global_delete(anchors->autr);
 	free(anchors);
 }
 
-/** initialise parent pointers in the tree */
-static void
-init_parents(struct val_anchors* anchors)
+void
+anchors_init_parents_locked(struct val_anchors* anchors)
 {
 	struct trust_anchor* node, *prev = NULL, *p;
 	int m; 
+	/* nobody else can grab locks because we hold the main lock.
+	 * Thus the previous items, after unlocked, are not deleted */
 	RBTREE_FOR(node, struct trust_anchor*, anchors->tree) {
+		lock_basic_lock(&node->lock);
 		node->parent = NULL;
 		if(!prev || prev->dclass != node->dclass) {
 			prev = node;
+			lock_basic_unlock(&node->lock);
 			continue;
 		}
 		(void)dname_lab_cmp(prev->name, prev->namelabs, node->name, 
@@ -121,8 +150,18 @@ init_parents(struct val_anchors* anchors)
 				node->parent = p;
 				break;
 			}
+		lock_basic_unlock(&node->lock);
 		prev = node;
 	}
+}
+
+/** initialise parent pointers in the tree */
+static void
+init_parents(struct val_anchors* anchors)
+{
+	lock_basic_lock(&anchors->lock);
+	anchors_init_parents_locked(anchors);
+	lock_basic_unlock(&anchors->lock);
 }
 
 struct trust_anchor*
@@ -131,12 +170,18 @@ anchor_find(struct val_anchors* anchors, uint8_t* name, int namelabs,
 {
 	struct trust_anchor key;
 	rbnode_t* n;
+	if(!name) return NULL;
 	key.node.key = &key;
 	key.name = name;
 	key.namelabs = namelabs;
 	key.namelen = namelen;
 	key.dclass = dclass;
+	lock_basic_lock(&anchors->lock);
 	n = rbtree_search(anchors->tree, &key);
+	if(n) {
+		lock_basic_lock(&((struct trust_anchor*)n->key)->lock);
+	}
+	lock_basic_unlock(&anchors->lock);
 	if(!n)
 		return NULL;
 	return (struct trust_anchor*)n->key;
@@ -160,7 +205,10 @@ anchor_new_ta(struct val_anchors* anchors, uint8_t* name, int namelabs,
 	ta->namelabs = namelabs;
 	ta->namelen = namelen;
 	ta->dclass = dclass;
+	lock_basic_init(&ta->lock);
+	lock_basic_lock(&anchors->lock);
 	r = rbtree_insert(anchors->tree, &ta->node);
+	lock_basic_unlock(&anchors->lock);
 	log_assert(r != NULL);
 	return ta;
 }
@@ -229,22 +277,29 @@ anchor_store_new_key(struct val_anchors* anchors, uint8_t* name, uint16_t type,
 		ta = anchor_new_ta(anchors, name, namelabs, namelen, dclass);
 		if(!ta)
 			return NULL;
+		lock_basic_lock(&ta->lock);
 	}
-	if(!rdata)
+	if(!rdata) {
+		lock_basic_unlock(&ta->lock);
 		return ta;
+	}
 	/* look for duplicates */
 	if(anchor_find_key(ta, rdata, rdata_len, type)) {
+		lock_basic_unlock(&ta->lock);
 		return ta;
 	}
 	k = anchor_new_ta_key(anchors, rdata, rdata_len, type);
-	if(!k)
+	if(!k) {
+		lock_basic_unlock(&ta->lock);
 		return NULL;
+	}
 	/* add new key */
 	if(type == LDNS_RR_TYPE_DS)
 		ta->numDS++;
 	else	ta->numDNSKEY++;
 	k->next = ta->keylist;
 	ta->keylist = k;
+	lock_basic_unlock(&ta->lock);
 	return ta;
 }
 
@@ -426,7 +481,7 @@ is_bind_special(int c)
 /** 
  * Read a keyword skipping bind comments; spaces, specials, restkeywords. 
  * The file is split into the following tokens:
- *	* special characters, on their own, rdlen=1, { } " ;
+ *	* special characters, on their own, rdlen=1, { } doublequote ;
  *	* whitespace becomes a single ' ' or tab. Newlines become spaces.
  *	* other words ('keywords')
  *	* comments are skipped if desired
@@ -888,15 +943,20 @@ anchors_assemble_rrsets(struct val_anchors* anchors)
 	struct trust_anchor* ta;
 	struct trust_anchor* next;
 	size_t nods, nokey;
+	lock_basic_lock(&anchors->lock);
 	ta=(struct trust_anchor*)rbtree_first(anchors->tree);
 	while((rbnode_t*)ta != RBTREE_NULL) {
 		next = (struct trust_anchor*)rbtree_next(&ta->node);
-		if(ta->numDS == 0 && ta->numDNSKEY == 0) {
-			ta = next; /* skip unsigned entries, nothing to do */
+		lock_basic_lock(&ta->lock);
+		if(ta->autr || (ta->numDS == 0 && ta->numDNSKEY == 0)) {
+			lock_basic_unlock(&ta->lock);
+			ta = next; /* skip */
 			continue;
 		}
 		if(!anchors_assemble(anchors, ta)) {
 			log_err("out of memory");
+			lock_basic_unlock(&ta->lock);
+			lock_basic_unlock(&anchors->lock);
 			return 0;
 		}
 		nods = anchors_ds_unsupported(ta);
@@ -918,9 +978,15 @@ anchors_assemble_rrsets(struct val_anchors* anchors)
 				" the anchor is ignored (check if you need to"
 				" upgrade unbound and openssl)", b);
 			(void)rbtree_delete(anchors->tree, &ta->node);
+			lock_basic_unlock(&ta->lock);
+			lock_basic_destroy(&ta->lock);
+			ta = next;
+			continue;
 		}
+		lock_basic_unlock(&ta->lock);
 		ta = next;
 	}
+	lock_basic_unlock(&anchors->lock);
 	return 1;
 }
 
@@ -975,24 +1041,48 @@ anchors_apply_cfg(struct val_anchors* anchors, struct config_file* cfg)
 		}
 	}
 	if(cfg->dlv_anchor_file && cfg->dlv_anchor_file[0] != 0) {
+		struct trust_anchor* dlva;
 		nm = cfg->dlv_anchor_file;
 		if(cfg->chrootdir && cfg->chrootdir[0] && strncmp(nm,
 			cfg->chrootdir, strlen(cfg->chrootdir)) == 0)
 			nm += strlen(cfg->chrootdir);
-		if(!(anchors->dlv_anchor = anchor_read_file(anchors, parsebuf,
+		if(!(dlva = anchor_read_file(anchors, parsebuf,
 			nm, 1))) {
 			log_err("error reading dlv-anchor-file: %s", 
 				cfg->dlv_anchor_file);
 			ldns_buffer_free(parsebuf);
 			return 0;
 		}
+		lock_basic_lock(&anchors->lock);
+		anchors->dlv_anchor = dlva;
+		lock_basic_unlock(&anchors->lock);
 	}
 	for(f = cfg->dlv_anchor_list; f; f = f->next) {
+		struct trust_anchor* dlva;
 		if(!f->str || f->str[0] == 0) /* empty "" */
 			continue;
-		if(!(anchors->dlv_anchor = anchor_store_str(
+		if(!(dlva = anchor_store_str(
 			anchors, parsebuf, f->str))) {
 			log_err("error in dlv-anchor: \"%s\"", f->str);
+			ldns_buffer_free(parsebuf);
+			return 0;
+		}
+		lock_basic_lock(&anchors->lock);
+		anchors->dlv_anchor = dlva;
+		lock_basic_unlock(&anchors->lock);
+	}
+	/* do autr last, so that it sees what anchors are filled by other
+	 * means can can print errors about double config for the name */
+	for(f = cfg->auto_trust_anchor_file_list; f; f = f->next) {
+		if(!f->str || f->str[0] == 0) /* empty "" */
+			continue;
+		nm = f->str;
+		if(cfg->chrootdir && cfg->chrootdir[0] && strncmp(nm,
+			cfg->chrootdir, strlen(cfg->chrootdir)) == 0)
+			nm += strlen(cfg->chrootdir);
+		if(!autr_read_file(anchors, nm)) {
+			log_err("error reading auto-trust-anchor-file: %s", 
+				f->str);
 			ldns_buffer_free(parsebuf);
 			return 0;
 		}
@@ -1001,6 +1091,7 @@ anchors_apply_cfg(struct val_anchors* anchors, struct config_file* cfg)
 	anchors_assemble_rrsets(anchors);
 	init_parents(anchors);
 	ldns_buffer_free(parsebuf);
+	if(verbosity >= VERB_ALGO) autr_debug_print(anchors);
 	return 1;
 }
 
@@ -1016,6 +1107,7 @@ anchors_lookup(struct val_anchors* anchors,
 	key.namelabs = dname_count_labels(qname);
 	key.namelen = qname_len;
 	key.dclass = qclass;
+	lock_basic_lock(&anchors->lock);
 	if(rbtree_find_less_equal(anchors->tree, &key, &res)) {
 		/* exact */
 		result = (struct trust_anchor*)res;
@@ -1023,8 +1115,10 @@ anchors_lookup(struct val_anchors* anchors,
 		/* smaller element (or no element) */
 		int m;
 		result = (struct trust_anchor*)res;
-		if(!result || result->dclass != qclass)
+		if(!result || result->dclass != qclass) {
+			lock_basic_unlock(&anchors->lock);
 			return NULL;
+		}
 		/* count number of labels matched */
 		(void)dname_lab_cmp(result->name, result->namelabs, key.name,
 			key.namelabs, &m);
@@ -1034,6 +1128,10 @@ anchors_lookup(struct val_anchors* anchors,
 			result = result->parent;
 		}
 	}
+	if(result) {
+		lock_basic_lock(&result->lock);
+	}
+	lock_basic_unlock(&anchors->lock);
 	return result;
 }
 

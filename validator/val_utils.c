@@ -51,6 +51,7 @@
 #include "util/net_help.h"
 #include "util/module.h"
 #include "util/regional.h"
+#include "util/config_file.h"
 
 enum val_classification 
 val_classify_response(uint16_t query_flags, struct query_info* origqinf,
@@ -233,6 +234,8 @@ val_find_signer(enum val_classification subtype, struct query_info* qinf,
 				signer_name, signer_len);
 			if(*signer_name)
 				return;
+			if(ntohs(rep->rrsets[i]->rk.type) != LDNS_RR_TYPE_DNAME)
+				break; /* only check CNAME after a DNAME */
 		}
 		*signer_name = NULL;
 		*signer_len = 0;
@@ -303,7 +306,8 @@ rrset_get_ttl(struct ub_packed_rrset_key* rrset)
 
 enum sec_status 
 val_verify_rrset(struct module_env* env, struct val_env* ve,
-        struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* keys)
+        struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* keys,
+	char** reason)
 {
 	enum sec_status sec;
 	struct packed_rrset_data* d = (struct packed_rrset_data*)rrset->
@@ -325,7 +329,7 @@ val_verify_rrset(struct module_env* env, struct val_env* ve,
 	}
 	log_nametypeclass(VERB_ALGO, "verify rrset", rrset->rk.dname,
 		ntohs(rrset->rk.type), ntohs(rrset->rk.rrset_class));
-	sec = dnskeyset_verify_rrset(env, ve, rrset, keys);
+	sec = dnskeyset_verify_rrset(env, ve, rrset, keys, reason);
 	verbose(VERB_ALGO, "verify result: %s", sec_status_to_string(sec));
 	regional_free_all(env->scratch);
 
@@ -357,7 +361,8 @@ val_verify_rrset(struct module_env* env, struct val_env* ve,
 
 enum sec_status 
 val_verify_rrset_entry(struct module_env* env, struct val_env* ve,
-        struct ub_packed_rrset_key* rrset, struct key_entry_key* kkey)
+        struct ub_packed_rrset_key* rrset, struct key_entry_key* kkey,
+	char** reason)
 {
 	/* temporary dnskey rrset-key */
 	struct ub_packed_rrset_key dnskey;
@@ -370,7 +375,7 @@ val_verify_rrset_entry(struct module_env* env, struct val_env* ve,
 	dnskey.rk.dname_len = kkey->namelen;
 	dnskey.entry.key = &dnskey;
 	dnskey.entry.data = kd->rrset_data;
-	sec = val_verify_rrset(env, ve, rrset, &dnskey);
+	sec = val_verify_rrset(env, ve, rrset, &dnskey, reason);
 	return sec;
 }
 
@@ -378,10 +383,10 @@ val_verify_rrset_entry(struct module_env* env, struct val_env* ve,
 static enum sec_status
 verify_dnskeys_with_ds_rr(struct module_env* env, struct val_env* ve, 
 	struct ub_packed_rrset_key* dnskey_rrset, 
-        struct ub_packed_rrset_key* ds_rrset, size_t ds_idx)
+        struct ub_packed_rrset_key* ds_rrset, size_t ds_idx, char** reason)
 {
 	enum sec_status sec = sec_status_bogus;
-	size_t i, num;
+	size_t i, num, numchecked = 0, numhashok = 0;
 	num = rrset_get_count(dnskey_rrset);
 	for(i=0; i<num; i++) {
 		/* Skip DNSKEYs that don't match the basic criteria. */
@@ -391,6 +396,7 @@ verify_dnskeys_with_ds_rr(struct module_env* env, struct val_env* ve,
 		   != ds_get_keytag(ds_rrset, ds_idx)) {
 			continue;
 		}
+		numchecked++;
 		verbose(VERB_ALGO, "attempt DS match algo %d keytag %d",
 			ds_get_key_algo(ds_rrset, ds_idx),
 			ds_get_keytag(ds_rrset, ds_idx));
@@ -402,44 +408,32 @@ verify_dnskeys_with_ds_rr(struct module_env* env, struct val_env* ve,
 			verbose(VERB_ALGO, "DS match attempt failed");
 			continue;
 		}
+		numhashok++;
 		verbose(VERB_ALGO, "DS match digest ok, trying signature");
 
 		/* Otherwise, we have a match! Make sure that the DNSKEY 
 		 * verifies *with this key*  */
 		sec = dnskey_verify_rrset(env, ve, dnskey_rrset, 
-			dnskey_rrset, i);
+			dnskey_rrset, i, reason);
 		if(sec == sec_status_secure) {
 			return sec;
 		}
 		/* If it didn't validate with the DNSKEY, try the next one! */
 	}
+	if(numchecked == 0)
+		*reason = "no keys have a DS";
+	else if(numhashok == 0)
+		*reason = "DS hash mismatches key";
+	else if(!*reason)
+		*reason = "keyset not secured by DNSKEY that matches DS";
 	return sec_status_bogus;
 }
 
-struct key_entry_key* 
-val_verify_new_DNSKEYs(struct regional* region, struct module_env* env, 
-	struct val_env* ve, struct ub_packed_rrset_key* dnskey_rrset, 
-	struct ub_packed_rrset_key* ds_rrset)
+int val_favorite_ds_algo(struct ub_packed_rrset_key* ds_rrset)
 {
-	/* as long as this is false, we can consider this DS rrset to be
-	 * equivalent to no DS rrset. */
-	int has_useful_ds = 0;
+	size_t i, num = rrset_get_count(ds_rrset);
 	int d, digest_algo = 0; /* DS digest algo 0 is not used. */
-	size_t i, num;
-	enum sec_status sec;
-
-	if(dnskey_rrset->rk.dname_len != ds_rrset->rk.dname_len ||
-		query_dname_compare(dnskey_rrset->rk.dname, ds_rrset->rk.dname)
-		!= 0) {
-		verbose(VERB_QUERY, "DNSKEY RRset did not match DS RRset "
-			"by name");
-		return key_entry_create_bad(region, ds_rrset->rk.dname,
-			ds_rrset->rk.dname_len, 
-			ntohs(ds_rrset->rk.rrset_class));
-	}
-
-	num = rrset_get_count(ds_rrset);
-	/* find favority algo, for now, highest number supported */
+	/* find favorite algo, for now, highest number supported */
 	for(i=0; i<num; i++) {
 		if(!ds_digest_algo_is_supported(ds_rrset, i) ||
 			!ds_key_algo_is_supported(ds_rrset, i)) {
@@ -449,6 +443,31 @@ val_verify_new_DNSKEYs(struct regional* region, struct module_env* env,
 		if(d > digest_algo)
 			digest_algo = d;
 	}
+	return digest_algo;
+}
+
+enum sec_status 
+val_verify_DNSKEY_with_DS(struct module_env* env, struct val_env* ve,
+	struct ub_packed_rrset_key* dnskey_rrset,
+	struct ub_packed_rrset_key* ds_rrset, char** reason)
+{
+	/* as long as this is false, we can consider this DS rrset to be
+	 * equivalent to no DS rrset. */
+	int has_useful_ds = 0, digest_algo;
+	size_t i, num;
+	enum sec_status sec;
+
+	if(dnskey_rrset->rk.dname_len != ds_rrset->rk.dname_len ||
+		query_dname_compare(dnskey_rrset->rk.dname, ds_rrset->rk.dname)
+		!= 0) {
+		verbose(VERB_QUERY, "DNSKEY RRset did not match DS RRset "
+			"by name");
+		*reason = "DNSKEY RRset did not match DS RRset by name";
+		return sec_status_bogus;
+	}
+
+	digest_algo = val_favorite_ds_algo(ds_rrset);
+	num = rrset_get_count(ds_rrset);
 	for(i=0; i<num; i++) {
 		/* Check to see if we can understand this DS. 
 		 * And check it is the strongest digest */
@@ -464,13 +483,10 @@ val_verify_new_DNSKEYs(struct regional* region, struct module_env* env,
 		has_useful_ds = true;
 
 		sec = verify_dnskeys_with_ds_rr(env, ve, dnskey_rrset, 
-			ds_rrset, i);
+			ds_rrset, i, reason);
 		if(sec == sec_status_secure) {
 			verbose(VERB_ALGO, "DS matched DNSKEY.");
-			return key_entry_create_rrset(region, 
-				ds_rrset->rk.dname, ds_rrset->rk.dname_len,
-				ntohs(ds_rrset->rk.rrset_class), dnskey_rrset,
-				*env->now);
+			return sec_status_secure;
 		}
 	}
 
@@ -480,13 +496,32 @@ val_verify_new_DNSKEYs(struct regional* region, struct module_env* env,
 	if(!has_useful_ds) {
 		verbose(VERB_ALGO, "No usable DS records were found -- "
 			"treating as insecure.");
+		return sec_status_insecure;
+	}
+	/* If any were understandable, then it is bad. */
+	verbose(VERB_QUERY, "Failed to match any usable DS to a DNSKEY.");
+	return sec_status_bogus;
+}
+
+struct key_entry_key* 
+val_verify_new_DNSKEYs(struct regional* region, struct module_env* env, 
+	struct val_env* ve, struct ub_packed_rrset_key* dnskey_rrset, 
+	struct ub_packed_rrset_key* ds_rrset, char** reason)
+{
+	enum sec_status sec = val_verify_DNSKEY_with_DS(env, ve, 
+		dnskey_rrset, ds_rrset, reason);
+
+	if(sec == sec_status_secure) {
+		return key_entry_create_rrset(region, 
+			ds_rrset->rk.dname, ds_rrset->rk.dname_len,
+			ntohs(ds_rrset->rk.rrset_class), dnskey_rrset,
+			*env->now);
+	} else if(sec == sec_status_insecure) {
 		return key_entry_create_null(region, ds_rrset->rk.dname,
 			ds_rrset->rk.dname_len, 
 			ntohs(ds_rrset->rk.rrset_class),
 			rrset_get_ttl(ds_rrset), *env->now);
-	}
-	/* If any were understandable, then it is bad. */
-	verbose(VERB_QUERY, "Failed to match any usable DS to a DNSKEY.");
+	} 
 	return key_entry_create_bad(region, ds_rrset->rk.dname,
 		ds_rrset->rk.dname_len, ntohs(ds_rrset->rk.rrset_class));
 }
@@ -712,6 +747,17 @@ val_check_nonsecure(struct val_env* ve, struct reply_info* rep)
 	}
 }
 
+/** check no anchor and unlock */
+static int
+check_no_anchor(struct val_anchors* anchors, uint8_t* nm, size_t l, uint16_t c)
+{
+	struct trust_anchor* ta;
+	if((ta=anchors_lookup(anchors, nm, l, c))) {
+		lock_basic_unlock(&ta->lock);
+	}
+	return !ta;
+}
+
 void 
 val_mark_indeterminate(struct reply_info* rep, struct val_anchors* anchors, 
 	struct rrset_cache* r, struct module_env* env)
@@ -721,7 +767,7 @@ val_mark_indeterminate(struct reply_info* rep, struct val_anchors* anchors,
 	for(i=0; i<rep->rrset_count; i++) {
 		d = (struct packed_rrset_data*)rep->rrsets[i]->entry.data;
 		if(d->security == sec_status_unchecked &&
-		   !anchors_lookup(anchors, rep->rrsets[i]->rk.dname,
+		   check_no_anchor(anchors, rep->rrsets[i]->rk.dname,
 			rep->rrsets[i]->rk.dname_len, 
 			ntohs(rep->rrsets[i]->rk.rrset_class))) 
 		{ 	
@@ -779,4 +825,59 @@ val_classification_to_string(enum val_classification subtype)
 		default:
 			return "bad_val_classification";
 	}
+}
+
+/** log a sock_list entry */
+static void
+sock_list_logentry(enum verbosity_value v, const char* s, struct sock_list* p)
+{
+	if(p->len)
+		log_addr(v, s, &p->addr, p->len);
+	else	verbose(v, "%s cache", s);
+}
+
+void val_blacklist(struct sock_list** blacklist, struct regional* region,
+	struct sock_list* origin, int cross)
+{
+	/* debug printout */
+	if(verbosity >= VERB_ALGO) {
+		struct sock_list* p;
+		for(p=*blacklist; p; p=p->next)
+			sock_list_logentry(VERB_ALGO, "blacklist", p);
+		if(!origin)
+			verbose(VERB_ALGO, "blacklist add: cache");
+		for(p=origin; p; p=p->next)
+			sock_list_logentry(VERB_ALGO, "blacklist add", p);
+	}
+	/* blacklist the IPs or the cache */
+	if(!origin) {
+		/* only add if nothing there. anything else also stops cache*/
+		if(!*blacklist)
+			sock_list_insert(blacklist, NULL, 0, region);
+	} else if(!cross)
+		sock_list_prepend(blacklist, origin);
+	else	sock_list_merge(blacklist, region, origin);
+}
+
+int val_has_signed_nsecs(struct reply_info* rep, char** reason)
+{
+	size_t i, num_nsec = 0, num_nsec3 = 0;
+	struct packed_rrset_data* d;
+	for(i=rep->an_numrrsets; i<rep->an_numrrsets+rep->ns_numrrsets; i++) {
+		if(rep->rrsets[i]->rk.type == htons(LDNS_RR_TYPE_NSEC))
+			num_nsec++;
+		else if(rep->rrsets[i]->rk.type == htons(LDNS_RR_TYPE_NSEC3))
+			num_nsec3++;
+		else continue;
+		d = (struct packed_rrset_data*)rep->rrsets[i]->entry.data;
+		if(d && d->rrsig_count != 0) {
+			return 1;
+		}
+	}
+	if(num_nsec == 0 && num_nsec3 == 0)
+		*reason = "no DNSSEC records";
+	else if(num_nsec != 0)
+		*reason = "no signatures over NSECs";
+	else	*reason = "no signatures over NSEC3s";
+	return 0;
 }

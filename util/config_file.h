@@ -44,6 +44,9 @@
 struct config_stub;
 struct config_strlist;
 struct config_str2list;
+struct module_qstate;
+struct sock_list;
+struct ub_packed_rrset_key;
 
 /**
  * The configuration options.
@@ -83,6 +86,8 @@ struct config_file {
 	/** allowed udp port numbers, array with 0 if not allowed */
 	int* outgoing_avail_ports;
 
+	/** EDNS buffer size to use */
+	size_t edns_buffer_size;
 	/** number of bytes buffer size for DNS messages */
 	size_t msg_buffer_size;
 	/** size of the message cache */
@@ -114,6 +119,8 @@ struct config_file {
 	/** automatic interface for incoming messages. Uses ipv6 remapping,
 	 * and recvmsg/sendmsg ancillary data to detect interfaces, boolean */
 	int if_automatic;
+	/** SO_RCVBUF size to set on port 53 UDP socket */
+	size_t socket_rcvbuf;
 
 	/** number of interfaces to open. If 0 default all interfaces. */
 	int num_ifs;
@@ -190,6 +197,8 @@ struct config_file {
 	struct config_strlist* trust_anchor_file_list;
 	/** list of trustanchor keys, linked list */
 	struct config_strlist* trust_anchor_list;
+	/** files with 5011 autotrust tracked keys */
+	struct config_strlist* auto_trust_anchor_file_list;
 	/** files with trusted DNSKEYs in named.conf format, list */
 	struct config_strlist* trusted_keys_file_list;
 	/** DLV anchor file */
@@ -215,10 +224,18 @@ struct config_file {
 	int val_clean_additional;
 	/** log bogus messages by the validator */
 	int val_log_level;
+	/** squelch val_log_level to log - this is library goes to callback */
+	int val_log_squelch;
 	/** should validator allow bogus messages to go through */
 	int val_permissive_mode;
 	/** nsec3 maximum iterations per key size, string */
 	char* val_nsec3_key_iterations;
+	/** autotrust add holddown time, in seconds */
+	unsigned int add_holddown;
+	/** autotrust del holddown time, in seconds */
+	unsigned int del_holddown;
+	/** autotrust keep_missing time, in seconds. 0 is forever. */
+	unsigned int keep_missing;
 
 	/** size of the key cache */
 	size_t key_cache_size;
@@ -458,6 +475,48 @@ char* fname_after_chroot(const char* fname, struct config_file* cfg,
  * @return: malloced string "reversed-ip-name PTR name"
  */
 char* cfg_ptr_reverse(char* str);
+
+/**
+ * Append text to the error info for validation.
+ * @param qstate: query state.
+ * @param str: copied into query region and appended.
+ * Failures to allocate are logged.
+ */
+void errinf(struct module_qstate* qstate, const char* str);
+
+/**
+ * Append text to error info:  from 1.2.3.4
+ * @param qstate: query state.
+ * @param origin: sock list with origin of trouble. 
+ *	Every element added.
+ *	If NULL: nothing is added.
+ *	if 0len element: 'from cache' is added.
+ */
+void errinf_origin(struct module_qstate* qstate, struct sock_list *origin);
+
+/**
+ * Append text to error info:  for RRset name type class
+ * @param qstate: query state.
+ * @param rr: rrset_key.
+ */
+void errinf_rrset(struct module_qstate* qstate, struct ub_packed_rrset_key *rr);
+
+/**
+ * Append text to error info:  str dname
+ * @param qstate: query state.
+ * @param str: explanation string
+ * @param dname: the dname.
+ */
+void errinf_dname(struct module_qstate* qstate, const char* str, 
+	uint8_t* dname);
+
+/**
+ * Create error info in string
+ * @param qstate: query state.
+ * @return string or NULL on malloc failure (already logged).
+ *    This string is malloced and has to be freed by caller.
+ */
+char* errinf_to_str(struct module_qstate* qstate);
 
 /**
  * Used during options parsing

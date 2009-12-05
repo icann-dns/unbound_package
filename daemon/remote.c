@@ -106,9 +106,9 @@ timeval_subtract(struct timeval* d, const struct timeval* end,
 	const struct timeval* start)
 {
 #ifndef S_SPLINT_S
-	time_t end_usec = end->tv_usec;;
+	time_t end_usec = end->tv_usec;
 	d->tv_sec = end->tv_sec - start->tv_sec;
-	while(end_usec < start->tv_usec) {
+	if(end_usec < start->tv_usec) {
 		end_usec += 1000000;
 		d->tv_sec--;
 	}
@@ -1168,7 +1168,6 @@ do_flush_zone(SSL* ssl, struct worker* worker, char* arg)
 	int nmlabs;
 	size_t nmlen;
 	struct del_info inf;
-	int idx;
 	if(!parse_arg_name(ssl, arg, &nm, &nmlen, &nmlabs))
 		return;
 	/* delete all RRs and key entries from zone */
@@ -1188,10 +1187,9 @@ do_flush_zone(SSL* ssl, struct worker* worker, char* arg)
 	slabhash_traverse(worker->env.msg_cache, 1, &zone_del_msg, &inf);
 
 	/* and validator cache */
-	idx = modstack_find(&worker->daemon->mods, "validator");
-	if(idx != -1) {
-		struct val_env* ve = (struct val_env*)worker->env.modinfo[idx];
-		slabhash_traverse(ve->kcache->slab, 1, &zone_del_kcache, &inf);
+	if(worker->env.key_cache) {
+		slabhash_traverse(worker->env.key_cache->slab, 1, 
+			&zone_del_kcache, &inf);
 	}
 
 	free(nm);

@@ -1,3 +1,9 @@
+unbound (1.4.0-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Fri, 04 Dec 2009 20:32:52 -0800
+
 unbound (1.3.4-1) unstable; urgency=low
 
   * New upstream release.

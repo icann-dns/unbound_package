@@ -256,10 +256,28 @@ ds_digest_size_algo(struct ub_packed_rrset_key* k, size_t idx)
 		case LDNS_SHA256:
 			return SHA256_DIGEST_LENGTH;
 #endif
+#ifdef USE_GOST
+		case LDNS_HASH_GOST94:
+			if(EVP_get_digestbyname("md_gost94"))
+				return 32;
+			else	return 0;
+#endif
 		default: break;
 	}
 	return 0;
 }
+
+#ifdef USE_GOST
+/** Perform GOST94 hash */
+static int
+do_gost94(unsigned char* data, size_t len, unsigned char* dest)
+{
+	const EVP_MD* md = EVP_get_digestbyname("md_gost94");
+	if(!md) 
+		return 0;
+	return ldns_digest_evp(data, (unsigned int)len, dest, md);
+}
+#endif
 
 /**
  * Create a DS digest for a DNSKEY entry.
@@ -305,6 +323,12 @@ ds_create_dnskey_digest(struct module_env* env,
 			(void)SHA256((unsigned char*)ldns_buffer_begin(b),
 				ldns_buffer_limit(b), (unsigned char*)digest);
 			return 1;
+#endif
+#ifdef USE_GOST
+		case LDNS_HASH_GOST94:
+			if(do_gost94((unsigned char*)ldns_buffer_begin(b), 
+				ldns_buffer_limit(b), (unsigned char*)digest))
+				return 1;
 #endif
 		default: 
 			verbose(VERB_QUERY, "unknown DS digest algorithm %d", 
@@ -377,6 +401,11 @@ dnskey_algo_id_is_supported(int id)
 	case LDNS_RSASHA512:
 #endif
 		return 1;
+#ifdef USE_GOST
+	case LDNS_GOST:
+		/* we support GOST if it can be loaded */
+		return ldns_key_EVP_load_gost_id();
+#endif
 	default:
 		return 0;
 	}
@@ -430,50 +459,83 @@ dnskeyset_needs(struct ub_packed_rrset_key* dnskey, uint8_t needs[])
 	return total;
 }
 
+/** see which algo needed */
+static int any_needed_bogus(uint8_t needs[])
+{
+	int i;
+	/* first check if a needed algo was bogus - report that */
+	for(i=0; i<256; i++)
+		if(needs[i] == 2)
+			return 0;
+	/* now check which algo is missing */
+	for(i=0; i<256; i++)
+		if(needs[i] == 1)
+			return i;
+	return 0;
+}
+
 enum sec_status 
 dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
-	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey)
+	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
+	char** reason)
 {
 	enum sec_status sec;
 	size_t i, num, numneeds;
 	rbtree_t* sortree = NULL;
 	/* make sure that for all DNSKEY algorithms there are valid sigs */
 	uint8_t needs[256]; /* 1 if need sig for that algorithm */
+	int alg;
 
 	num = rrset_get_sigcount(rrset);
 	if(num == 0) {
 		verbose(VERB_QUERY, "rrset failed to verify due to a lack of "
 			"signatures");
+		*reason = "no signatures";
 		return sec_status_bogus;
 	}
 
 	numneeds = dnskeyset_needs(dnskey, needs);
 	for(i=0; i<num; i++) {
 		sec = dnskeyset_verify_rrset_sig(env, ve, *env->now, rrset, 
-			dnskey, i, &sortree);
+			dnskey, i, &sortree, reason);
 		/* see which algorithm has been fixed up */
 		if(sec == sec_status_secure) {
 			uint8_t a = (uint8_t)rrset_get_sig_algo(rrset, i);
-			if(needs[a] == 1) {
+			if(needs[a]) {
 				needs[a] = 0;
 				numneeds --;
 				if(numneeds == 0) /* done! */
 					return sec;
 			}
+		} else if(sec == sec_status_bogus) {
+			uint8_t a = (uint8_t)rrset_get_sig_algo(rrset, i);
+			if(needs[a]) needs[a] = 2; /* need it, but bogus */
 		}
 	}
 	verbose(VERB_ALGO, "rrset failed to verify: no valid signatures for "
 		"%d algorithms", (int)numneeds);
+	if((alg=any_needed_bogus(needs)) != 0) {
+		char buf[256];
+		ldns_lookup_table *t = ldns_lookup_by_id(ldns_algorithms, alg);
+		if(t&&t->name)
+			snprintf(buf, sizeof(buf), "no signatures with "
+				"algorithm %s", t->name);
+		else	snprintf(buf, sizeof(buf), "no signatures with "
+				"algorithm ALG%u", (unsigned)alg);
+		*reason = regional_strdup(env->scratch, buf);
+		if(!*reason)
+			*reason = "no signatures for all algorithms";
+	}
 	return sec_status_bogus;
 }
 
 enum sec_status 
 dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
         struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
-	size_t dnskey_idx)
+	size_t dnskey_idx, char** reason)
 {
 	enum sec_status sec;
-	size_t i, num;
+	size_t i, num, numchecked = 0;
 	rbtree_t* sortree = NULL;
 	int buf_canon = 0;
 	uint16_t tag = dnskey_calc_keytag(dnskey, dnskey_idx);
@@ -483,6 +545,7 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 	if(num == 0) {
 		verbose(VERB_QUERY, "rrset failed to verify due to a lack of "
 			"signatures");
+		*reason = "no signatures";
 		return sec_status_bogus;
 	}
 	for(i=0; i<num; i++) {
@@ -493,11 +556,13 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 		buf_canon = 0;
 		sec = dnskey_verify_rrset_sig(env->scratch, 
 			env->scratch_buffer, ve, *env->now, rrset, 
-			dnskey, dnskey_idx, i, &sortree, &buf_canon);
+			dnskey, dnskey_idx, i, &sortree, &buf_canon, reason);
 		if(sec == sec_status_secure)
 			return sec;
+		numchecked ++;
 	}
 	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
+	if(!numchecked) *reason = "signatures from unknown keys";
 	return sec_status_bogus;
 }
 
@@ -505,7 +570,7 @@ enum sec_status
 dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve, 
 	uint32_t now, struct ub_packed_rrset_key* rrset, 
 	struct ub_packed_rrset_key* dnskey, size_t sig_idx, 
-	struct rbtree_t** sortree)
+	struct rbtree_t** sortree, char** reason)
 {
 	/* find matching keys and check them */
 	enum sec_status sec = sec_status_bogus;
@@ -526,11 +591,12 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 		/* see if key verifies */
 		sec = dnskey_verify_rrset_sig(env->scratch, 
 			env->scratch_buffer, ve, now, rrset, dnskey, i, 
-			sig_idx, sortree, &buf_canon);
+			sig_idx, sortree, &buf_canon, reason);
 		if(sec == sec_status_secure)
 			return sec;
 	}
 	if(numchecked == 0) {
+		*reason = "signatures from unknown keys";
 		verbose(VERB_QUERY, "verify: could not find appropriate key");
 		return sec_status_bogus;
 	}
@@ -1046,7 +1112,7 @@ sigdate_error(const char* str, int32_t expi, int32_t incep, int32_t now)
 /** check rrsig dates */
 static int
 check_dates(struct val_env* ve, uint32_t unow,
-	uint8_t* expi_p, uint8_t* incep_p)
+	uint8_t* expi_p, uint8_t* incep_p, char** reason)
 {
 	/* read out the dates */
 	int32_t expi, incep, now;
@@ -1065,6 +1131,7 @@ check_dates(struct val_env* ve, uint32_t unow,
 	if(incep - expi > 0) {
 		sigdate_error("verify: inception after expiration, "
 			"signature bad", expi, incep, now);
+		*reason = "signature inception after expiration";
 		return 0;
 	}
 	if(incep - now > 0) {
@@ -1075,6 +1142,7 @@ check_dates(struct val_env* ve, uint32_t unow,
 		if(incep - now > skew) {
 			sigdate_error("verify: signature bad, current time is"
 				" before inception date", expi, incep, now);
+			*reason = "signature before inception date";
 			return 0;
 		}
 		sigdate_error("verify warning suspicious signature inception "
@@ -1087,6 +1155,7 @@ check_dates(struct val_env* ve, uint32_t unow,
 		if(now - expi > skew) {
 			sigdate_error("verify: signature expired", expi, 
 				incep, now);
+			*reason = "signature expired";
 			return 0;
 		}
 		sigdate_error("verify warning suspicious signature expiration "
@@ -1202,14 +1271,14 @@ setup_dsa_sig(unsigned char** sig, unsigned int* len)
  * Setup key and digest for verification. Adjust sig if necessary.
  *
  * @param algo: key algorithm
- * @param evp_key: EVP PKEY public key to update.
+ * @param evp_key: EVP PKEY public key to create.
  * @param digest_type: digest type to use
  * @param key: key to setup for.
  * @param keylen: length of key.
  * @return false on failure.
  */
 static int
-setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type, 
+setup_key_digest(int algo, EVP_PKEY** evp_key, const EVP_MD** digest_type, 
 	unsigned char* key, size_t keylen)
 {
 	DSA* dsa;
@@ -1218,13 +1287,18 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 	switch(algo) {
 		case LDNS_DSA:
 		case LDNS_DSA_NSEC3:
+			*evp_key = EVP_PKEY_new();
+			if(!*evp_key) {
+				log_err("verify: malloc failure in crypto");
+				return sec_status_unchecked;
+			}
 			dsa = ldns_key_buf2dsa_raw(key, keylen);
 			if(!dsa) {
 				verbose(VERB_QUERY, "verify: "
 					"ldns_key_buf2dsa_raw failed");
 				return 0;
 			}
-			if(EVP_PKEY_assign_DSA(evp_key, dsa) == 0) {
+			if(EVP_PKEY_assign_DSA(*evp_key, dsa) == 0) {
 				verbose(VERB_QUERY, "verify: "
 					"EVP_PKEY_assign_DSA failed");
 				return 0;
@@ -1240,13 +1314,18 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 #if defined(HAVE_EVP_SHA512) && defined(USE_SHA2)
 		case LDNS_RSASHA512:
 #endif
+			*evp_key = EVP_PKEY_new();
+			if(!*evp_key) {
+				log_err("verify: malloc failure in crypto");
+				return sec_status_unchecked;
+			}
 			rsa = ldns_key_buf2rsa_raw(key, keylen);
 			if(!rsa) {
 				verbose(VERB_QUERY, "verify: "
 					"ldns_key_buf2rsa_raw SHA failed");
 				return 0;
 			}
-			if(EVP_PKEY_assign_RSA(evp_key, rsa) == 0) {
+			if(EVP_PKEY_assign_RSA(*evp_key, rsa) == 0) {
 				verbose(VERB_QUERY, "verify: "
 					"EVP_PKEY_assign_RSA SHA failed");
 				return 0;
@@ -1267,13 +1346,18 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 
 			break;
 		case LDNS_RSAMD5:
+			*evp_key = EVP_PKEY_new();
+			if(!*evp_key) {
+				log_err("verify: malloc failure in crypto");
+				return sec_status_unchecked;
+			}
 			rsa = ldns_key_buf2rsa_raw(key, keylen);
 			if(!rsa) {
 				verbose(VERB_QUERY, "verify: "
 					"ldns_key_buf2rsa_raw MD5 failed");
 				return 0;
 			}
-			if(EVP_PKEY_assign_RSA(evp_key, rsa) == 0) {
+			if(EVP_PKEY_assign_RSA(*evp_key, rsa) == 0) {
 				verbose(VERB_QUERY, "verify: "
 					"EVP_PKEY_assign_RSA MD5 failed");
 				return 0;
@@ -1281,6 +1365,22 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 			*digest_type = EVP_md5();
 
 			break;
+#ifdef USE_GOST
+		case LDNS_GOST:
+			*evp_key = ldns_gost2pkey_raw(key, keylen);
+			if(!*evp_key) {
+				verbose(VERB_QUERY, "verify: "
+					"ldns_gost2pkey_raw failed");
+				return 0;
+			}
+			*digest_type = EVP_get_digestbyname("md_gost94");
+			if(!*digest_type) {
+				verbose(VERB_QUERY, "verify: "
+					"EVP_getdigest md_gost94 failed");
+				return 0;
+			}
+			break;
+#endif
 		default:
 			verbose(VERB_QUERY, "verify: unknown algorithm %d", 
 				algo);
@@ -1298,24 +1398,23 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
  * @param sigblock_len: length of sigblock data.
  * @param key: public key data from DNSKEY RR.
  * @param keylen: length of keydata.
+ * @param reason: bogus reason in more detail.
  * @return secure if verification succeeded, bogus on crypto failure,
  *	unchecked on format errors and alloc failures.
  */
 static enum sec_status
 verify_canonrrset(ldns_buffer* buf, int algo, unsigned char* sigblock, 
-	unsigned int sigblock_len, unsigned char* key, unsigned int keylen)
+	unsigned int sigblock_len, unsigned char* key, unsigned int keylen,
+	char** reason)
 {
 	const EVP_MD *digest_type;
 	EVP_MD_CTX ctx;
 	int res, dofree = 0;
-	EVP_PKEY *evp_key = EVP_PKEY_new();
-	if(!evp_key) {
-		log_err("verify: malloc failure in crypto");
-		return sec_status_unchecked;
-	}
-
-	if(!setup_key_digest(algo, evp_key, &digest_type, key, keylen)) {
+	EVP_PKEY *evp_key = NULL;
+	
+	if(!setup_key_digest(algo, &evp_key, &digest_type, key, keylen)) {
 		verbose(VERB_QUERY, "verify: failed to setup key");
+		*reason = "use of key for crypto failed";
 		EVP_PKEY_free(evp_key);
 		return sec_status_bogus;
 	}
@@ -1324,6 +1423,7 @@ verify_canonrrset(ldns_buffer* buf, int algo, unsigned char* sigblock,
 		sigblock_len == 1+2*SHA_DIGEST_LENGTH) {
 		if(!setup_dsa_sig(&sigblock, &sigblock_len)) {
 			verbose(VERB_QUERY, "verify: failed to setup DSA sig");
+			*reason = "use of key for DSA crypto failed";
 			EVP_PKEY_free(evp_key);
 			return sec_status_bogus;
 		}
@@ -1362,6 +1462,7 @@ verify_canonrrset(ldns_buffer* buf, int algo, unsigned char* sigblock,
 		return sec_status_secure;
 	} else if(res == 0) {
 		verbose(VERB_QUERY, "verify: signature mismatch");
+		*reason = "signature crypto failed";
 		return sec_status_bogus;
 	}
 
@@ -1374,7 +1475,7 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 	struct val_env* ve, uint32_t now,
         struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
         size_t dnskey_idx, size_t sig_idx,
-	struct rbtree_t** sortree, int* buf_canon)
+	struct rbtree_t** sortree, int* buf_canon, char** reason)
 {
 	enum sec_status sec;
 	uint8_t* sig;		/* RRSIG rdata */
@@ -1391,17 +1492,20 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 	/* min length of rdatalen, fixed rrsig, root signer, 1 byte sig */
 	if(siglen < 2+20) {
 		verbose(VERB_QUERY, "verify: signature too short");
+		*reason = "signature too short";
 		return sec_status_bogus;
 	}
 
 	if(!(dnskey_get_flags(dnskey, dnskey_idx) & DNSKEY_BIT_ZSK)) {
 		verbose(VERB_QUERY, "verify: dnskey without ZSK flag");
+		*reason = "dnskey without ZSK flag";
 		return sec_status_bogus; 
 	}
 
 	if(dnskey_get_protocol(dnskey, dnskey_idx) != LDNS_DNSSEC_KEYPROTO) { 
 		/* RFC 4034 says DNSKEY PROTOCOL MUST be 3 */
 		verbose(VERB_QUERY, "verify: dnskey has wrong key protocol");
+		*reason = "dnskey has wrong protocolnumber";
 		return sec_status_bogus;
 	}
 
@@ -1410,15 +1514,18 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 	signer_len = dname_valid(signer, siglen-2-18);
 	if(!signer_len) {
 		verbose(VERB_QUERY, "verify: malformed signer name");
+		*reason = "signer name malformed";
 		return sec_status_bogus; /* signer name invalid */
 	}
 	if(!dname_subdomain_c(rrset->rk.dname, signer)) {
 		verbose(VERB_QUERY, "verify: signer name is off-tree");
+		*reason = "signer name off-tree";
 		return sec_status_bogus; /* signer name offtree */
 	}
 	sigblock = (unsigned char*)signer+signer_len;
 	if(siglen < 2+18+signer_len+1) {
 		verbose(VERB_QUERY, "verify: too short, no signature data");
+		*reason = "signature too short, no signature data";
 		return sec_status_bogus; /* sig rdf is < 1 byte */
 	}
 	sigblock_len = (unsigned int)(siglen - 2 - 18 - signer_len);
@@ -1430,6 +1537,7 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 			signer, 0, 0);
 		log_nametypeclass(VERB_QUERY, "the key name is", 
 			dnskey->rk.dname, 0, 0);
+		*reason = "signer name mismatches key name";
 		return sec_status_bogus;
 	}
 
@@ -1437,29 +1545,33 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 	/* memcmp works because type is in network format for rrset */
 	if(memcmp(sig+2, &rrset->rk.type, 2) != 0) {
 		verbose(VERB_QUERY, "verify: wrong type covered");
+		*reason = "signature covers wrong type";
 		return sec_status_bogus;
 	}
 	/* verify keytag and sig algo (possibly again) */
 	if((int)sig[2+2] != dnskey_get_algo(dnskey, dnskey_idx)) {
 		verbose(VERB_QUERY, "verify: wrong algorithm");
+		*reason = "signature has wrong algorithm";
 		return sec_status_bogus;
 	}
 	ktag = htons(dnskey_calc_keytag(dnskey, dnskey_idx));
 	if(memcmp(sig+2+16, &ktag, 2) != 0) {
 		verbose(VERB_QUERY, "verify: wrong keytag");
+		*reason = "signature has wrong keytag";
 		return sec_status_bogus;
 	}
 
 	/* verify labels is in a valid range */
 	if((int)sig[2+3] > dname_signame_label_count(rrset->rk.dname)) {
 		verbose(VERB_QUERY, "verify: labelcount out of range");
+		*reason = "signature labelcount out of range";
 		return sec_status_bogus;
 	}
 
 	/* original ttl, always ok */
 
 	/* verify inception, expiration dates */
-	if(!check_dates(ve, now, sig+2+8, sig+2+12)) {
+	if(!check_dates(ve, now, sig+2+8, sig+2+12, reason)) {
 		return sec_status_bogus;
 	}
 
@@ -1483,7 +1595,7 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 
 	/* verify */
 	sec = verify_canonrrset(buf, (int)sig[2+2],
-		sigblock, sigblock_len, key, keylen);
+		sigblock, sigblock_len, key, keylen, reason);
 	
 	/* check if TTL is too high - reduce if so */
 	if(sec == sec_status_secure) {
