@@ -58,6 +58,11 @@
 #include "util/config_file.h"
 #include "util/fptr_wlist.h"
 
+/* forward decl for cache response and normal super inform calls of a DS */
+static void process_ds_response(struct module_qstate* qstate, 
+	struct val_qstate* vq, int id, int rcode, struct dns_msg* msg, 
+	struct query_info* qinfo, struct sock_list* origin);
+
 /** fill up nsec3 key iterations config entry */
 static int
 fill_nsec3_iter(struct val_env* ve, char* s, int c)
@@ -1457,6 +1462,23 @@ processFindKey(struct module_qstate* qstate, struct val_qstate* vq, int id)
 
 	if(!vq->ds_rrset || query_dname_compare(vq->ds_rrset->rk.dname,
 		target_key_name) != 0) {
+		/* check if there is a cache entry : pick up an NSEC if
+		 * there is no DS, check if that NSEC has DS-bit unset, and
+		 * thus can disprove the secure delagation we seek.
+		 * We can then use that NSEC even in the absence of a SOA
+		 * record that would be required by the iterator to supply
+		 * a completely protocol-correct response. 
+		 * Uses negative cache for NSEC3 lookup of DS responses. */
+		/* only if cache not blacklisted, of course */
+		struct dns_msg* msg;
+		if(!qstate->blacklist && !vq->chain_blacklist &&
+			(msg=val_find_DS(qstate->env, target_key_name, 
+			target_key_len, vq->qchase.qclass, qstate->region)) ) {
+			verbose(VERB_ALGO, "Process cached DS response");
+			process_ds_response(qstate, vq, id, LDNS_RCODE_NOERROR,
+				msg, &msg->qinfo, NULL);
+			return 1; /* continue processing ds-response results */
+		}
 		if(!generate_request(qstate, id, target_key_name, 
 			target_key_len, LDNS_RR_TYPE_DS, vq->qchase.qclass,
 			BIT_CD)) {
@@ -2117,6 +2139,16 @@ val_operate(struct module_qstate* qstate, enum module_ev event, int id,
 			return;
 		}
 		if(already_validated(qstate->return_msg)) {
+			qstate->ext_state[id] = module_finished;
+			return;
+		}
+		/* qclass ANY should have validation result from spawned 
+		 * queries. If we get here, it is bogus or an internal error */
+		if(qstate->qinfo.qclass == LDNS_RR_CLASS_ANY) {
+			verbose(VERB_ALGO, "cannot validate classANY: bogus");
+			if(qstate->return_msg)
+				qstate->return_msg->rep->security =
+					sec_status_bogus;
 			qstate->ext_state[id] = module_finished;
 			return;
 		}

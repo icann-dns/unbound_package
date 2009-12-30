@@ -1,3 +1,18 @@
+unbound (1.4.1-2) unstable; urgency=low
+
+  * Invoke dh_installinit with --restart-after-upgrade; closes: #563033.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Tue, 29 Dec 2009 21:54:26 -0500
+
+unbound (1.4.1-1) unstable; urgency=low
+
+  * New upstream release.
+  * Document copyright status of util/configparser.c, util/configparser.h;
+    closes: #552066.
+  * Enable libev support; closes: #552424.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sat, 26 Dec 2009 17:19:10 -0500
+
 unbound (1.4.0-1) unstable; urgency=low
 
   * New upstream release.

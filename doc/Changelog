@@ -1,6 +1,54 @@
+17 December 2009: Wouter
+	- review comments.
+	- tag 1.4.1.
+	
+15 December 2009: Wouter
+	- Answer to qclass=ANY queries, with class IN contents.
+	  Test that validation also works.
+	- updated ldns snapshot tarball with latest fixes (parsing records).
+
+11 December 2009: Wouter
+	- on IPv4 UDP turn off DF flag.
+
+10 December 2009: Wouter
+	- requirements.txt updated with design choice explanations.
+	- Reading fixes: fix to set unlame when child confirms parent glue,
+	  and fix to avoid duplicate addresses in delegation point.
+	- verify_rrsig routine checks expiration last.
+
+9 December 2009: Wouter
+	- Fix Bug#287(reopened): update of ldns tarball with fix for parse
+	  errors generated for domain names like '.example.com'.
+	- Fix SOA excluded from negative DS responses.  Reported by Hauke
+	  Lampe.  The negative cache did not include proper SOA records for
+	  negative qtype DS responses which makes BIND barf on it, such
+	  responses are now only used internally.
+	- Fix negative cache lookup of closestencloser check of DS type bit.
+
+8 December 2009: Wouter
+	- Fix for lookup of parent-child disagreement domains, where the
+	  parent-side glue works but it does not provide proper NS, A or AAAA
+	  for itself, fixing domains such as motorcaravanners.eu.
+	- Feature: you can specify a port number in the interface: line, so
+	  you can bind the same interface multiple times at different ports.
+
+7 December 2009: Wouter
+	- Bug#287: Fix segfault when unbound-control remove nonexistent local
+	  data.  Added check to tests.
+
+1 December 2009: Wouter
+	- Fix crash with module-config "iterator".
+	- Added unit test that has "iterator" module-config.
+
+30 November 2009: Wouter
+	- bug#284: fix parse of # without end-of-line at end-of-file.
+
 26 November 2009: Wouter
 	- updated ldns with release candidate for version 1.6.3.
 	- tag for 1.4.0 release.
+	- 1.4.1 version in trunk.
+	- Fixup major libtool version to 2 because of why_bogus change.
+	  It was 1:5:0 but should have been 2:0:0.
 
 23 November 2009: Wouter
 	- Patch from David Hubbard for libunbound manual page.
