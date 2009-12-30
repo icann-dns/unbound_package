@@ -4,9 +4,11 @@ Priority: optional
 Maintainer: Robert S. Edmonds <edmonds@debian.org>
 Build-Depends: dpkg-dev (>= 1.14.9), debhelper (>= 7), quilt, doxygen,
  autoconf, automake, autotools-dev, libtool, flex, bison, libldns-dev,
- libssl-dev
-Standards-Version: 3.8.2
+ libssl-dev, libev-libevent-dev, python-all-dev (>= 2.5.4-1~),
+ python-support (>= 1.0.0), swig
+Standards-Version: 3.8.3
 Homepage: http://www.unbound.net/
+XS-Python-Version: all
 
 Package: unbound
 Section: net
@@ -31,7 +33,7 @@ Description: reimplementation of the 'host' command
  package called host, which is from NIKHEF, and bind9-host, which is from ISC,
  and has a similar but different set of features and options.
 
-Package: libunbound1
+Package: libunbound2
 Section: net
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -43,7 +45,7 @@ Description: library implementing DNS resolution and validation
 Package: libunbound-dev
 Section: libdevel
 Architecture: any
-Depends: ${misc:Depends}, libunbound1 (= ${binary:Version})
+Depends: ${misc:Depends}, libunbound2 (= ${binary:Version})
 Description: static library, header files, and docs for libunbound
  Static library, header files, and documentation for libunbound.
  .

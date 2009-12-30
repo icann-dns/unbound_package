@@ -44,6 +44,8 @@
 #define ITERATOR_ITER_UTILS_H
 #include "iterator/iter_resptype.h"
 struct iter_env;
+struct iter_hints;
+struct iter_forwards;
 struct config_file;
 struct module_env;
 struct delegpt_addr;
@@ -209,5 +211,37 @@ int iter_msg_from_zone(struct dns_msg* msg, struct delegpt* dp,
  * @return if one and two are equal.
  */
 int reply_equal(struct reply_info* p, struct reply_info* q);
+
+/**
+ * Store in-zone glue in seperate rrset cache entries for later last-resort
+ * lookups in case the child-side versions of this information fails.
+ * @param env: environment with cache, time, ...
+ * @param qinfo: query info. must match the information stored to avoid
+ * 	Kaminsky-style trouble.
+ * @param rep: reply with possibly A or AAAA content to store.
+ */
+void iter_store_inzone_glue(struct module_env* env, struct query_info* qinfo,
+	struct reply_info* rep);
+
+/**
+ * Find in-zone glue from rrset cache again.
+ * @param env: query env with rrset cache and time.
+ * @param dp: delegation point to store result in.
+ * @param region: region to alloc result in.
+ * @param qinfo: query into that is pertinent.
+ * @return false on malloc failure.
+ */
+int iter_lookup_inzone_glue(struct module_env* env, struct delegpt* dp,
+	struct regional* region, struct query_info* qinfo);
+
+/**
+ * Lookup next root-hint or root-forward entry.
+ * @param hints: the hints.
+ * @param fwd: the forwards.
+ * @param c: the class to start searching at. 0 means find first one.
+ * @return false if no classes found, true if found and returned in c.
+ */
+int iter_get_next_root(struct iter_hints* hints, struct iter_forwards* fwd,
+	uint16_t* c);
 
 #endif /* ITERATOR_ITER_UTILS_H */
