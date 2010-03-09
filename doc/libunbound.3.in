@@ -1,4 +1,4 @@
-.TH "libunbound" "3" "Dec 17, 2009" "NLnet Labs" "unbound 1.4.1"
+.TH "libunbound" "3" "Mar  9, 2010" "NLnet Labs" "unbound 1.4.2"
 .\"
 .\" libunbound.3 -- unbound library functions manual
 .\"
@@ -17,6 +17,7 @@
 .B ub_ctx_create,
 .B ub_ctx_delete,
 .B ub_ctx_set_option,
+.B ub_ctx_get_option,
 .B ub_ctx_config,
 .B ub_ctx_set_fwd,
 .B ub_ctx_resolvconf,
@@ -41,7 +42,7 @@
 .B ub_ctx_zone_remove,
 .B ub_ctx_data_add,
 .B ub_ctx_data_remove
-\- Unbound DNS validating resolver 1.4.1 functions.
+\- Unbound DNS validating resolver 1.4.2 functions.
 .SH "SYNOPSIS"
 .LP
 .B #include <unbound.h>
@@ -54,6 +55,9 @@
 .LP
 \fIint\fR
 \fBub_ctx_set_option\fR(\fIstruct ub_ctx*\fR ctx, \fIchar*\fR opt, \fIchar*\fR val);
+.LP
+\fIint\fR
+\fBub_ctx_get_option\fR(\fIstruct ub_ctx*\fR ctx, \fIchar*\fR opt, \fIchar**\fR val);
 .LP
 \fIint\fR
 \fBub_ctx_config\fR(\fIstruct ub_ctx*\fR ctx, \fIchar*\fR fname);
@@ -177,6 +181,11 @@ A power\-user interface that lets you specify one of the options from the
 config file format, see \fIunbound.conf\fR(5). Not all options are
 relevant. For some specific options, such as adding trust anchors, special
 routines exist. Pass the option name with the trailing ':'.
+.TP
+.B ub_ctx_get_option
+A power\-user interface that gets an option value.  Some options cannot be
+gotten, and others return a newline separated list.  Pass the option name
+without trailing ':'.  The returned value must be free(2)d by the caller.
 .TP
 .B ub_ctx_config
 A power\-user interface that lets you specify an unbound config file, see

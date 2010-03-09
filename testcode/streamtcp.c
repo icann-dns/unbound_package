@@ -48,6 +48,11 @@
 #include "util/data/msgreply.h"
 #include "util/data/dname.h"
 
+#ifndef PF_INET6
+/** define in case streamtcp is compiled on legacy systems */
+#define PF_INET6 10
+#endif
+
 /** usage information for streamtcp */
 void usage(char* argv[])
 {

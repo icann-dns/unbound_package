@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.1, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.2, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=1
+LIBUNBOUND_REVISION=2
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -26,6 +26,7 @@ LIBUNBOUND_AGE=0
 # 1.4.0-snapshots had 1:5:0
 # 1.4.0 had 1:5:0 (not 2:0:0)   # ub_result.why_bogus
 # 1.4.1 had 2:1:0
+# 1.4.2 had 2:2:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -161,10 +162,12 @@ ACX_CHECK_COMPILER_FLAG(xO4, [CFLAGS="$CFLAGS -xO4"])
 ACX_CHECK_COMPILER_FLAG(xtarget=generic, [CFLAGS="$CFLAGS -xtarget=generic"])
 
 # debug mode flags warnings
-AC_ARG_ENABLE(debug, AC_HELP_STRING([--enable-debug], [Enable debug warnings, asserts, makefile-dependencies]))
-debug_enabled="$enable_debug"
+AC_ARG_ENABLE(checking, AC_HELP_STRING([--enable-checking], [Enable warnings, asserts, makefile-dependencies]))
+AC_ARG_ENABLE(debug, AC_HELP_STRING([--enable-debug], [same as enable-checking]))
+if test "$enable_debug" = "yes"; then debug_enabled="$enable_debug"; 
+else debug_enabled="$enable_checking"; fi
 AC_SUBST(debug_enabled)
-case "$enable_debug" in
+case "$debug_enabled" in
         yes)
 		ACX_CHECK_COMPILER_FLAG(W, [CFLAGS="$CFLAGS -W"])
 		ACX_CHECK_COMPILER_FLAG(Wall, [CFLAGS="$CFLAGS -Wall"])
@@ -223,6 +226,7 @@ ACX_TYPE_RLIM_T
 ACX_TYPE_SOCKLEN_T
 ACX_TYPE_IN_ADDR_T
 ACX_TYPE_IN_PORT_T
+ACX_CHECK_MEMCMP_SIGNED
 
 # add option to disable the evil rpath
 ACX_ARG_RPATH
@@ -399,7 +403,7 @@ esac
 AC_ARG_ENABLE(gost, AC_HELP_STRING([--enable-gost], [Enable GOST support, experimental]))
 case "$enable_gost" in
 	yes)
-	AC_CHECK_LIB(crypto, EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL >= 1.0.0 is needed for GOST support])])
+	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL >= 1.0.0 is needed for GOST support])])
 	AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])
 	;;
 	no|*)
@@ -590,7 +594,9 @@ AC_ARG_WITH(ldns-builtin, AC_HELP_STRING([--with-ldns-builtin],
 # check if ldns is good enough
 if test "$use_ldns_builtin" = "no"; then
 	AC_CHECK_LIB(ldns, ldns_buffer_copy)
-	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes; then
+	AC_CHECK_HEADERS([ldns/ldns.h],,, [AC_INCLUDES_DEFAULT])
+	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes \
+	    -a $ac_cv_header_ldns_ldns_h = yes; then
 	    dnl ldns was found, check compat functions
 	    AC_CHECK_FUNC([ldns_b32_ntop_extended_hex],, [
 		AC_MSG_ERROR([ldns version too old, need >=1.4.0])])
@@ -716,6 +722,7 @@ AHX_CONFIG_W32_RANDOM
 AHX_CONFIG_W32_SRANDOM
 AHX_CONFIG_W32_FD_SET_T
 AHX_CONFIG_IPV6_MIN_MTU
+AHX_MEMCMP_BROKEN(unbound)
 
 [
 #ifndef HAVE_CTIME_R

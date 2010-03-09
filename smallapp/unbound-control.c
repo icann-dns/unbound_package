@@ -66,6 +66,7 @@ usage()
 	printf("  stats_noreset			peek at statistics\n");
 	printf("  status			display status of server\n");
 	printf("  verbosity <number>		change logging detail\n");
+	printf("  log_reopen			close and open the logfile\n");
 	printf("  local_zone <name> <type>	add new local zone\n");
 	printf("  local_zone_remove <name>	remove local zone and its contents\n");
 	printf("  local_data <RR data...>	add local data, for example\n");
@@ -83,6 +84,12 @@ usage()
 	printf("  flush_stats 			flush statistics, make zero\n");
 	printf("  flush_requestlist 		drop queries that are worked on\n");
 	printf("  dump_requestlist		show what is worked on\n");
+	printf("  set_option opt: val		set option to value, no reload\n");
+	printf("  get_option opt		get option value\n");
+	printf("  list_stubs			list stub-zones and root hints in use\n");
+	printf("  list_forwards			list forward-zones in use\n");
+	printf("  list_local_zones		list local-zones in use\n");
+	printf("  list_local_data		list local-data RRs in use\n");
 	printf("  forward [off | addr ...]	without arg show forward setup\n");
 	printf("				or off to turn off root forwarding\n");
 	printf("				or give list of ip addresses\n");
