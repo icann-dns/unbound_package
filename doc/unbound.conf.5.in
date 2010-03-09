@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Dec 17, 2009" "NLnet Labs" "unbound 1.4.1"
+.TH "unbound.conf" "5" "Mar  9, 2010" "NLnet Labs" "unbound 1.4.2"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -503,6 +503,17 @@ If yes, localhost is added to the do\-not\-query\-address entries, both
 IP6 ::1 and IP4 127.0.0.1/8. If no, then localhost can be used to send
 queries to. Default is yes.
 .TP
+.B prefetch: \fI<yes or no>
+If yes, message cache elements are prefetched before they expire to
+keep the cache up to date.  Default is no.  Turning it on gives about
+10 percent more traffic and load on the machine, but popular items do
+not expire from the cache.
+.TP
+.B prefetch-key: \fI<yes or no>
+If yes, fetch the DNSKEYs earlier in the validation process, when a DS
+record is encountered.  This lowers the latency of requests.  It does use
+a little more CPU.  Also if the cache is set to 0, it is no use. Default is no.
+.TP
 .B module\-config: \fI<"module names">
 Module configuration, a list of module names separated by spaces, surround
 the string with quotes (""). The modules can be validator, iterator.
@@ -596,11 +607,13 @@ to protect the users that rely on this validator for authentication from
 protentially bad data in the additional section.
 .TP
 .B val\-log\-level: \fI<number>
-Have the validator print validation failures to the log.  Regardless of the
-verbosity setting.  Default is 0, off. At 1, for every user query that fails
-a line is printed to the logs.  This way you can monitor what happens with
-validation.  Use a diagnosis tool, such as dig or drill, to find out why 
-validation is failing for these queries.
+Have the validator print validation failures to the log.  Regardless of
+the verbosity setting.  Default is 0, off.  At 1, for every user query
+that fails a line is printed to the logs.  This way you can monitor what
+happens with validation.  Use a diagnosis tool, such as dig or drill,
+to find out why validation is failing for these queries.  At 2, not only
+the query that failed is printed but also the reason why unbound thought
+it was wrong and which server sent the faulty data.
 .TP
 .B val\-permissive\-mode: \fI<yes or no>
 Instruct the validator to mark bogus messages as indeterminate. The security
@@ -920,7 +933,7 @@ The
 clause gives the settings for the \fIpython\fR(1) script module.  This module
 acts like the iterator and validator modules do, on queries and answers.
 To enable the script module it has to be compiled into the daemon,
-and the word "python" has to be put in the \fBmodule\-conf:\fR option
+and the word "python" has to be put in the \fBmodule\-config:\fR option
 (usually first, or between the validator and iterator).
 .TP
 .B python\-script: \fI<python file>\fR

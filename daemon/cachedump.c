@@ -738,6 +738,7 @@ load_msg(SSL* ssl, ldns_buffer* buf, struct worker* worker)
 	rep.flags = (uint16_t)flags;
 	rep.qdcount = (uint16_t)qdcount;
 	rep.ttl = (uint32_t)ttl;
+	rep.prefetch_ttl = PREFETCH_TTL_CALC(rep.ttl);
 	rep.security = (enum sec_status)security;
 	rep.an_numrrsets = (size_t)an;
 	rep.ns_numrrsets = (size_t)ns;
@@ -757,7 +758,7 @@ load_msg(SSL* ssl, ldns_buffer* buf, struct worker* worker)
 	if(!go_on) 
 		return 1; /* skip this one, not all references satisfied */
 
-	if(!dns_cache_store(&worker->env, &qinf, &rep, 0)) {
+	if(!dns_cache_store(&worker->env, &qinf, &rep, 0, 0)) {
 		log_warn("error out of memory");
 		return 0;
 	}
@@ -815,8 +816,9 @@ print_dp_details(SSL* ssl, struct worker* worker, struct delegpt* dp)
 				return;
 			continue; /* skip stuff not in infra cache */
 		}
-		if(!ssl_printf(ssl, "%s%s%srtt %d msec, %d lost. ",
+		if(!ssl_printf(ssl, "%s%s%s%srtt %d msec, %d lost. ",
 			lame?"LAME ":"", dlame?"NoDNSSEC ":"",
+			a->lame?"AddrWasParentSide ":"",
 			rlame?"NoAuthButRecursive ":"", rtt, lost))
 			return;
 		if(infra_host(worker->env.infra_cache, &a->addr, a->addrlen,

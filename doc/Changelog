@@ -1,6 +1,144 @@
+8 March 2010: Wouter
+	- iana portlist updated.
+
+4 March 2010: Wouter
+	- Fix crash in control channel code.
+
+3 March 2010: Wouter
+	- better casts in pipe code, brackets placed wrongly.
+	- iana portlist updated.
+
+1 March 2010: Wouter
+	- make install depends on make all.
+	- Fix 5011 auto-trust-anchor-file initial read to skip RRSIGs.
+	- --enable-checking: enables assertions but does not look nonproduction.
+	- nicer VERB_DETAIL (verbosity 2, unbound-host -d) output, with
+	  nxdomain and nodata distinguished.
+	- ldns tarball updated.
+	- --disable-rpath fixed for libtool not found errors.
+	- new fedora specfile from Fedora13 in contrib from Paul Wouters.
+
+26 February 2010: Wouter
+	- Fixup prototype for lexer cleanup in daemon code.
+	- unbound-control list_stubs, list_forwards, list_local_zones and
+	  list_local_data.
+
+24 February 2010: Wouter
+	- Fix scrubber bug that potentially let NS records through.  Reported
+	  by Amanda Constant.
+	- Also delete potential poison references from additional.
+	- Fix: no classification of a forwarder as lame, throw away instead.
+
+23 February 2010: Wouter
+	- libunbound ub_ctx_get_option() added.
+	- unbound-control set_option and get_option commands.
+	- iana portlist updated.
+
+18 February 2010: Wouter
+	- A little more strict DS scrubbing.
+	- No more blacklisting of unresponsive servers, a 2 minute timeout
+	  is backed off to.
+	- RD flag not enabled for dnssec-blacklisted tries, unless necessary.
+	- pickup ldns compile fix, libdl for libcrypto.
+	- log 'tcp connect: connection timed out' only in high verbosity.
+	- unbound-control log_reopen command.
+	- moved get_option code from unbound-checkconf to util/config_file.c
+
+17 February 2010: Wouter
+	- Disregard DNSKEY from authority section for chain of trust.
+	  DS records that are irrelevant to a referral scrubbed.  Anti-poison.
+	- iana portlist updated.
+
+16 February 2010: Wouter
+	- Check for 'no space left on device' (or other errors) when 
+	  writing updated autotrust anchors and print errno to log.
+
+15 February 2010: Wouter
+	- Fixed the requery protection, the TTL was 0, it is now 900 seconds,
+	  hardcoded.  We made the choice to send out more conservatively,
+	  protecting against an aggregate effect more than protecting a
+	  single user (from their own folly, perhaps in case of misconfig).
+
+12 February 2010: Wouter
+	- Re-query pattern changed on validation failure.  To protect troubled
+	  authority servers, unbound caches a failure for the DNSKEY or DS
+	  records for the entire zone, and only retries that 900 seconds later.
+	  This implies that only a handful of packets are sent extra to the
+	  authority if the zone fails.
+
+11 February 2010: Wouter
+	- ldns tarball update for long label length syntax error fix.
+	- iana portlist updated.
+
+9 February 2010: Wouter
+	- Fixup in compat snprintf routine, %f 1.02 and %g support.
+	- include math.h for testbound test compile portability.
+
+2 February 2010: Wouter
+	- Updated url of IANA itar, interim trust anchor repository, in script.
+
+1 February 2010: Wouter
+	- iana portlist updated.
+	- configure test for memcmp portability.
+
+27 January 2010: Wouter
+	- removed warning on format string in validator error log statement.
+	- iana portlist updated.
+
+22 January 2010: Wouter
+	- libtool finish the install of unbound python dynamic library.
+
+21 January 2010: Wouter
+	- acx_nlnetlabs.m4 synchronised with nsd's version.
+
+20 January 2010: Wouter
+	- Fixup lookup trouble for parent-child domains on the first query.
+
+14 January 2010: Wouter
+	- Fixup ldns detection to also check for header files.
+
+13 January 2010: Wouter
+	- prefetch-key option that performs DNSKEY queries earlier in the
+	  validation process, and that could halve the latency on DNSSEC
+	  queries.  It takes some extra processing (CPU, a cache is needed).
+
+12 January 2010: Wouter
+	- Fix unbound-checkconf for auto-trust-anchor-file present checks.
+
+8 January 2010: Wouter
+	- Fix for parent-child disagreement code which could have trouble
+	  when (a) ipv6 was disabled and (b) the TTL for parent and child
+	  were different.  There were two bugs, the parent-side information
+	  is fixed to no longer block lookup of child side information and
+	  the iterator is fixed to no longer attempt to get ipv6 when it is
+	  not enabled and then give up in failure.
+	- test and fixes to make prefetch actually store the answer in the
+	  cache.  Considers some rrsets 'already expired' but does not allow
+	  overwriting of rrsets considered more secure.
+
+7 January 2010: Wouter
+	- Fixup python documentation (thanks Leo Vandewoestijne).
+	- Work on cache prefetch feature.
+	- Stats for prefetch, in log print stats, unbound-control stats
+	  and in unbound_munin plugin.
+
+6 January 2010: Wouter
+	- iana portlist updated.
+	- bug#291: DNS wireformat max is 255. dname_valid allowed 256 length.
+	- verbose output includes parent-side-address notion for lameness.
+	- documented val-log-level: 2 setting in example.conf and man page.
+	- change unbound-control-setup from 1024(sha1) to 1536(sha256).
+
+1 January 2010: Wouter
+	- iana portlist updated.
+
+22 December 2009: Wouter
+	- configure with newer libtool 2.2.6b.
+
 17 December 2009: Wouter
 	- review comments.
 	- tag 1.4.1.
+	- trunk to version 1.4.2.
 	
 15 December 2009: Wouter
 	- Answer to qclass=ANY queries, with class IN contents.

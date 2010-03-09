@@ -1,3 +1,9 @@
+unbound (1.4.2-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Tue, 09 Mar 2010 14:13:31 -0500
+
 unbound (1.4.1-2) unstable; urgency=low
 
   * Invoke dh_installinit with --restart-after-upgrade; closes: #563033.

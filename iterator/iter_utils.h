@@ -57,6 +57,7 @@ struct query_info;
 struct reply_info;
 struct module_qstate;
 struct sock_list;
+struct ub_packed_rrset_key;
 
 /**
  * Process config options and set iterator module state.
@@ -118,10 +119,11 @@ struct dns_msg* dns_copy_msg(struct dns_msg* from, struct regional* regional);
  * @param rep: reply in dns_msg from dns_alloc_msg for example.
  * @param is_referral: If true, then the given message to be stored is a
  *	referral. The cache implementation may use this as a hint.
+ * @param leeway: prefetch TTL leeway to expire old rrsets quicker.
  * @return 0 on alloc error (out of memory).
  */
 int iter_dns_store(struct module_env* env, struct query_info* qinf,
-	struct reply_info* rep, int is_referral);
+	struct reply_info* rep, int is_referral, uint32_t leeway);
 
 /**
  * Select randomly with n/m probability.
@@ -243,5 +245,15 @@ int iter_lookup_inzone_glue(struct module_env* env, struct delegpt* dp,
  */
 int iter_get_next_root(struct iter_hints* hints, struct iter_forwards* fwd,
 	uint16_t* c);
+
+/**
+ * Remove DS records that are inappropriate before they are cached.
+ * @param msg: the response to scrub.
+ * @param ns: RRSET that is the NS record for the referral.
+ * 	if NULL, then all DS records are removed from the authority section.
+ * @param z: zone name that the response is from.
+ */
+void iter_scrub_ds(struct dns_msg* msg, struct ub_packed_rrset_key* ns,
+	uint8_t* z);
 
 #endif /* ITERATOR_ITER_UTILS_H */

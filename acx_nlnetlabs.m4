@@ -2,8 +2,11 @@
 # Copyright 2009, Wouter Wijngaards, NLnet Labs.   
 # BSD licensed.
 #
-# Version 4
-# Changelog
+# Version 8
+# 2010-03-01 Fix RPATH using CONFIG_COMMANDS to run at the very end.
+# 2010-02-18 WITH_SSL outputs the LIBSSL_LDFLAGS, LIBS, CPPFLAGS seperate, -ldl
+# 2010-02-01 added ACX_CHECK_MEMCMP_SIGNED, AHX_MEMCMP_BROKEN
+# 2010-01-20 added AHX_COONFIG_STRLCAT
 # 2009-07-14 U_CHAR detection improved for windows crosscompile.
 #            added ACX_FUNC_MALLOC
 #            fixup some #if to #ifdef
@@ -55,6 +58,7 @@
 # AHX_CONFIG_INET_NTOP		- inet_ntop compat prototype
 # AHX_CONFIG_INET_ATON		- inet_aton compat prototype
 # AHX_CONFIG_MEMMOVE		- memmove compat prototype
+# AHX_CONFIG_STRLCAT		- strlcat compat prototype
 # AHX_CONFIG_STRLCPY		- strlcpy compat prototype
 # AHX_CONFIG_GMTIME_R		- gmtime_r compat prototype
 # AHX_CONFIG_W32_SLEEP		- w32 compat for sleep
@@ -67,6 +71,8 @@
 # AHX_CONFIG_FLAG_OMITTED	- define omitted flag
 # AHX_CONFIG_FLAG_EXT		- define omitted extension flag
 # AHX_CONFIG_EXT_FLAGS		- define the stripped extension flags
+# ACX_CHECK_MEMCMP_SIGNED	- check if memcmp uses signed characters.
+# AHX_MEMCMP_BROKEN		- replace memcmp func for CHECK_MEMCMP_SIGNED.
 #
 
 dnl Escape backslashes as \\, for C:\ paths, for the C preprocessor defines.
@@ -551,12 +557,14 @@ AC_ARG_ENABLE(rpath,
         [  --disable-rpath         disable hardcoded rpath (default=enabled)],
 	enable_rpath=$enableval, enable_rpath=yes)
 if test "x$enable_rpath" = xno; then
-	AC_MSG_RESULT([Fixing libtool for -rpath problems.])
+	dnl AC_MSG_RESULT([Fixing libtool for -rpath problems.])
+	AC_CONFIG_COMMANDS([disable-rpath], [
 	sed < libtool > libtool-2 \
 	's/^hardcode_libdir_flag_spec.*$'/'hardcode_libdir_flag_spec=" -D__LIBTOOL_RPATH_SED__ "/'
 	mv libtool-2 libtool
 	chmod 755 libtool
 	libtool="./libtool"
+	])
 fi
 ])
 
@@ -589,6 +597,7 @@ AC_DEFUN([ACX_SSL_CHECKS], [
                 dnl assume /usr/include is already in the include-path.
                 if test "$ssldir" != "/usr"; then
                         CPPFLAGS="$CPPFLAGS -I$ssldir/include"
+                        LIBSSL_CPPFLAGS="$LIBSSL_CPPFLAGS -I$ssldir/include"
                 fi
                 break;
             fi
@@ -601,11 +610,13 @@ AC_DEFUN([ACX_SSL_CHECKS], [
             dnl assume /usr is already in the lib and dynlib paths.
             if test "$ssldir" != "/usr" -a "$ssldir" != ""; then
                 LDFLAGS="$LDFLAGS -L$ssldir/lib"
+                LIBSSL_LDFLAGS="$LIBSSL_LDFLAGS -L$ssldir/lib"
                 ACX_RUNTIME_PATH_ADD([$ssldir/lib])
             fi
         
             AC_MSG_CHECKING([for HMAC_CTX_init in -lcrypto])
             LIBS="$LIBS -lcrypto"
+            LIBSSL_LIBS="$LIBSSL_LIBS -lcrypto"
             AC_TRY_LINK(, [
                 int HMAC_CTX_init(void);
                 (void)HMAC_CTX_init();
@@ -617,7 +628,9 @@ AC_DEFUN([ACX_SSL_CHECKS], [
                 AC_MSG_RESULT(no)
                 # check if -lwsock32 or -lgdi32 are needed.	
                 BAKLIBS="$LIBS"
+                BAKSSLLIBS="$LIBSSL_LIBS"
                 LIBS="$LIBS -lgdi32"
+                LIBSSL_LIBS="$LIBSSL_LIBS -lgdi32"
                 AC_MSG_CHECKING([if -lcrypto needs -lgdi32])
                 AC_TRY_LINK([], [
                     int HMAC_CTX_init(void);
@@ -629,7 +642,9 @@ AC_DEFUN([ACX_SSL_CHECKS], [
                   ],[
                     AC_MSG_RESULT(no)
                     LIBS="$BAKLIBS"
+                    LIBSSL_LIBS="$BAKSSLLIBS"
                     LIBS="$LIBS -ldl"
+                    LIBSSL_LIBS="$LIBSSL_LIBS -ldl"
                     AC_MSG_CHECKING([if -lcrypto needs -ldl])
                     AC_TRY_LINK([], [
                         int HMAC_CTX_init(void);
@@ -647,6 +662,12 @@ AC_DEFUN([ACX_SSL_CHECKS], [
         fi
         AC_SUBST(HAVE_SSL)
         AC_SUBST(RUNTIME_PATH)
+	# openssl engine functionality needs dlopen().
+	BAKLIBS="$LIBS"
+	AC_SEARCH_LIBS([dlopen], [dl])
+	if test "$LIBS" != "$BAKLIBS"; then
+		LIBSSL_LIBS="$LIBSSL_LIBS -ldl"
+	fi
     fi
 AC_CHECK_HEADERS([openssl/ssl.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/err.h],,, [AC_INCLUDES_DEFAULT])
@@ -1088,6 +1109,16 @@ void *memmove(void *dest, const void *src, size_t n);
 #endif
 ])
 
+dnl provide strlcat compat prototype.
+dnl $1: unique name for compat code
+AC_DEFUN([AHX_CONFIG_STRLCAT],
+[
+#ifndef HAVE_STRLCAT
+#define strlcat strlcat_$1
+size_t strlcat(char *dst, const char *src, size_t siz);
+#endif
+])
+
 dnl provide strlcpy compat prototype.
 dnl $1: unique name for compat code
 AC_DEFUN([AHX_CONFIG_STRLCPY],
@@ -1202,6 +1233,40 @@ AHX_CONFIG_FLAG_EXT(-D_XOPEN_SOURCE=600)
 AHX_CONFIG_FLAG_EXT(-D_XOPEN_SOURCE_EXTENDED=1)
 AHX_CONFIG_FLAG_EXT(-D_ALL_SOURCE)
 AHX_CONFIG_FLAG_EXT(-D_LARGEFILE_SOURCE=1)
+])
+
+dnl check if memcmp is using signed characters and replace if so.
+AC_DEFUN([ACX_CHECK_MEMCMP_SIGNED],
+[AC_MSG_CHECKING([if memcmp compares unsigned])
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void)
+{
+	char a = 255, b = 0;
+	if(memcmp(&a, &b, 1) < 0)
+		return 1;
+	return 0;
+}
+]])], [AC_MSG_RESULT([yes]) ],
+[ AC_MSG_RESULT([no])
+  AC_DEFINE([MEMCMP_IS_BROKEN], [1], [Define if memcmp() does not compare unsigned bytes])
+  AC_LIBOBJ([memcmp])
+], [ AC_MSG_RESULT([cross-compile no])
+  AC_DEFINE([MEMCMP_IS_BROKEN], [1], [Define if memcmp() does not compare unsigned bytes])
+  AC_LIBOBJ([memcmp]) 
+]) ])
+
+dnl define memcmp to its replacement, pass unique id for program as arg
+AC_DEFUN([AHX_MEMCMP_BROKEN], [
+#ifdef MEMCMP_IS_BROKEN
+#  ifdef memcmp
+#  undef memcmp
+#  endif
+#define memcmp memcmp_$1
+int memcmp(const void *x, const void *y, size_t n);
+#endif
 ])
 
 dnl End of file

@@ -312,6 +312,8 @@ struct module_qstate {
 	struct module_env* env;
 	/** mesh related information for this query */
 	struct mesh_state* mesh_info;
+	/** how many seconds before expiry is this prefetched (0 if not) */
+	uint32_t prefetch_leeway;
 };
 
 /** 

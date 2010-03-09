@@ -164,6 +164,14 @@ struct config_file {
 	struct config_strlist* private_domain;
 	/** what threshold for unwanted action. */
 	size_t unwanted_threshold;
+	/** the number of seconds maximal TTL used for RRsets and messages */
+	int max_ttl;
+	/** the number of seconds minimum TTL used for RRsets and messages */
+	int min_ttl;
+	/** if prefetching of messages should be performed. */
+	int prefetch;
+	/** if prefetching of DNSKEYs should be performed. */
+	int prefetch_key;
 
 	/** chrootdir, if not "" or chroot will be done */
 	char* chrootdir;
@@ -208,10 +216,6 @@ struct config_file {
 	/** insecure domain list */
 	struct config_strlist* domain_insecure;
 
-	/** the number of seconds maximal TTL used for RRsets and messages */
-	int max_ttl;
-	/** the number of seconds minimum TTL used for RRsets and messages */
-	int min_ttl;
 	/** if not 0, this value is the validation date for RRSIGs */
 	int32_t val_date_override;
 	/** the minimum for signature clock skew */
@@ -311,6 +315,14 @@ struct config_str2list {
 	char* str2;
 };
 
+/** List head for strlist processing, used for append operation. */
+struct config_strlist_head {
+	/** first in list of text items */
+	struct config_strlist* first;
+	/** last in list of text items */
+	struct config_strlist* last;
+};
+
 /**
  * Create config file structure. Filled with default values.
  * @return: the new structure or NULL on memory error.
@@ -356,6 +368,67 @@ void config_apply(struct config_file* config);
  */
 int config_set_option(struct config_file* config, const char* option,
 	const char* value);
+
+/** 
+ * Call print routine for the given option.
+ * @param cfg: config.
+ * @param opt: option name without trailing :. 
+ *	This is different from config_set_option.
+ * @param func: print func, called as (str, arg) for every data element.
+ * @param arg: user argument for print func.
+ * @return false if the option name is not supported (syntax error).
+ */
+int config_get_option(struct config_file* cfg, const char* opt, 
+	void (*func)(char*,void*), void* arg);
+
+/**
+ * Get an option and return strlist
+ * @param cfg: config file
+ * @param opt: option name.
+ * @param list: list is returned here. malloced, caller must free it.
+ * @return 0=OK, 1=syntax error, 2=malloc failed.
+ */
+int config_get_option_list(struct config_file* cfg, const char* opt,
+	struct config_strlist** list);
+
+/**
+ * Get an option and collate results into string
+ * @param cfg: config file
+ * @param opt: option name.
+ * @param str: string. malloced, caller must free it.
+ * @return 0=OK, 1=syntax error, 2=malloc failed.
+ */
+int config_get_option_collate(struct config_file* cfg, const char* opt, 
+	char** str);
+
+/**
+ * function to print to a file, use as func with config_get_option.
+ * @param line: text to print. \n appended.
+ * @param arg: pass a FILE*, like stdout.
+ */
+void config_print_func(char* line, void* arg);
+
+/**
+ * function to collate the text strings into a strlist_head.
+ * @param line: text to append.
+ * @param arg: pass a strlist_head structure. zeroed on start.
+ */
+void config_collate_func(char* line, void* arg);
+
+/**
+ * take a strlist_head list and return a malloc string. separated with newline.
+ * @param list: strlist first to collate. zeroes return "".
+ * @return NULL on malloc failure. Or if malloc failure happened in strlist.
+ */
+char* config_collate_cat(struct config_strlist* list);
+
+/**
+ * Append text at end of list.
+ * @param list: list head. zeroed at start.
+ * @param item: new item. malloced by caller. if NULL the insertion fails.
+ * @return true on success.
+ */
+int cfg_strlist_append(struct config_strlist_head* list, char* item);
 
 /**
  * Insert string into strlist.

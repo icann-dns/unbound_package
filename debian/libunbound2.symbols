@@ -10,6 +10,7 @@ libunbound.so.2 libunbound2 #MINVER#
  ub_ctx_debuglevel@Base 1.4.1
  ub_ctx_debugout@Base 1.4.1
  ub_ctx_delete@Base 1.4.1
+ ub_ctx_get_option@Base 1.4.2
  ub_ctx_hosts@Base 1.4.1
  ub_ctx_print_local_zones@Base 1.4.1
  ub_ctx_resolvconf@Base 1.4.1

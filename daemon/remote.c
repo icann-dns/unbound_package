@@ -64,6 +64,7 @@
 #include "validator/val_kentry.h"
 #include "iterator/iterator.h"
 #include "iterator/iter_fwd.h"
+#include "iterator/iter_hints.h"
 #include "iterator/iter_delegpt.h"
 #include "services/outbound_list.h"
 #include "services/outside_network.h"
@@ -599,12 +600,15 @@ print_stats(SSL* ssl, const char* nm, struct stats_info* s)
 			- s->svr.num_queries_missed_cache))) return 0;
 	if(!ssl_printf(ssl, "%s.num.cachemiss"SQ"%u\n", nm, 
 		(unsigned)s->svr.num_queries_missed_cache)) return 0;
+	if(!ssl_printf(ssl, "%s.num.prefetch"SQ"%u\n", nm, 
+		(unsigned)s->svr.num_queries_prefetch)) return 0;
 	if(!ssl_printf(ssl, "%s.num.recursivereplies"SQ"%u\n", nm, 
 		(unsigned)s->mesh_replies_sent)) return 0;
 	if(!ssl_printf(ssl, "%s.requestlist.avg"SQ"%g\n", nm,
-		s->svr.num_queries_missed_cache?
+		(s->svr.num_queries_missed_cache+s->svr.num_queries_prefetch)?
 			(double)s->svr.sum_query_list_size/
-			s->svr.num_queries_missed_cache : 0.0)) return 0;
+			(s->svr.num_queries_missed_cache+
+			s->svr.num_queries_prefetch) : 0.0)) return 0;
 	if(!ssl_printf(ssl, "%s.requestlist.max"SQ"%u\n", nm,
 		(unsigned)s->svr.max_query_list_size)) return 0;
 	if(!ssl_printf(ssl, "%s.requestlist.overwritten"SQ"%u\n", nm,
@@ -1223,20 +1227,24 @@ do_flush_name(SSL* ssl, struct worker* w, char* arg)
 	send_ok(ssl);
 }
 
-/** print root forwards */
+/** printout a delegation point info */
 static int
-print_root_fwds(SSL* ssl, struct iter_forwards* fwds, uint8_t* root)
+ssl_print_name_dp(SSL* ssl, char* str, uint8_t* nm, uint16_t dclass,
+	struct delegpt* dp)
 {
 	char buf[257];
-	struct delegpt* dp;
 	struct delegpt_ns* ns;
 	struct delegpt_addr* a;
 	int f = 0;
-	dp = forwards_lookup(fwds, root, LDNS_RR_CLASS_IN);
-	if(!dp) 
-		return ssl_printf(ssl, "off (using root hints)\n");
-	/* if dp is returned it must be the root */
-	log_assert(query_dname_compare(dp->name, root)==0);
+	if(str) { /* print header for forward, stub */
+		char* c = ldns_rr_class2str(dclass);
+		dname_str(nm, buf);
+		if(!ssl_printf(ssl, "%s %s %s: ", buf, c, str)) {
+			free(c);
+			return 0;
+		}
+		free(c);
+	}
 	for(ns = dp->nslist; ns; ns = ns->next) {
 		dname_str(ns->name, buf);
 		if(!ssl_printf(ssl, "%s%s", (f?" ":""), buf))
@@ -1250,6 +1258,20 @@ print_root_fwds(SSL* ssl, struct iter_forwards* fwds, uint8_t* root)
 		f = 1;
 	}
 	return ssl_printf(ssl, "\n");
+}
+
+
+/** print root forwards */
+static int
+print_root_fwds(SSL* ssl, struct iter_forwards* fwds, uint8_t* root)
+{
+	struct delegpt* dp;
+	dp = forwards_lookup(fwds, root, LDNS_RR_CLASS_IN);
+	if(!dp)
+		return ssl_printf(ssl, "off (using root hints)\n");
+	/* if dp is returned it must be the root */
+	log_assert(query_dname_compare(dp->name, root)==0);
+	return ssl_print_name_dp(ssl, NULL, root, LDNS_RR_CLASS_IN, dp);
 }
 
 /** parse args into delegpt */
@@ -1457,6 +1479,129 @@ do_dump_requestlist(SSL* ssl, struct worker* worker)
 	}
 }
 
+/** do the log_reopen command */
+static void
+do_log_reopen(SSL* ssl, struct worker* worker)
+{
+	struct config_file* cfg = worker->env.cfg;
+	send_ok(ssl);
+	log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
+}
+
+/** do the set_option command */
+static void
+do_set_option(SSL* ssl, struct worker* worker, char* arg)
+{
+	char* arg2;
+	if(!find_arg2(ssl, arg, &arg2))
+		return;
+	if(!config_set_option(worker->env.cfg, arg, arg2)) {
+		(void)ssl_printf(ssl, "error setting option\n");
+		return;
+	}
+	send_ok(ssl);
+}
+
+/* routine to printout option values over SSL */
+void remote_get_opt_ssl(char* line, void* arg)
+{
+	SSL* ssl = (SSL*)arg;
+	(void)ssl_printf(ssl, "%s\n", line);
+}
+
+/** do the get_option command */
+static void
+do_get_option(SSL* ssl, struct worker* worker, char* arg)
+{
+	int r;
+	r = config_get_option(worker->env.cfg, arg, remote_get_opt_ssl, ssl);
+	if(!r) {
+		(void)ssl_printf(ssl, "error unknown option\n");
+		return;
+	}
+}
+
+/** do the list_forwards command */
+static void
+do_list_forwards(SSL* ssl, struct worker* worker)
+{
+	/* since its a per-worker structure no locks needed */
+	struct iter_forwards* fwds = worker->env.fwds;
+	struct iter_forward_zone* z;
+	RBTREE_FOR(z, struct iter_forward_zone*, fwds->tree) {
+		if(!z->dp) continue; /* skip empty marker for stub */
+		if(!ssl_print_name_dp(ssl, "forward", z->name, z->dclass,
+			z->dp))
+			return;
+	}
+}
+
+/** do the list_stubs command */
+static void
+do_list_stubs(SSL* ssl, struct worker* worker)
+{
+	/* readonly structure */
+	int m;
+	struct iter_hints_stub* z;
+	struct iter_env* ie;
+	m = modstack_find(&worker->env.mesh->mods, "iterator");
+	if(m == -1) {
+		(void)ssl_printf(ssl, "error no iterator module\n");
+		return;
+	}
+	ie = (struct iter_env*)worker->env.modinfo[m];
+	RBTREE_FOR(z, struct iter_hints_stub*, &ie->hints->tree) {
+		if(!ssl_print_name_dp(ssl, 
+			z->noprime?"stub noprime":"stub prime", z->node.name,
+			z->node.dclass, z->dp))
+			return;
+	}
+}
+
+/** do the list_local_zones command */
+static void
+do_list_local_zones(SSL* ssl, struct worker* worker)
+{
+	struct local_zones* zones = worker->daemon->local_zones;
+	struct local_zone* z;
+	char buf[257];
+	lock_quick_lock(&zones->lock);
+	RBTREE_FOR(z, struct local_zone*, &zones->ztree) {
+		lock_rw_rdlock(&z->lock);
+		dname_str(z->name, buf);
+		(void)ssl_printf(ssl, "%s %s\n", buf, 
+			local_zone_type2str(z->type));
+		lock_rw_unlock(&z->lock);
+	}
+	lock_quick_unlock(&zones->lock);
+}
+
+/** do the list_local_data command */
+static void
+do_list_local_data(SSL* ssl, struct worker* worker)
+{
+	struct local_zones* zones = worker->daemon->local_zones;
+	struct local_zone* z;
+	struct local_data* d;
+	struct local_rrset* p;
+	lock_quick_lock(&zones->lock);
+	RBTREE_FOR(z, struct local_zone*, &zones->ztree) {
+		lock_rw_rdlock(&z->lock);
+		RBTREE_FOR(d, struct local_data*, &z->data) {
+			for(p = d->rrsets; p; p = p->next) {
+				ldns_rr_list* rr = packed_rrset_to_rr_list(
+					p->rrset, worker->env.scratch_buffer);
+				char* str = ldns_rr_list2str(rr);
+				(void)ssl_printf(ssl, "%s", str);
+				free(str);
+				ldns_rr_list_free(rr);
+			}
+		}
+		lock_rw_unlock(&z->lock);
+	}
+	lock_quick_unlock(&zones->lock);
+}
+
 /** tell other processes to execute the command */
 void
 distribute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd)
@@ -1504,6 +1649,18 @@ execute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd,
 	} else if(strncmp(p, "load_cache", 10) == 0) {
 		if(load_cache(ssl, worker)) send_ok(ssl);
 		return;
+	} else if(strncmp(p, "list_forwards", 13) == 0) {
+		do_list_forwards(ssl, worker);
+		return;
+	} else if(strncmp(p, "list_stubs", 10) == 0) {
+		do_list_stubs(ssl, worker);
+		return;
+	} else if(strncmp(p, "list_local_zones", 16) == 0) {
+		do_list_local_zones(ssl, worker);
+		return;
+	} else if(strncmp(p, "list_local_data", 15) == 0) {
+		do_list_local_data(ssl, worker);
+		return;
 	} else if(strncmp(p, "forward", 7) == 0) {
 		/* must always distribute this cmd */
 		if(rc) distribute_cmd(rc, ssl, cmd);
@@ -1550,6 +1707,12 @@ execute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd,
 		do_flush_name(ssl, worker, skipwhite(p+5));
 	} else if(strncmp(p, "dump_requestlist", 16) == 0) {
 		do_dump_requestlist(ssl, worker);
+	} else if(strncmp(p, "log_reopen", 10) == 0) {
+		do_log_reopen(ssl, worker);
+	} else if(strncmp(p, "set_option", 10) == 0) {
+		do_set_option(ssl, worker, skipwhite(p+10));
+	} else if(strncmp(p, "get_option", 10) == 0) {
+		do_get_option(ssl, worker, skipwhite(p+10));
 	} else {
 		(void)ssl_printf(ssl, "error unknown command '%s'\n", p);
 	}

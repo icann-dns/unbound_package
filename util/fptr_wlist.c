@@ -70,6 +70,7 @@
 #include "libunbound/libworker.h"
 #include "libunbound/context.h"
 #include "util/tube.h"
+#include "util/config_file.h"
 #ifdef UB_ON_WINDOWS
 #include "winrc/win_svc.h"
 #endif
@@ -386,5 +387,13 @@ int fptr_whitelist_mesh_cb(mesh_cb_func_t fptr)
 	if(fptr == &libworker_fg_done_cb) return 1;
 	else if(fptr == &libworker_bg_done_cb) return 1;
 	else if(fptr == &probe_answer_cb) return 1;
+	return 0;
+}
+
+int fptr_whitelist_print_func(void (*fptr)(char*,void*))
+{
+	if(fptr == &config_print_func) return 1;
+	else if(fptr == &config_collate_func) return 1;
+	else if(fptr == &remote_get_opt_ssl) return 1;
 	return 0;
 }

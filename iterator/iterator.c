@@ -195,6 +195,12 @@ error_supers(struct module_qstate* qstate, int id, struct module_qstate* super)
 				delegpt_log(VERB_ALGO, super_iq->dp);
 			log_assert(0);
 			return;
+		} else {
+			/* see if the failure did get (parent-lame) info */
+			if(!cache_fill_missing(super->env, 
+				super_iq->qchase.qclass, super->region, 
+				super_iq->dp))
+				log_err("out of memory adding missing");
 		}
 		dpns->resolved = 1; /* mark as failed */
 		super_iq->num_target_queries--; 
@@ -247,10 +253,11 @@ error_response_cache(struct module_qstate* qstate, int id, int rcode)
 	FLAGS_SET_RCODE(err.flags, rcode);
 	err.qdcount = 1;
 	err.ttl = NORR_TTL;
+	err.prefetch_ttl = PREFETCH_TTL_CALC(err.ttl);
 	/* do not waste time trying to validate this servfail */
 	err.security = sec_status_indeterminate;
 	verbose(VERB_ALGO, "store error response in message cache");
-	if(!iter_dns_store(qstate->env, &qstate->qinfo, &err, 0)) {
+	if(!iter_dns_store(qstate->env, &qstate->qinfo, &err, 0, 0)) {
 		log_err("error_response_cache: could not store error (nomem)");
 	}
 	return error_response(qstate, id, rcode);
@@ -777,6 +784,56 @@ generate_ns_check(struct module_qstate* qstate, struct iter_qstate* iq, int id)
 }
 
 /**
+ * Generate a DNSKEY prefetch query to get the DNSKEY for the DS record we
+ * just got in a referral (where we have dnssec_expected, thus have trust
+ * anchors above it).  Note that right after calling this routine the
+ * iterator detached subqueries (because of following the referral), and thus
+ * the DNSKEY query becomes detached, its return stored in the cache for
+ * later lookup by the validator.  This cache lookup by the validator avoids
+ * the roundtrip incurred by the DNSKEY query.  The DNSKEY query is now
+ * performed at about the same time the original query is sent to the domain,
+ * thus the two answers are likely to be returned at about the same time,
+ * saving a roundtrip from the validated lookup.
+ *
+ * @param qstate: the qtstate that triggered the need to prime.
+ * @param iq: iterator query state.
+ * @param id: module id.
+ */
+static void
+generate_dnskey_prefetch(struct module_qstate* qstate, 
+	struct iter_qstate* iq, int id)
+{
+	struct module_qstate* subq;
+	log_assert(iq->dp);
+
+	/* is this query the same as the prefetch? */
+	if(qstate->qinfo.qtype == LDNS_RR_TYPE_DNSKEY &&
+		query_dname_compare(iq->dp->name, qstate->qinfo.qname)==0 &&
+		(qstate->query_flags&BIT_RD) && !(qstate->query_flags&BIT_CD)){
+		return;
+	}
+
+	/* if the DNSKEY is in the cache this lookup will stop quickly */
+	log_nametypeclass(VERB_ALGO, "schedule dnskey prefetch", 
+		iq->dp->name, LDNS_RR_TYPE_DNSKEY, iq->qchase.qclass);
+	if(!generate_sub_request(iq->dp->name, iq->dp->namelen, 
+		LDNS_RR_TYPE_DNSKEY, iq->qchase.qclass, qstate, id, iq,
+		INIT_REQUEST_STATE, FINISHED_STATE, &subq, 0)) {
+		/* we'll be slower, but it'll work */
+		verbose(VERB_ALGO, "could not generate dnskey prefetch");
+		return;
+	}
+	if(subq) {
+		struct iter_qstate* subiq = 
+			(struct iter_qstate*)subq->minfo[id];
+		/* this qstate has the right delegation for the dnskey lookup*/
+		/* make copy to avoid use of stub dp by different qs/threads */
+		subiq->dp = delegpt_copy(iq->dp, subq->region);
+		/* if !subiq->dp, it'll start from the cache, no problem */
+	}
+}
+
+/**
  * See if the query needs forwarding.
  * 
  * @param qstate: query state.
@@ -889,7 +946,9 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		if(verbosity >= VERB_ALGO) {
 			log_dns_msg("msg from cache lookup", &msg->qinfo, 
 				msg->rep);
-			verbose(VERB_ALGO, "msg ttl is %d", (int)msg->rep->ttl);
+			verbose(VERB_ALGO, "msg ttl is %d, prefetch ttl %d", 
+				(int)msg->rep->ttl, 
+				(int)msg->rep->prefetch_ttl);
 		}
 
 		if(type == RESPONSE_TYPE_CNAME) {
@@ -1101,10 +1160,12 @@ processInitRequest2(struct module_qstate* qstate, struct iter_qstate* iq,
  *
  * @param qstate: query state.
  * @param iq: iterator query state.
+ * @param id: module id.
  * @return true, advancing the event to the QUERYTARGETS_STATE.
  */
 static int
-processInitRequest3(struct module_qstate* qstate, struct iter_qstate* iq)
+processInitRequest3(struct module_qstate* qstate, struct iter_qstate* iq, 
+	int id)
 {
 	log_query_info(VERB_QUERY, "resolving (init part 3): ", 
 		&qstate->qinfo);
@@ -1124,10 +1185,18 @@ processInitRequest3(struct module_qstate* qstate, struct iter_qstate* iq)
 			sock_list_insert(&qstate->reply_origin, NULL, 0, qstate->region);
 		return final_state(iq);
 	}
-
 	/* After this point, unset the RD flag -- this query is going to 
 	 * be sent to an auth. server. */
 	iq->chase_flags &= ~BIT_RD;
+
+	/* if dnssec expected, fetch key for the trust-anchor or cached-DS */
+	if(iq->dnssec_expected && qstate->env->cfg->prefetch_key &&
+		!(qstate->query_flags&BIT_CD)) {
+		generate_dnskey_prefetch(qstate, iq, id);
+		fptr_ok(fptr_whitelist_modenv_detach_subs(
+			qstate->env->detach_subs));
+		(*qstate->env->detach_subs)(qstate);
+	}
 
 	/* Jump to the next state. */
 	return next_state(iq, QUERYTARGETS_STATE);
@@ -1302,6 +1371,8 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 		verbose(VERB_QUERY, "Failed to get a delegation, giving up");
 		return error_response(qstate, id, LDNS_RCODE_SERVFAIL);
 	}
+	if(!ie->supports_ipv6)
+		delegpt_no_ipv6(iq->dp);
 	delegpt_log(VERB_ALGO, iq->dp);
 
 	if(iq->num_current_queries>0) {
@@ -1538,16 +1609,23 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			|| !dname_subdomain_c(iq->qchase.qname, ns->rk.dname)){
 			verbose(VERB_ALGO, "bad referral, throwaway");
 			type = RESPONSE_TYPE_THROWAWAY;
-		}
-	}
+		} else
+			iter_scrub_ds(iq->response, ns, iq->dp->name);
+	} else iter_scrub_ds(iq->response, NULL, NULL);
 
 	/* handle each of the type cases */
 	if(type == RESPONSE_TYPE_ANSWER) {
 		/* ANSWER type responses terminate the query algorithm, 
 		 * so they sent on their */
-		verbose(VERB_DETAIL, "query response was ANSWER");
+		if(verbosity >= VERB_DETAIL) {
+			verbose(VERB_DETAIL, "query response was %s",
+				FLAGS_GET_RCODE(iq->response->rep->flags)
+				==LDNS_RCODE_NXDOMAIN?"NXDOMAIN ANSWER":
+				(iq->response->rep->an_numrrsets?"ANSWER":
+				"nodata ANSWER"));
+		}
 		if(!iter_dns_store(qstate->env, &iq->response->qinfo,
-			iq->response->rep, 0))
+			iq->response->rep, 0, qstate->prefetch_leeway))
 			return error_response(qstate, id, LDNS_RCODE_SERVFAIL);
 		/* close down outstanding requests to be discarded */
 		outbound_list_clear(&iq->outlist);
@@ -1576,16 +1654,17 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			    * see if that equals the query name... */
 			&& ( /* auth section, but sometimes in answer section*/
 			  reply_find_rrset_section_ns(iq->response->rep,
-				qstate->qinfo.qname, qstate->qinfo.qname_len,
-				LDNS_RR_TYPE_NS, qstate->qinfo.qclass)
+				iq->qchase.qname, iq->qchase.qname_len,
+				LDNS_RR_TYPE_NS, iq->qchase.qclass)
 			  || reply_find_rrset_section_an(iq->response->rep,
-				qstate->qinfo.qname, qstate->qinfo.qname_len,
-				LDNS_RR_TYPE_NS, qstate->qinfo.qclass)
+				iq->qchase.qname, iq->qchase.qname_len,
+				LDNS_RR_TYPE_NS, iq->qchase.qclass)
 			  )
 		    )) {
 			/* Store the referral under the current query */
+			/* no prefetch-leeway, since its not the answer */
 			if(!iter_dns_store(qstate->env, &iq->response->qinfo,
-				iq->response->rep, 1))
+				iq->response->rep, 1, 0))
 				return error_response(qstate, id, 
 					LDNS_RCODE_SERVFAIL);
 			if(qstate->env->neg_cache)
@@ -1615,6 +1694,10 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 		 * along, indicating dnssec is expected for next zone */
 		iq->dnssec_expected = iter_indicates_dnssec(qstate->env, 
 			iq->dp, iq->response, iq->qchase.qclass);
+		/* if dnssec, validating then also fetch the key for the DS */
+		if(iq->dnssec_expected && qstate->env->cfg->prefetch_key &&
+			!(qstate->query_flags&BIT_CD))
+			generate_dnskey_prefetch(qstate, iq, id);
 
 		/* spawn off NS and addr to auth servers for the NS we just
 		 * got in the referral. This gets authoritative answer
@@ -1652,8 +1735,9 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 		/* cache the CNAME response under the current query */
 		/* NOTE : set referral=1, so that rrsets get stored but not 
 		 * the partial query answer (CNAME only). */
+		/* prefetchleeway applied because this updates answer parts */
 		if(!iter_dns_store(qstate->env, &iq->response->qinfo,
-			iq->response->rep, 1))
+			iq->response->rep, 1, qstate->prefetch_leeway))
 			return error_response(qstate, id, LDNS_RCODE_SERVFAIL);
 		/* set the current request's qname to the new value. */
 		iq->qchase.qname = sname;
@@ -1996,6 +2080,8 @@ processClassResponse(struct module_qstate* qstate, int id,
 			to->rep->qdcount = from->rep->qdcount;
 		if(from->rep->ttl < to->rep->ttl) /* use smallest TTL */
 			to->rep->ttl = from->rep->ttl;
+		if(from->rep->prefetch_ttl < to->rep->prefetch_ttl)
+			to->rep->prefetch_ttl = from->rep->prefetch_ttl;
 	}
 	/* are we done? */
 	foriq->num_current_queries --;
@@ -2107,7 +2193,7 @@ processFinished(struct module_qstate* qstate, struct iter_qstate* iq,
 		 * from cache does not need to be stored in the msg cache. */
 		if(qstate->query_flags&BIT_RD) {
 			if(!iter_dns_store(qstate->env, &qstate->qinfo, 
-				iq->response->rep, 0))
+				iq->response->rep, 0, qstate->prefetch_leeway))
 				return error_response(qstate, id, 
 					LDNS_RCODE_SERVFAIL);
 		}
@@ -2168,7 +2254,7 @@ iter_handle(struct module_qstate* qstate, struct iter_qstate* iq,
 				cont = processInitRequest2(qstate, iq, ie, id);
 				break;
 			case INIT_REQUEST_3_STATE:
-				cont = processInitRequest3(qstate, iq);
+				cont = processInitRequest3(qstate, iq, id);
 				break;
 			case QUERYTARGETS_STATE:
 				cont = processQueryTargets(qstate, iq, ie, id);
