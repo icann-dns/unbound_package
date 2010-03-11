@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.2, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.3, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=2
+LIBUNBOUND_REVISION=3
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -27,6 +27,7 @@ LIBUNBOUND_AGE=0
 # 1.4.0 had 1:5:0 (not 2:0:0)   # ub_result.why_bogus
 # 1.4.1 had 2:1:0
 # 1.4.2 had 2:2:0
+# 1.4.3 had 2:3:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -515,12 +516,25 @@ fi
 
 # set memory allocation checking if requested
 AC_ARG_ENABLE(alloc-checks, AC_HELP_STRING([--enable-alloc-checks],
-	[ enable to check memory allocation, for debug purposes ]), 
+	[ enable to memory allocation statistics, for debug purposes ]), 
 	, )
+AC_ARG_ENABLE(alloc-lite, AC_HELP_STRING([--enable-alloc-lite],
+	[ enable for lightweight alloc assertions, for debug purposes ]), 
+	, )
+AC_ARG_ENABLE(alloc-nonregional, AC_HELP_STRING([--enable-alloc-nonregional],
+	[ enable nonregional allocs, slow but exposes regional allocations to other memory purifiers, for debug purposes ]), 
+	, )
+if test x_$enable_alloc_nonregional = x_yes; then
+	AC_DEFINE(UNBOUND_ALLOC_NONREGIONAL, 1, [use malloc not regions, for debug use])
+fi
 if test x_$enable_alloc_checks = x_yes; then
 	AC_DEFINE(UNBOUND_ALLOC_STATS, 1, [use statistics for allocs and frees, for debug use])
 else
-	ACX_FUNC_MALLOC([unbound])
+	if test x_$enable_alloc_lite = x_yes; then
+		AC_DEFINE(UNBOUND_ALLOC_LITE, 1, [use to enable lightweight alloc assertions, for debug use])
+	else
+		ACX_FUNC_MALLOC([unbound])
+	fi
 fi
 
 AC_FUNC_CHOWN
@@ -594,8 +608,10 @@ AC_ARG_WITH(ldns-builtin, AC_HELP_STRING([--with-ldns-builtin],
 # check if ldns is good enough
 if test "$use_ldns_builtin" = "no"; then
 	AC_CHECK_LIB(ldns, ldns_buffer_copy)
+	AC_CHECK_FUNC(ldns_key_buf2rsa_raw)
 	AC_CHECK_HEADERS([ldns/ldns.h],,, [AC_INCLUDES_DEFAULT])
 	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes \
+	    -a $ac_cv_func_ldns_key_buf2rsa_raw = yes \
 	    -a $ac_cv_header_ldns_ldns_h = yes; then
 	    dnl ldns was found, check compat functions
 	    AC_CHECK_FUNC([ldns_b32_ntop_extended_hex],, [
@@ -770,7 +786,9 @@ void unbound_stat_free_log(void *ptr, const char* file, int line,
 	const char* func);
 void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 	int line, const char* func);
-#endif /* UNBOUND_ALLOC_STATS */
+#elif defined(UNBOUND_ALLOC_LITE)
+#  include "util/alloc.h"
+#endif /* UNBOUND_ALLOC_LITE and UNBOUND_ALLOC_STATS */
 
 /** default port for DNS traffic. */
 #define UNBOUND_DNS_PORT 53

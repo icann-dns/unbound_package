@@ -48,6 +48,14 @@
 #undef free
 #undef realloc
 #endif
+#ifdef UNBOUND_ALLOC_LITE
+#undef malloc
+#undef calloc
+#undef free
+#undef realloc
+#undef strdup
+#define unbound_lite_wrapstr(s) s
+#endif
 #include "libunbound/unbound.h"
 #include <ldns/ldns.h>
 

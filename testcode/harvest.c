@@ -74,6 +74,14 @@
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
+#ifdef UNBOUND_ALLOC_LITE
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#undef strdup
+#define unbound_lite_wrapstr(s) s
+#endif
 struct todo_item;
 struct labdata;
 
