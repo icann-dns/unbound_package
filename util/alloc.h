@@ -176,4 +176,37 @@ void alloc_reg_release(struct alloc_cache* alloc, struct regional* r);
 void alloc_set_id_cleanup(struct alloc_cache* alloc, void (*cleanup)(void*),
 	void* arg);
 
+#ifdef UNBOUND_ALLOC_LITE
+#  define malloc(s) unbound_stat_malloc_lite(s, __FILE__, __LINE__, __func__)
+#  define calloc(n,s) unbound_stat_calloc_lite(n, s, __FILE__, __LINE__, __func__)
+#  define free(p) unbound_stat_free_lite(p, __FILE__, __LINE__, __func__)
+#  define realloc(p,s) unbound_stat_realloc_lite(p, s, __FILE__, __LINE__, __func__)
+void *unbound_stat_malloc_lite(size_t size, const char* file, int line,
+	const char* func);
+void *unbound_stat_calloc_lite(size_t nmemb, size_t size, const char* file,
+	int line, const char* func);
+void unbound_stat_free_lite(void *ptr, const char* file, int line,
+	const char* func);
+void *unbound_stat_realloc_lite(void *ptr, size_t size, const char* file,
+	int line, const char* func);
+#  ifdef strdup
+#    undef strdup
+#  endif
+#  define strdup(s) unbound_strdup_lite(s, __FILE__, __LINE__, __func__)
+char* unbound_strdup_lite(const char* s, const char* file, int line, 
+	const char* func);
+char* unbound_lite_wrapstr(char* s);
+#  define ldns_rr2str(rr) unbound_lite_wrapstr(ldns_rr2str(rr))
+#  define ldns_rdf2str(rdf) unbound_lite_wrapstr(ldns_rdf2str(rdf))
+#  define ldns_rr_type2str(t) unbound_lite_wrapstr(ldns_rr_type2str(t))
+#  define ldns_rr_class2str(c) unbound_lite_wrapstr(ldns_rr_class2str(c))
+#  define ldns_rr_list2str(r) unbound_lite_wrapstr(ldns_rr_list2str(r))
+#  define ldns_pkt2str(p) unbound_lite_wrapstr(ldns_pkt2str(p))
+#  define ldns_pkt_rcode2str(r) unbound_lite_wrapstr(ldns_pkt_rcode2str(r))
+#  define ldns_pkt2wire(a, r, s) unbound_lite_pkt2wire(a, r, s)
+ldns_status unbound_lite_pkt2wire(uint8_t **dest, const ldns_pkt *p, size_t *size);
+#  define i2d_DSA_SIG(d, s) unbound_lite_i2d_DSA_SIG(d, s)
+int unbound_lite_i2d_DSA_SIG(DSA_SIG* dsasig, unsigned char** sig);
+#endif /* UNBOUND_ALLOC_LITE */
+
 #endif /* UTIL_ALLOC_H */
