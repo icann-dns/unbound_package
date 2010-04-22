@@ -52,6 +52,9 @@
 #include "iterator/iter_fwd.h"
 #include "validator/validator.h"
 #include "services/localzone.h"
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#endif
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
@@ -154,7 +157,7 @@ interfacechecks(struct config_file* cfg)
 	socklen_t alen;
 	int i, j;
 	for(i=0; i<cfg->num_ifs; i++) {
-		if(!ipstrtoaddr(cfg->ifs[i], UNBOUND_DNS_PORT, &a, &alen)) {
+		if(!extstrtoaddr(cfg->ifs[i], &a, &alen)) {
 			fatal_exit("cannot parse interface specified as '%s'",
 				cfg->ifs[i]);
 		}

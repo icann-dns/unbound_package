@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.3, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.4, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=3
+LIBUNBOUND_REVISION=4
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -28,6 +28,7 @@ LIBUNBOUND_AGE=0
 # 1.4.1 had 2:1:0
 # 1.4.2 had 2:2:0
 # 1.4.3 had 2:3:0
+# 1.4.4 had 2:4:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -231,6 +232,20 @@ ACX_CHECK_MEMCMP_SIGNED
 
 # add option to disable the evil rpath
 ACX_ARG_RPATH
+AC_SUBST(RUNTIME_PATH)
+
+# check to see if libraries are needed for these functions.
+AC_SEARCH_LIBS([inet_pton], [nsl])
+AC_SEARCH_LIBS([socket], [socket])
+
+# check some functions of the OS before linking libs (while still runnable).
+AC_FUNC_CHOWN
+AC_FUNC_FORK
+AC_TYPE_SIGNAL
+AC_FUNC_FSEEKO
+ACX_SYS_LARGEFILE
+ACX_CHECK_NONBLOCKING_BROKEN
+ACX_MKDIR_ONE_ARG
 
 # check for thread library.
 # check this first, so that the pthread lib does not get linked in via
@@ -320,6 +335,7 @@ if test x_$ub_test_python != x_no; then
 
    # Check for Python
    ub_have_python=no
+   ac_save_LIBS="$LIBS" dnl otherwise AC_PYTHON_DEVEL thrashes $LIBS
    AC_PYTHON_DEVEL
    if test ! -z "$PYTHON_VERSION"; then
 	if test `$PYTHON -c "print '$PYTHON_VERSION' >= '2.4.0'"` = "False"; then
@@ -404,18 +420,12 @@ esac
 AC_ARG_ENABLE(gost, AC_HELP_STRING([--enable-gost], [Enable GOST support, experimental]))
 case "$enable_gost" in
 	yes)
-	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL >= 1.0.0 is needed for GOST support])])
+	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL >= 1.0.0 is needed for GOST support, upgrade openssl or rerun with --disable-gost])])
 	AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])
 	;;
 	no|*)
 	;;
 esac
-
-# check to see if libraries are needed for these functions.
-AC_SEARCH_LIBS([inet_pton], [nsl])
-AC_SEARCH_LIBS([socket], [socket])
-
-AC_SUBST(RUNTIME_PATH)
 
 # check for libevent
 AC_ARG_WITH(libevent, AC_HELP_STRING([--with-libevent=pathname],
@@ -537,12 +547,6 @@ else
 	fi
 fi
 
-AC_FUNC_CHOWN
-AC_FUNC_FORK
-AC_TYPE_SIGNAL
-AC_FUNC_FSEEKO
-ACX_SYS_LARGEFILE
-
 ACX_CHECK_GETADDRINFO_WITH_INCLUDES
 if test "$USE_WINSOCK" = 1; then
 	AC_DEFINE(UB_ON_WINDOWS, 1, [Use win32 resources and API])
@@ -557,6 +561,8 @@ fi
 if test $ac_cv_func_getaddrinfo = no; then
 	AC_LIBOBJ([fake-rfc2553])
 fi
+# check after getaddrinfo for its libraries
+ACX_FUNC_IOCTLSOCKET
 
 # see if daemon(3) exists, and if it is deprecated.
 AC_CHECK_FUNCS([daemon])
@@ -567,15 +573,14 @@ if test $ac_cv_func_daemon = yes; then
 fi
 
 AC_SEARCH_LIBS([setusercontext], [util])
-AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev setresuid setreuid setresgid setregid glob initgroups strftime localtime_r setusercontext _beginthreadex])
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev glob initgroups strftime localtime_r setusercontext _beginthreadex])
+AC_CHECK_FUNCS([setresuid],,[AC_CHECK_FUNCS([setreuid])])
+AC_CHECK_FUNCS([setresgid],,[AC_CHECK_FUNCS([setregid])])
 
 # check if setreuid en setregid fail, on MacOSX10.4(darwin8).
 if echo $build_os | grep darwin8 > /dev/null; then
 	AC_DEFINE(DARWIN_BROKEN_SETREUID, 1, [Define this if on macOSX10.4-darwin8 and setreuid and setregid do not work])
 fi
-ACX_CHECK_NONBLOCKING_BROKEN
-ACX_MKDIR_ONE_ARG
-ACX_FUNC_IOCTLSOCKET
 AC_REPLACE_FUNCS(inet_aton)
 AC_REPLACE_FUNCS(inet_pton)
 AC_REPLACE_FUNCS(inet_ntop)
@@ -699,26 +704,6 @@ dnl includes
 #ifdef HAVE_WS2TCPIP_H
 #include <ws2tcpip.h>
 #endif
-
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
-
-#ifdef HAVE_OPENSSL_ERR_H
-#include <openssl/err.h>
-#endif
-
-#ifdef HAVE_OPENSSL_RAND_H
-#include <openssl/rand.h>
-#endif
-
-#ifdef HAVE_OPENSSL_CONF_H
-#include <openssl/conf.h>
-#endif
-
-#ifdef HAVE_OPENSSL_ENGINE_H
-#include <openssl/engine.h>
-#endif
 ]
 
 AHX_CONFIG_FORMAT_ATTRIBUTE
@@ -766,8 +751,6 @@ char *ctime_r(const time_t *timep, char *buf);
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
 #endif
-
-#include "ldns/ldns.h"
 
 #ifdef UNBOUND_ALLOC_STATS
 #  define malloc(s) unbound_stat_malloc_log(s, __FILE__, __LINE__, __func__)
