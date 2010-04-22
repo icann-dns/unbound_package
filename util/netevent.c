@@ -39,12 +39,36 @@
  * This file contains event notification functions.
  */
 #include "config.h"
+#include "ldns/wire2host.h"
 #include "util/netevent.h"
 #include "util/log.h"
 #include "util/net_help.h"
 #include "util/fptr_wlist.h"
 
 /* -------- Start of local definitions -------- */
+/** if CMSG_ALIGN is not defined on this platform, a workaround */
+#ifndef CMSG_ALIGN
+#  ifdef _CMSG_DATA_ALIGN
+#    define CMSG_ALIGN _CMSG_DATA_ALIGN
+#  else
+#    define CMSG_ALIGN(len) (((len)+sizeof(long)-1) & ~(sizeof(long)-1))
+#  endif
+#endif
+
+/** if CMSG_LEN is not defined on this platform, a workaround */
+#ifndef CMSG_LEN
+#  define CMSG_LEN(len) (CMSG_ALIGN(sizeof(struct cmsghdr))+(len))
+#endif
+
+/** if CMSG_SPACE is not defined on this platform, a workaround */
+#ifndef CMSG_SPACE
+#  ifdef _CMSG_HDR_ALIGN
+#    define CMSG_SPACE(l) (CMSG_ALIGN(l)+_CMSG_HDR_ALIGN(sizeof(struct cmsghdr)))
+#  else
+#    define CMSG_SPACE(l) (CMSG_ALIGN(l)+CMSG_ALIGN(sizeof(struct cmsghdr)))
+#  endif
+#endif
+
 /** The TCP reading or writing query timeout in seconds */
 #define TCP_QUERY_TIMEOUT 120 
 
@@ -294,11 +318,6 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 	return 1;
 }
 
-/** if no CMSG_LEN (Solaris 9) define something reasonable for one element */
-#ifndef CMSG_LEN
-#define CMSG_LEN(x) (sizeof(struct cmsghdr)+(x))
-#endif
-
 /** print debug ancillary info */
 void p_ancil(const char* str, struct comm_reply* r)
 {
@@ -316,15 +335,7 @@ void p_ancil(const char* str, struct comm_reply* r)
 		buf[sizeof(buf)-1]=0;
 		log_info("%s: %s %d", str, buf, r->pktinfo.v6info.ipi6_ifindex);
 	} else if(r->srctype == 4) {
-#ifdef IP_RECVDSTADDR
-		char buf1[1024];
-		if(inet_ntop(AF_INET, &r->pktinfo.v4addr, 
-			buf1, (socklen_t)sizeof(buf1)) == 0) {
-			strncpy(buf1, "(inet_ntop error)", sizeof(buf1));
-		}
-		buf1[sizeof(buf1)-1]=0;
-		log_info("%s: %s", str, buf1);
-#elif defined(IP_PKTINFO)
+#ifdef IP_PKTINFO
 		char buf1[1024], buf2[1024];
 		if(inet_ntop(AF_INET, &r->pktinfo.v4info.ipi_addr, 
 			buf1, (socklen_t)sizeof(buf1)) == 0) {
@@ -338,6 +349,14 @@ void p_ancil(const char* str, struct comm_reply* r)
 		buf2[sizeof(buf2)-1]=0;
 		log_info("%s: %d %s %s", str, r->pktinfo.v4info.ipi_ifindex,
 			buf1, buf2);
+#elif defined(IP_RECVDSTADDR)
+		char buf1[1024];
+		if(inet_ntop(AF_INET, &r->pktinfo.v4addr, 
+			buf1, (socklen_t)sizeof(buf1)) == 0) {
+			strncpy(buf1, "(inet_ntop error)", sizeof(buf1));
+		}
+		buf1[sizeof(buf1)-1]=0;
+		log_info("%s: %s", str, buf1);
 #endif
 	}
 #else
@@ -379,20 +398,29 @@ comm_point_send_udp_msg_if(struct comm_point *c, ldns_buffer* packet,
 #ifndef S_SPLINT_S
 	cmsg = CMSG_FIRSTHDR(&msg);
 	if(r->srctype == 4) {
-#ifdef IP_RECVDSTADDR
-		cmsg->cmsg_level = IPPROTO_IP;
-		cmsg->cmsg_type = IP_RECVDSTADDR;
-		memmove(CMSG_DATA(cmsg), &r->pktinfo.v4addr,
-			sizeof(struct in_addr));
-		cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_addr));
-#elif defined(IP_PKTINFO)
+#ifdef IP_PKTINFO
+		msg.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+		log_assert(msg.msg_controllen <= sizeof(control));
 		cmsg->cmsg_level = IPPROTO_IP;
 		cmsg->cmsg_type = IP_PKTINFO;
 		memmove(CMSG_DATA(cmsg), &r->pktinfo.v4info,
 			sizeof(struct in_pktinfo));
 		cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+#elif defined(IP_SENDSRCADDR)
+		msg.msg_controllen = CMSG_SPACE(sizeof(struct in_addr));
+		log_assert(msg.msg_controllen <= sizeof(control));
+		cmsg->cmsg_level = IPPROTO_IP;
+		cmsg->cmsg_type = IP_SENDSRCADDR;
+		memmove(CMSG_DATA(cmsg), &r->pktinfo.v4addr,
+			sizeof(struct in_addr));
+		cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_addr));
+#else
+		verbose(VERB_ALGO, "no IP_PKTINFO or IP_SENDSRCADDR");
+		msg.msg_control = NULL;
 #endif
 	} else if(r->srctype == 6) {
+		msg.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
+		log_assert(msg.msg_controllen <= sizeof(control));
 		cmsg->cmsg_level = IPPROTO_IPV6;
 		cmsg->cmsg_type = IPV6_PKTINFO;
 		memmove(CMSG_DATA(cmsg), &r->pktinfo.v6info,
@@ -400,14 +428,14 @@ comm_point_send_udp_msg_if(struct comm_point *c, ldns_buffer* packet,
 		cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
 	} else {
 		/* try to pass all 0 to use default route */
+		msg.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
+		log_assert(msg.msg_controllen <= sizeof(control));
 		cmsg->cmsg_level = IPPROTO_IPV6;
 		cmsg->cmsg_type = IPV6_PKTINFO;
 		memset(CMSG_DATA(cmsg), 0, sizeof(struct in6_pktinfo));
 		cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
 	}
-	msg.msg_controllen = cmsg->cmsg_len;
 #endif /* S_SPLINT_S */
-
 	if(verbosity >= VERB_ALGO)
 		p_ancil("send_udp over interface", r);
 	sent = sendmsg(c->fd, &msg, 0);
@@ -490,19 +518,19 @@ comm_point_udp_ancil_callback(int fd, short event, void* arg)
 				memmove(&rep.pktinfo.v6info, CMSG_DATA(cmsg),
 					sizeof(struct in6_pktinfo));
 				break;
-#ifdef IP_RECVDSTADDR
-			} else if( cmsg->cmsg_level == IPPROTO_IP &&
-				cmsg->cmsg_type == IP_RECVDSTADDR) {
-				rep.srctype = 4;
-				memmove(&rep.pktinfo.v4addr, CMSG_DATA(cmsg),
-					sizeof(struct in_addr));
-				break;
-#elif defined(IP_PKTINFO)
+#ifdef IP_PKTINFO
 			} else if( cmsg->cmsg_level == IPPROTO_IP &&
 				cmsg->cmsg_type == IP_PKTINFO) {
 				rep.srctype = 4;
 				memmove(&rep.pktinfo.v4info, CMSG_DATA(cmsg),
 					sizeof(struct in_pktinfo));
+				break;
+#elif defined(IP_RECVDSTADDR)
+			} else if( cmsg->cmsg_level == IPPROTO_IP &&
+				cmsg->cmsg_type == IP_RECVDSTADDR) {
+				rep.srctype = 4;
+				memmove(&rep.pktinfo.v4addr, CMSG_DATA(cmsg),
+					sizeof(struct in_addr));
 				break;
 #endif
 			}

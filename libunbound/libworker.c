@@ -42,6 +42,8 @@
  * returns from the procedure when done.
  */
 #include "config.h"
+#include <ldns/dname.h>
+#include <ldns/wire2host.h>
 #include "libunbound/libworker.h"
 #include "libunbound/context.h"
 #include "libunbound/unbound.h"
@@ -694,7 +696,7 @@ outbound_entry_compare(void* a, void* b)
 
 struct outbound_entry* libworker_send_query(uint8_t* qname, size_t qnamelen,
         uint16_t qtype, uint16_t qclass, uint16_t flags, int dnssec,
-        struct sockaddr_storage* addr, socklen_t addrlen,
+	int want_dnssec, struct sockaddr_storage* addr, socklen_t addrlen,
         struct module_qstate* q)
 {
 	struct libworker* w = (struct libworker*)q->env->worker;
@@ -704,9 +706,9 @@ struct outbound_entry* libworker_send_query(uint8_t* qname, size_t qnamelen,
 		return NULL;
 	e->qstate = q;
 	e->qsent = outnet_serviced_query(w->back, qname,
-		qnamelen, qtype, qclass, flags, dnssec, addr, addrlen,
-		libworker_handle_service_reply, e, w->back->udp_buff,
-		&outbound_entry_compare);
+		qnamelen, qtype, qclass, flags, dnssec, want_dnssec,
+		addr, addrlen, libworker_handle_service_reply, e, 
+		w->back->udp_buff, &outbound_entry_compare);
 	if(!e->qsent) {
 		return NULL;
 	}
@@ -833,7 +835,8 @@ int worker_send_packet(ldns_buffer* ATTR_UNUSED(pkt),
 struct outbound_entry* worker_send_query(uint8_t* ATTR_UNUSED(qname), 
 	size_t ATTR_UNUSED(qnamelen), uint16_t ATTR_UNUSED(qtype), 
 	uint16_t ATTR_UNUSED(qclass), uint16_t ATTR_UNUSED(flags), 
-	int ATTR_UNUSED(dnssec), struct sockaddr_storage* ATTR_UNUSED(addr), 
+	int ATTR_UNUSED(dnssec), int ATTR_UNUSED(want_dnssec),
+	struct sockaddr_storage* ATTR_UNUSED(addr), 
 	socklen_t ATTR_UNUSED(addrlen), struct module_qstate* ATTR_UNUSED(q))
 {
 	log_assert(0);

@@ -41,6 +41,7 @@
  * It was modified to fit into unbound. The state table process is the same.
  */
 #include "config.h"
+#include "ldns/ldns.h"
 #include "validator/autotrust.h"
 #include "validator/val_anchor.h"
 #include "validator/val_utils.h"
@@ -1684,7 +1685,7 @@ calc_next_probe(struct module_env* env, uint32_t wait)
 		wait = 3600;
 	rnd = wait/10;
 	rest = wait-rnd;
-	rnd = (uint32_t)ub_random(env->rnd) % rnd;
+	rnd = (uint32_t)ub_random_max(env->rnd, (long int)rnd);
 	return (time_t)(*env->now + rest + rnd);
 }
 

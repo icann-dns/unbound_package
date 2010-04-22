@@ -41,9 +41,14 @@
  * for denial of existance, and proofs for presence of types.
  */
 #include "config.h"
+#include <ctype.h>
+#ifdef HAVE_OPENSSL_SSL_H
+#include "openssl/ssl.h"
+#endif
 #include "validator/val_nsec3.h"
 #include "validator/validator.h"
 #include "validator/val_kentry.h"
+#include "services/cache/rrset.h"
 #include "util/regional.h"
 #include "util/rbtree.h"
 #include "util/module.h"
@@ -419,7 +424,7 @@ filter_init(struct nsec3_filter* filter, struct ub_packed_rrset_key** list,
 		if(!nsec3_rrset_has_known(list[i]))
 			continue;
 
-		/* since NSECs are base32.zonename, we can find the zone
+		/* since NSEC3s are base32.zonename, we can find the zone
 		 * name by stripping off the first label of the record */
 		nm = list[i]->rk.dname;
 		nmlen = list[i]->rk.dname_len;
@@ -1247,16 +1252,24 @@ list_is_secure(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key** list, size_t num,
 	struct key_entry_key* kkey, char** reason)
 {
+	struct packed_rrset_data* d;
 	size_t i;
-	enum sec_status sec;
 	for(i=0; i<num; i++) {
+		d = (struct packed_rrset_data*)list[i]->entry.data;
 		if(list[i]->rk.type != htons(LDNS_RR_TYPE_NSEC3))
 			continue;
-		sec = val_verify_rrset_entry(env, ve, list[i], kkey, reason);
-		if(sec != sec_status_secure) {
+		if(d->security == sec_status_secure)
+			continue;
+		rrset_check_sec_status(env->rrset_cache, list[i], *env->now);
+		if(d->security == sec_status_secure)
+			continue;
+		d->security = val_verify_rrset_entry(env, ve, list[i], kkey,
+			reason);
+		if(d->security != sec_status_secure) {
 			verbose(VERB_ALGO, "NSEC3 did not verify");
 			return 0;
 		}
+		rrset_update_sec_status(env->rrset_cache, list[i], *env->now);
 	}
 	return 1;
 }

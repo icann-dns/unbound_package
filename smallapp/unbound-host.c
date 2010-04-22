@@ -41,6 +41,9 @@
  */
 
 #include "config.h"
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#endif
 /* remove alloc checks, not in this part of the code */
 #ifdef UNBOUND_ALLOC_STATS
 #undef malloc
@@ -494,6 +497,12 @@ int main(int argc, char* argv[])
 	}
 	if(debuglevel != 0) /* set after possible -C options */
 		check_ub_res(ub_ctx_debuglevel(ctx, debuglevel));
+	if(ub_ctx_get_option(ctx, "use-syslog", &optarg) == 0) {
+		if(strcmp(optarg, "yes") == 0) /* disable use-syslog */
+			check_ub_res(ub_ctx_set_option(ctx, 
+				"use-syslog:", "no"));
+		free(optarg);
+	}
 	argc -= optind;
 	argv += optind;
 	if(argc != 1)

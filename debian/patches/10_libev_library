@@ -1,8 +1,8 @@
-Index: unbound-1.4.1/configure.ac
+Index: unbound-1.4.4/configure.ac
 ===================================================================
---- unbound-1.4.1.orig/configure.ac	2009-12-26 16:59:48.082907523 -0500
-+++ unbound-1.4.1/configure.ac	2009-12-26 17:00:06.902906551 -0500
-@@ -474,6 +474,7 @@
+--- unbound-1.4.4.orig/configure.ac	2010-04-22 15:30:13.853729966 -0400
++++ unbound-1.4.4/configure.ac	2010-04-22 15:30:25.529290783 -0400
+@@ -489,6 +489,7 @@
  	AC_CHECK_FUNCS([event_base_once]) # only in libevent 1.4.1 and later
  	AC_CHECK_FUNCS([event_base_new]) # only in libevent 1.4.1 and later
  	AC_CHECK_FUNCS([event_base_get_method]) # only in libevent 1.4.3 and later

@@ -40,6 +40,22 @@
  */
 
 #include "config.h"
+#ifdef HAVE_OPENSSL_ERR_H
+#include <openssl/err.h>
+#endif
+
+#ifdef HAVE_OPENSSL_RAND_H
+#include <openssl/rand.h>
+#endif
+
+#ifdef HAVE_OPENSSL_CONF_H
+#include <openssl/conf.h>
+#endif
+
+#ifdef HAVE_OPENSSL_ENGINE_H
+#include <openssl/engine.h>
+#endif
+#include "ldns/ldns.h"
 #include "daemon/daemon.h"
 #include "daemon/worker.h"
 #include "daemon/remote.h"
@@ -276,7 +292,7 @@ int daemon_get_shufport(struct daemon* daemon, int* shufport)
         /* Knuth shuffle */
 	n = avail;
 	while(--n > 0) {
-		k = ub_random(daemon->rand) % (n+1); /* 0<= k<= n */
+		k = ub_random_max(daemon->rand, n+1); /* 0<= k<= n */
 		temp = shufport[k];
 		shufport[k] = shufport[n];
 		shufport[n] = temp;

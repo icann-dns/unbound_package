@@ -41,6 +41,7 @@
  */
 
 #include "config.h"
+#include "ldns/ldns.h"
 #include "iterator/iterator.h"
 #include "iterator/iter_utils.h"
 #include "iterator/iter_hints.h"
@@ -1520,7 +1521,7 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 		iq->qchase.qname, iq->qchase.qname_len, 
 		iq->qchase.qtype, iq->qchase.qclass, 
 		iq->chase_flags | (iq->chase_to_rd?BIT_RD:0), EDNS_DO|BIT_CD, 
-		&target->addr, target->addrlen, qstate);
+		iq->dnssec_expected, &target->addr, target->addrlen, qstate);
 	if(!outq) {
 		log_addr(VERB_DETAIL, "error sending query to auth server", 
 			&target->addr, target->addrlen);
