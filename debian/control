@@ -11,9 +11,8 @@ Homepage: http://www.unbound.net/
 XS-Python-Version: all
 
 Package: unbound
-Section: net
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, adduser
+Depends: ${misc:Depends}, ${shlibs:Depends}, adduser, openssl
 Description: validating, recursive, caching DNS resolver
  Unbound is a recursive-only caching DNS server which can perform DNSSEC
  validation of results. It implements only a minimal amount of authoritative
@@ -24,7 +23,6 @@ Description: validating, recursive, caching DNS resolver
  This package contains the unbound daemon.
 
 Package: unbound-host
-Section: net
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: reimplementation of the 'host' command
@@ -34,7 +32,6 @@ Description: reimplementation of the 'host' command
  and has a similar but different set of features and options.
 
 Package: libunbound2
-Section: net
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: library implementing DNS resolution and validation

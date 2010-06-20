@@ -1,3 +1,10 @@
+unbound (1.4.5-1) unstable; urgency=low
+
+  * New upstream release.
+  * Add dependency on openssl to the unbound binary package; closes: #585808.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 20 Jun 2010 16:50:42 -0400
+
 unbound (1.4.4-1) unstable; urgency=low
 
   * New upstream release.
