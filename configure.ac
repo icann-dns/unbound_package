@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.4, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.5, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=4
+LIBUNBOUND_REVISION=5
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -29,6 +29,7 @@ LIBUNBOUND_AGE=0
 # 1.4.2 had 2:2:0
 # 1.4.3 had 2:3:0
 # 1.4.4 had 2:4:0
+# 1.4.5 had 2:5:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -247,6 +248,27 @@ ACX_SYS_LARGEFILE
 ACX_CHECK_NONBLOCKING_BROKEN
 ACX_MKDIR_ONE_ARG
 
+# check windows threads (we use them, not pthreads, on windows).
+if test "$on_mingw" = "yes"; then
+# check windows threads
+	AC_CHECK_HEADERS([windows.h],,, [AC_INCLUDES_DEFAULT])
+	AC_MSG_CHECKING([for CreateThread])
+	AC_TRY_COMPILE([
+#ifdef HAVE_WINDOWS_H
+#include <windows.h>
+#endif
+], [
+	HANDLE t = CreateThread(NULL, 0, NULL, NULL, 0, NULL);
+],
+	AC_MSG_RESULT(yes)
+	AC_DEFINE(HAVE_WINDOWS_THREADS, 1, [Using Windows threads])
+,	
+	AC_MSG_RESULT(no)
+)
+
+else
+# not on mingw, check thread libraries.
+
 # check for thread library.
 # check this first, so that the pthread lib does not get linked in via
 # libssl or libpython, and thus distorts the tests, and we end up using
@@ -287,23 +309,7 @@ if test x_$withval != x_no; then
 	fi
 fi
 
-# check windows threads
-if test x_$ub_have_pthreads = x_no -a x_$ub_have_sol_threads = x_no; then
-	AC_CHECK_HEADERS([windows.h],,, [AC_INCLUDES_DEFAULT])
-	AC_MSG_CHECKING([for CreateThread])
-	AC_TRY_COMPILE([
-#ifdef HAVE_WINDOWS_H
-#include <windows.h>
-#endif
-], [
-	HANDLE t = CreateThread(NULL, 0, NULL, NULL, 0, NULL);
-],
-	AC_MSG_RESULT(yes)
-	AC_DEFINE(HAVE_WINDOWS_THREADS, 1, [Using Windows threads])
-,	
-	AC_MSG_RESULT(no)
-)
-fi
+fi # end of non-mingw check of thread libraries
 
 # Check for PyUnbound
 AC_ARG_WITH(pyunbound,
@@ -418,12 +424,20 @@ case "$enable_sha2" in
 esac
 
 AC_ARG_ENABLE(gost, AC_HELP_STRING([--enable-gost], [Enable GOST support, experimental]))
+use_gost="no"
 case "$enable_gost" in
 	yes)
-	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL >= 1.0.0 is needed for GOST support, upgrade openssl or rerun with --disable-gost])])
+	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL 1.0.0 is needed for GOST support])])
+	use_gost="yes"
 	AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])
 	;;
-	no|*)
+	no)
+	;;
+	*) dnl default
+dnl   Disabled-by-default, RFC not ready.
+dnl	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [
+dnl	  use_gost="yes"
+dnl	  AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])])
 	;;
 esac
 
@@ -483,8 +497,15 @@ large outgoing port ranges.  ])
 	# check for library used by libevent after 1.3c
 	AC_SEARCH_LIBS([clock_gettime], [rt])
 
-	AC_SEARCH_LIBS(event_set, [event])
+	# is the event.h header libev or libevent?
 	AC_CHECK_HEADERS([event.h],,, [AC_INCLUDES_DEFAULT])
+	AC_CHECK_DECL(EV_VERSION_MAJOR, [
+		AC_SEARCH_LIBS(event_set, [ev])
+	],[
+		AC_SEARCH_LIBS(event_set, [event])
+	],[AC_INCLUDES_DEFAULT
+#include <event.h>
+	])
 	AC_CHECK_FUNCS([event_base_free]) # only in libevent 1.2 and later
 	AC_CHECK_FUNCS([event_base_once]) # only in libevent 1.4.1 and later
 	AC_CHECK_FUNCS([event_base_new]) # only in libevent 1.4.1 and later
@@ -614,13 +635,20 @@ AC_ARG_WITH(ldns-builtin, AC_HELP_STRING([--with-ldns-builtin],
 if test "$use_ldns_builtin" = "no"; then
 	AC_CHECK_LIB(ldns, ldns_buffer_copy)
 	AC_CHECK_FUNC(ldns_key_buf2rsa_raw)
+	AC_CHECK_FUNC(ldns_b32_ntop_extended_hex)
+	if test x$use_gost = xyes; then
+	    AC_CHECK_FUNC(ldns_key_EVP_load_gost_id)
+	else
+	    ac_cv_func_ldns_key_EVP_load_gost_id="yes"
+	fi
 	AC_CHECK_HEADERS([ldns/ldns.h],,, [AC_INCLUDES_DEFAULT])
 	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes \
 	    -a $ac_cv_func_ldns_key_buf2rsa_raw = yes \
-	    -a $ac_cv_header_ldns_ldns_h = yes; then
-	    dnl ldns was found, check compat functions
-	    AC_CHECK_FUNC([ldns_b32_ntop_extended_hex],, [
-		AC_MSG_ERROR([ldns version too old, need >=1.4.0])])
+	    -a $ac_cv_header_ldns_ldns_h = yes \
+	    -a $ac_cv_func_ldns_b32_ntop_extended_hex = yes \
+	    -a $ac_cv_func_ldns_key_EVP_load_gost_id = yes; then
+	    dnl ldns was found
+	    :
 	else
 	    use_ldns_builtin="yes"
 	fi

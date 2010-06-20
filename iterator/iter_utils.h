@@ -80,7 +80,7 @@ int iter_apply_cfg(struct iter_env* iter_env, struct config_file* cfg);
  * @param name: zone name (for lameness check).
  * @param namelen: length of name.
  * @param qtype: query type that we want to send.
- * @param dnssec_expected: set to 0, if a known dnssec-lame server is selected
+ * @param dnssec_lame: set to 1, if a known dnssec-lame server is selected
  *	these are not preferred, but are used as a last resort.
  * @param chase_to_rd: set to 1 if a known recursion lame server is selected
  * 	these are not preferred, but are used as a last resort.
@@ -92,7 +92,7 @@ int iter_apply_cfg(struct iter_env* iter_env, struct config_file* cfg);
  */
 struct delegpt_addr* iter_server_selection(struct iter_env* iter_env, 
 	struct module_env* env, struct delegpt* dp, uint8_t* name, 
-	size_t namelen, uint16_t qtype, int* dnssec_expected,
+	size_t namelen, uint16_t qtype, int* dnssec_lame,
 	int* chase_to_rd, int open_target, struct sock_list* blacklist);
 
 /**
@@ -145,17 +145,13 @@ int iter_ns_probability(struct ub_randstate* rnd, int n, int m);
 void iter_mark_cycle_targets(struct module_qstate* qstate, struct delegpt* dp);
 
 /**
- * See if query is in-zone glue and we suspect that it exists.
- * Suspicion that it exists, is if there is no A or AAAA in cache (since
- * one of them is expected for an NS record) or the qtype is in cache but
- * was recently expired (so we have seen this data recently).
- * @param qinfo: query info.
- * @param dp: delegation point we are at.
- * @param env: environment with rrset cache.
- * @return true if suspect that this glue exists.
+ * Mark targets that result in a dependency cycle as done, so they
+ * will not get selected as targets.  For the parent-side lookups.
+ * @param qstate: query state.
+ * @param dp: delegpt to mark ns in.
  */
-int iter_suspect_exists(struct query_info* qinfo, struct delegpt* dp,
-	struct module_env* env);
+void iter_mark_pside_cycle_targets(struct module_qstate* qstate,
+	struct delegpt* dp);
 
 /**
  * See if delegation is useful or offers immediately no targets for 
@@ -211,31 +207,69 @@ int iter_msg_from_zone(struct dns_msg* msg, struct delegpt* dp,
  * @param p: reply one. The reply has rrset data pointers in region.
  * 	Does not check rrset-IDs
  * @param q: reply two
+ * @param buf: scratch buffer.
  * @return if one and two are equal.
  */
-int reply_equal(struct reply_info* p, struct reply_info* q);
+int reply_equal(struct reply_info* p, struct reply_info* q, ldns_buffer* buf);
 
 /**
- * Store in-zone glue in seperate rrset cache entries for later last-resort
- * lookups in case the child-side versions of this information fails.
+ * Store parent-side rrset in seperate rrset cache entries for later 
+ * last-resort * lookups in case the child-side versions of this information 
+ * fails.
  * @param env: environment with cache, time, ...
- * @param qinfo: query info. must match the information stored to avoid
- * 	Kaminsky-style trouble.
- * @param rep: reply with possibly A or AAAA content to store.
+ * @param rrset: the rrset to store (copied).
+ * Failure to store is logged, but otherwise ignored.
  */
-void iter_store_inzone_glue(struct module_env* env, struct query_info* qinfo,
-	struct reply_info* rep);
+void iter_store_parentside_rrset(struct module_env* env, 
+	struct ub_packed_rrset_key* rrset);
 
 /**
- * Find in-zone glue from rrset cache again.
- * @param env: query env with rrset cache and time.
- * @param dp: delegation point to store result in.
- * @param region: region to alloc result in.
- * @param qinfo: query into that is pertinent.
- * @return false on malloc failure.
+ * Store parent-side NS records from a referral message
+ * @param env: environment with cache, time, ...
+ * @param rep: response with NS rrset.
+ * Failure to store is logged, but otherwise ignored.
  */
-int iter_lookup_inzone_glue(struct module_env* env, struct delegpt* dp,
-	struct regional* region, struct query_info* qinfo);
+void iter_store_parentside_NS(struct module_env* env, struct reply_info* rep);
+
+/**
+ * Store parent-side negative element, the parentside rrset does not exist,
+ * creates an rrset with empty rdata in the rrset cache with PARENTSIDE flag.
+ * @param env: environment with cache, time, ...
+ * @param qinfo: the identity of the rrset that is missing.
+ * @param rep: delegation response or answer response, to glean TTL from.
+ * (malloc) failure is logged but otherwise ignored.
+ */
+void iter_store_parentside_neg(struct module_env* env, 
+	struct query_info* qinfo, struct reply_info* rep);
+
+/**
+ * Add parent NS record if that exists in the cache.  This is both new
+ * information and acts like a timeout throttle on retries.
+ * @param env: query env with rrset cache and time.
+ * @param dp: delegation point to store result in.  Also this dp is used to
+ *	see which NS name is needed.
+ * @param region: region to alloc result in.
+ * @param qinfo: pertinent information, the qclass.
+ * @return false on malloc failure.
+ *	if true, the routine worked and if such cached information 
+ *	existed dp->has_parent_side_NS is set true.
+ */
+int iter_lookup_parent_NS_from_cache(struct module_env* env,
+	struct delegpt* dp, struct regional* region, struct query_info* qinfo);
+
+/**
+ * Add parent-side glue if that exists in the cache.  This is both new
+ * information and acts like a timeout throttle on retries to fetch them.
+ * @param env: query env with rrset cache and time.
+ * @param dp: delegation point to store result in.  Also this dp is used to
+ *	see which NS name is needed.
+ * @param region: region to alloc result in.
+ * @param qinfo: pertinent information, the qclass.
+ * @return: true, it worked, no malloc failures, and new addresses (lame)
+ *	have been added, giving extra options as query targets.
+ */
+int iter_lookup_parent_glue_from_cache(struct module_env* env,
+	struct delegpt* dp, struct regional* region, struct query_info* qinfo);
 
 /**
  * Lookup next root-hint or root-forward entry.
@@ -256,5 +290,20 @@ int iter_get_next_root(struct iter_hints* hints, struct iter_forwards* fwd,
  */
 void iter_scrub_ds(struct dns_msg* msg, struct ub_packed_rrset_key* ns,
 	uint8_t* z);
+
+/**
+ * Remove query attempts from all available ips. For 0x20.
+ * @param dp: delegpt.
+ * @param d: decrease.
+ */
+void iter_dec_attempts(struct delegpt* dp, int d);
+
+/**
+ * Add retry counts from older delegpt to newer delegpt.
+ * Does not waste time on timeout'd (or other failing) addresses.
+ * @param dp: new delegationpoint.
+ * @param old: old delegationpoint.
+ */
+void iter_merge_retry_counts(struct delegpt* dp, struct delegpt* old);
 
 #endif /* ITERATOR_ITER_UTILS_H */

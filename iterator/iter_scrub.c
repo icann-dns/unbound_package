@@ -446,6 +446,12 @@ scrub_normalize(ldns_buffer* pkt, struct msg_parse* msg,
 		}
 		/* only one NS set allowed in authority section */
 		if(rrset->type==LDNS_RR_TYPE_NS) {
+			/* NS set must be pertinent to the query */
+			if(!sub_of_pkt(pkt, qinfo->qname, rrset->dname)) {
+				remove_rrset("normalize: removing irrelevant "
+					"RRset:", pkt, msg, prev, &rrset);
+				continue;
+			}
 			if(nsset == NULL) {
 				nsset = rrset;
 			} else {
@@ -555,7 +561,7 @@ static int sanitize_nsec_is_overreach(struct rrset_parse* rrset,
 	for(rr = rrset->rr_first; rr; rr = rr->next) {
 		rhs = rr->ttl_data+4+2;
 		len = ldns_read_uint16(rr->ttl_data+4);
-		if(!(len=dname_valid(rhs, len))) {
+		if(!dname_valid(rhs, len)) {
 			/* malformed domain name in rdata */
 			return 1;
 		}
@@ -711,6 +717,7 @@ scrub_message(ldns_buffer* pkt, struct msg_parse* msg,
 		return 0;
 	if( !(msg->flags&BIT_QR) )
 		return 0;
+	msg->flags &= ~(BIT_AD|BIT_Z); /* force off bit AD and Z */
 	
 	/* make sure that a query is echoed back when NOERROR or NXDOMAIN */
 	/* this is not required for basic operation but is a forgery 
