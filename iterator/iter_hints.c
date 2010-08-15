@@ -51,7 +51,7 @@
 #include "util/data/dname.h"
 
 struct iter_hints* 
-hints_create()
+hints_create(void)
 {
 	struct iter_hints* hints = (struct iter_hints*)calloc(1,
 		sizeof(struct iter_hints));
@@ -107,7 +107,7 @@ compile_time_root_prime(struct regional* r, int do_ip4, int do_ip6)
 	 ;           on server           FTP.INTERNIC.NET
 	 ;       -OR-                    RS.INTERNIC.NET
 	 ;
-	 ;       related version of root zone:   2008051300
+	 ;       related version of root zone:   2010061700
 	 */
 	struct delegpt* dp = delegpt_create(r);
 	if(!dp)
@@ -134,6 +134,7 @@ compile_time_root_prime(struct regional* r, int do_ip4, int do_ip6)
 	if(!ah(dp, r, "A.ROOT-SERVERS.NET.", "2001:503:ba3e::2:30")) return 0;
 	if(!ah(dp, r, "F.ROOT-SERVERS.NET.", "2001:500:2f::f")) return 0;
 	if(!ah(dp, r, "H.ROOT-SERVERS.NET.", "2001:500:1::803f:235")) return 0;
+	if(!ah(dp, r, "I.ROOT-SERVERS.NET.", "2001:7fe::53")) return 0;
 	if(!ah(dp, r, "J.ROOT-SERVERS.NET.", "2001:503:c27::2:30")) return 0;
 	if(!ah(dp, r, "K.ROOT-SERVERS.NET.", "2001:7fd::1")) return 0;
 	if(!ah(dp, r, "L.ROOT-SERVERS.NET.", "2001:500:3::42")) return 0;

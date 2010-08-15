@@ -1,5 +1,102 @@
+3 August 2010: Wouter
+	- updated ldns tarball with bugfixes.
+
+22 July 2010: Wouter
+	- more error details on failed remote control connection.
+
+15 July 2010: Wouter
+	- rlimit adjustments for select and ulimit can happen at the same time.
+
+14 July 2010: Wouter
+	- Donation text added to README.
+	- Fix integer underflow in prefetch ttl creation from cache.  This
+	  fixes a potential negative prefetch ttl.
+
+12 July 2010: Wouter
+	- Changed the defaults for num-queries-per-thread/outgoing-range.
+	  For builtin-select: 512/960, for libevent 1024/4096 and for
+	  windows 24/48 (because of win api).  This makes the ratio this way
+	  to improve resilience under heavy load.  For high performance, use
+	  libevent and possibly higher numbers.
+
+10 July 2010: Wouter
+	- GOST enabled if SSL is recent and ldns has GOST enabled too.
+	- ldns tarball updated.
+
+9 July 2010: Wouter
+	- iana portlist updated.
+	- Fix validation of qtype DNSKEY when a key-cache entry exists but
+	  no rr-cache entry is used (it expired or prefetch), it then goes
+	  back up to the DS or trust-anchor to validate the DNSKEY.
+
+7 July 2010: Wouter
+	- Neat function prototypes, unshadowed local declarations.
+
+6 July 2010: Wouter
+	- failure to chown the pidfile is not fatal any more.
+	- testbound uses UTC timezone.
+	- ldns tarball updated (ports and works on Minix 3.1.7).  On Minix, add
+	  /usr/gnu/bin to PATH, use ./configure AR=/usr/gnu/bin/gar and gmake.
+
+5 July 2010: Wouter
+	- log if a server is skipped because it is on the donotquery list,
+	  at verbosity 4, to enable diagnosis why no queries to 127.0.0.1.
+	- added feature to print configure date, target and options with -h.
+	- added feature to print event backend system details with -h.
+	- wdiff is not actually required by make test, updated requirements.
+
+1 July 2010: Wouter
+	- Fix RFC4035 compliance with 2.2 statement that the DNSKEY at apex
+	  must be signed with all algorithms from the DS rrset at the parent.
+	  This is now checked and becomes bogus if not.
+
+28 June 2010: Wouter
+	- Fix jostle list bug found by Vince (luoce@cnnic), it caused the qps
+	  in overload situations to be about 5 qps for the class of shortly
+	  serviced queries.
+	  The capacity of the resolver is then about (numqueriesperthread / 2)
+	  / (average time for such long queries) qps for long queries.
+	  And about (numqueriesperthread / 2)/(jostletimeout in whole seconds)
+	  qps for short queries, per thread.
+	- Fix the max number of reply-address count to be applied for duplicate
+	  queries, and not for new query list entries.  This raises the memory
+	  usage to a max of (16+1)*numqueriesperthread reply addresses.
+
+25 June 2010: Wouter
+	- Fix handling of corner case reply from lame server, follows rfc2308.
+	  It could lead to a nodata reply getting into the cache if the search
+	  for a non-lame server turned up other misconfigured servers.
+	- unbound.h has extern "C" statement for easier include in c++.
+
+23 June 2010: Wouter
+	- iana portlist updated.
+	- makedist upgraded cross compile openssl option, like this: 
+	  ./makedist.sh -s -wssl openssl-1.0.0a.tar.gz -w --enable-gost
+
+22 June 2010: Wouter
+	- Unbound reports libev or libevent correctly in logs in verbose mode.
+	- Fix to unload gost dynamic library module for leak testing.
+
+18 June 2010: Wouter
+	- iana portlist updated.
+
+17 June 2010: Wouter
+	- Add AAAA to root hints for I.ROOT-SERVERS.NET.
+
+16 June 2010: Wouter
+	- Fix assertion failure reported by Kai Storbeck from XS4ALL, the
+	  assertion was wrong.
+	- updated ldns tarball.
+
 15 June 2010: Wouter
 	- tag 1.4.5 created.
+	- trunk contains 1.4.6 in development.
+	- Fix TCPreply on systems with no writev, if just 1 byte could be sent.
+	- Fix to use one pointer less for iterator query state store_parent_NS.
+	- makedist crosscompile to windows uses builtin ldns not host ldns.
+	- Max referral count from 30 to 130, because 128 one character domains
+	  is valid DNS.
+	- added documentation for the histogram printout to syslog.
 
 11 June 2010: Wouter
 	- When retry to parent the retrycount is not wiped, so failed 
