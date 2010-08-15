@@ -8,7 +8,6 @@ include /usr/share/quilt/quilt.make
 build: patch build-stamp
 build-stamp:
 	dh build --before configure
-	autoreconf -fvi
 	dh_auto_configure -- \
 		--disable-rpath \
 		--with-chroot-dir=/var/lib/unbound \

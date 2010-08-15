@@ -6,6 +6,15 @@
 /* Pathname to the Unbound configuration file */
 #undef CONFIGFILE
 
+/* configure flags */
+#undef CONFIGURE_BUILD_WITH
+
+/* configure date */
+#undef CONFIGURE_DATE
+
+/* configure target system */
+#undef CONFIGURE_TARGET
+
 /* Define this if on macOSX10.4-darwin8 and setreuid and setregid do not work
    */
 #undef DARWIN_BROKEN_SETREUID
@@ -36,6 +45,10 @@
 
 /* Define to 1 if you have the `daemon' function. */
 #undef HAVE_DAEMON
+
+/* Define to 1 if you have the declaration of `sk_SSL_COMP_pop_free', and to 0
+   if you don't. */
+#undef HAVE_DECL_SK_SSL_COMP_POP_FREE
 
 /* Define to 1 if you have the declaration of
    `SSL_COMP_get_compression_methods', and to 0 if you don't. */
@@ -131,6 +144,9 @@
 /* Define to 1 if you have the `kill' function. */
 #undef HAVE_KILL
 
+/* Define to 1 if you have the `ldns_key_EVP_unload_gost' function. */
+#undef HAVE_LDNS_KEY_EVP_UNLOAD_GOST
+
 /* Define to 1 if you have the <ldns/ldns.h> header file. */
 #undef HAVE_LDNS_LDNS_H
 
@@ -216,6 +232,9 @@
 /* Define to 1 if you have the `setreuid' function. */
 #undef HAVE_SETREUID
 
+/* Define to 1 if you have the `setrlimit' function. */
+#undef HAVE_SETRLIMIT
+
 /* Define to 1 if you have the `setsid' function. */
 #undef HAVE_SETSID
 
@@ -230,6 +249,9 @@
 
 /* Define to 1 if you have the `snprintf' function. */
 #undef HAVE_SNPRINTF
+
+/* Define to 1 if you have the `socketpair' function. */
+#undef HAVE_SOCKETPAIR
 
 /* Using Solaris threads */
 #undef HAVE_SOLARIS_THREADS

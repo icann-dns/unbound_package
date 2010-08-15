@@ -48,6 +48,11 @@
 #ifndef USE_WINSOCK
 /* on unix */
 
+#ifndef HAVE_SOCKETPAIR
+/** no socketpair() available, like on Minix 3.1.7, use pipe */
+#define socketpair(f, t, p, sv) pipe(sv) 
+#endif /* HAVE_SOCKETPAIR */
+
 struct tube* tube_create(void)
 {
 	struct tube* tube = (struct tube*)calloc(1, sizeof(*tube));
@@ -396,7 +401,7 @@ pollit(int fd, struct timeval* t)
 		return 0;
 	}
 	errno = 0;
-	return FD_ISSET(fd, &r);
+	return (int)(FD_ISSET(fd, &r));
 }
 
 int tube_poll(struct tube* tube)

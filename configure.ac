@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.5, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.6, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=5
+LIBUNBOUND_REVISION=6
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -30,6 +30,7 @@ LIBUNBOUND_AGE=0
 # 1.4.3 had 2:3:0
 # 1.4.4 had 2:4:0
 # 1.4.5 had 2:5:0
+# 1.4.6 had 2:6:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -52,6 +53,19 @@ LIBUNBOUND_AGE=0
 AC_SUBST(LIBUNBOUND_CURRENT)
 AC_SUBST(LIBUNBOUND_REVISION)
 AC_SUBST(LIBUNBOUND_AGE)
+
+pretty_cmdline() {
+	cmdline=""
+	while test -n "$1"; do
+		cmdline="$cmdline '"`echo $1 | sed -e 's/\\\\/\\\\\\\\/g' | sed -e 's/"/\\\\"/g' `"'"
+		shift
+	done
+}
+pretty_cmdline $@
+AC_DEFINE_UNQUOTED(CONFIGURE_BUILD_WITH, ["$cmdline"], [configure flags])
+AC_CANONICAL_TARGET
+AC_DEFINE_UNQUOTED(CONFIGURE_TARGET, ["$target"], [configure target system])
+AC_DEFINE_UNQUOTED(CONFIGURE_DATE, ["`date`"], [configure date])
 
 CFLAGS="$CFLAGS"
 AC_AIX
@@ -393,7 +407,7 @@ ACX_LIB_SSL
 AC_CHECK_HEADERS([openssl/conf.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/engine.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_FUNCS([OPENSSL_config EVP_sha1 EVP_sha256 EVP_sha512])
-AC_CHECK_DECLS([SSL_COMP_get_compression_methods], [], [], [
+AC_CHECK_DECLS([SSL_COMP_get_compression_methods,sk_SSL_COMP_pop_free], [], [], [
 AC_INCLUDES_DEFAULT
 #ifdef HAVE_OPENSSL_ERR_H
 #include <openssl/err.h>
@@ -434,10 +448,9 @@ case "$enable_gost" in
 	no)
 	;;
 	*) dnl default
-dnl   Disabled-by-default, RFC not ready.
-dnl	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [
-dnl	  use_gost="yes"
-dnl	  AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])])
+	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [
+	  use_gost="yes"
+	  AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])])
 	;;
 esac
 
@@ -594,7 +607,7 @@ if test $ac_cv_func_daemon = yes; then
 fi
 
 AC_SEARCH_LIBS([setusercontext], [util])
-AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev glob initgroups strftime localtime_r setusercontext _beginthreadex])
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex])
 AC_CHECK_FUNCS([setresuid],,[AC_CHECK_FUNCS([setreuid])])
 AC_CHECK_FUNCS([setresgid],,[AC_CHECK_FUNCS([setregid])])
 
@@ -638,6 +651,7 @@ if test "$use_ldns_builtin" = "no"; then
 	AC_CHECK_FUNC(ldns_b32_ntop_extended_hex)
 	if test x$use_gost = xyes; then
 	    AC_CHECK_FUNC(ldns_key_EVP_load_gost_id)
+	    AC_CHECK_FUNCS([ldns_key_EVP_unload_gost])
 	else
 	    ac_cv_func_ldns_key_EVP_load_gost_id="yes"
 	fi

@@ -70,7 +70,7 @@ int ub_c_wrap(void);
 static void init_outgoing_availports(int* array, int num);
 
 struct config_file* 
-config_create()
+config_create(void)
 {
 	struct config_file* cfg;
 	cfg = (struct config_file*)calloc(1, sizeof(struct config_file));
@@ -90,11 +90,20 @@ config_create()
 	cfg->use_syslog = 1;
 	cfg->log_time_ascii = 0;
 #ifndef USE_WINSOCK
-	cfg->outgoing_num_ports = 256;
+#  ifdef USE_MINI_EVENT
+	/* select max 1024 sockets */
+	cfg->outgoing_num_ports = 960;
+	cfg->num_queries_per_thread = 512;
+#  else
+	/* libevent can use many sockets */
+	cfg->outgoing_num_ports = 4096;
+	cfg->num_queries_per_thread = 1024;
+#  endif
 	cfg->outgoing_num_tcp = 10;
 	cfg->incoming_num_tcp = 10;
 #else
 	cfg->outgoing_num_ports = 48; /* windows is limited in num fds */
+	cfg->num_queries_per_thread = 24;
 	cfg->outgoing_num_tcp = 2; /* leaves 64-52=12 for: 4if,1stop,thread4 */
 	cfg->incoming_num_tcp = 2; 
 #endif
@@ -102,7 +111,6 @@ config_create()
 	cfg->msg_buffer_size = 65552; /* 64 k + a small margin */
 	cfg->msg_cache_size = 4 * 1024 * 1024;
 	cfg->msg_cache_slabs = 4;
-	cfg->num_queries_per_thread = 1024;
 	cfg->jostle_time = 200;
 	cfg->rrset_cache_size = 4 * 1024 * 1024;
 	cfg->rrset_cache_slabs = 4;
@@ -198,7 +206,7 @@ error_exit:
 	return NULL;
 }
 
-struct config_file* config_create_forlib()
+struct config_file* config_create_forlib(void)
 {
 	struct config_file* cfg = config_create();
 	if(!cfg) return NULL;
@@ -848,7 +856,7 @@ int cfg_condense_ports(struct config_file* cfg, int** avail)
 }
 
 /** print error with file and line number */
-void ub_c_error_va_list(const char *fmt, va_list args)
+static void ub_c_error_va_list(const char *fmt, va_list args)
 {
 	cfg_parser->errors++;
 	fprintf(stderr, "%s:%d: error: ", cfg_parser->filename,
@@ -873,7 +881,7 @@ void ub_c_error(const char *str)
 		cfg_parser->line, str);
 }
 
-int ub_c_wrap()
+int ub_c_wrap(void)
 {
 	return 1;
 }

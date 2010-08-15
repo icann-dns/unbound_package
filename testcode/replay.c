@@ -330,6 +330,24 @@ replay_moment_read(char* remain, FILE* in, const char* name, int* lineno,
 	} else if(parse_keyword(&remain, "ASSIGN")) {
 		mom->evt_type = repevt_assign;
 		read_assign_step(remain, mom);
+	} else if(parse_keyword(&remain, "INFRA_RTT")) {
+		char *s;
+		mom->evt_type = repevt_infra_rtt;
+		while(isspace((int)*remain))
+			remain++;
+		s = remain;
+		remain = strchr(s, ' ');
+		if(!remain) fatal_exit("expected two args for INFRA_RTT");
+		remain[0] = 0;
+		remain++;
+		while(isspace((int)*remain))
+			remain++;
+		if(!extstrtoaddr(s, &mom->addr, &mom->addrlen))
+			fatal_exit("bad infra_rtt address %s", s);
+		if(strlen(remain)>0 && remain[strlen(remain)-1]=='\n')
+			remain[strlen(remain)-1] = 0;
+		mom->string = strdup(remain);
+		if(!mom->string) fatal_exit("out of memory");
 	} else {
 		log_err("%d: unknown event type %s", *lineno, remain);
 		free(mom);
@@ -606,7 +624,7 @@ do_macro_recursion(rbtree_t* store, struct replay_runtime* runtime,
 }
 
 /** get var from store */
-struct replay_var*
+static struct replay_var*
 macro_getvar(rbtree_t* store, char* name)
 {
 	struct replay_var k;
@@ -950,17 +968,17 @@ void testbound_selftest(void)
 	free(v);
 
 	v = macro_process(store, NULL, "it is ${ctime 123456}");
-	log_assert( v && strcmp(v, "it is Fri Jan  2 11:17:36 1970") == 0);
+	log_assert( v && strcmp(v, "it is Fri Jan  2 10:17:36 1970") == 0);
 	free(v);
 
 	r = macro_assign(store, "t1", "123456");
 	log_assert(r);
 	v = macro_process(store, NULL, "it is ${ctime ${$t1}}");
-	log_assert( v && strcmp(v, "it is Fri Jan  2 11:17:36 1970") == 0);
+	log_assert( v && strcmp(v, "it is Fri Jan  2 10:17:36 1970") == 0);
 	free(v);
 
 	v = macro_process(store, NULL, "it is ${ctime $t1}");
-	log_assert( v && strcmp(v, "it is Fri Jan  2 11:17:36 1970") == 0);
+	log_assert( v && strcmp(v, "it is Fri Jan  2 10:17:36 1970") == 0);
 	free(v);
 
 	r = macro_assign(store, "x", "1");

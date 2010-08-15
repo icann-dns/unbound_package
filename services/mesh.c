@@ -234,7 +234,7 @@ mesh_delete_all(struct mesh_area* mesh)
 
 int mesh_make_new_space(struct mesh_area* mesh)
 {
-	struct mesh_state* m = mesh->jostle_last;
+	struct mesh_state* m = mesh->jostle_first;
 	/* free space is available */
 	if(mesh->num_reply_states < mesh->max_reply_states)
 		return 1;
@@ -281,6 +281,17 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 				"incoming query.");
 			comm_point_drop_reply(rep);
 			mesh->stats_dropped ++;
+			return;
+		}
+		/* for this new reply state, the reply address is free,
+		 * so the limit of reply addresses does not stop reply states*/
+	} else {
+		/* protect our memory usage from storing reply addresses */
+		if(mesh->num_reply_addrs > mesh->max_reply_states*16) {
+			verbose(VERB_ALGO, "Too many requests queued. "
+				"dropping incoming query.");
+			mesh->stats_dropped++;
+			comm_point_drop_reply(rep);
 			return;
 		}
 	}
