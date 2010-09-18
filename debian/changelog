@@ -1,3 +1,10 @@
+unbound (1.4.5-1ubuntu1) maverick; urgency=low
+
+  * Fix FTBFS by not calling "autoreconf -fvi" in debian/rules.
+    Cherry-picked from 1.4.6-1. (LP: #641601)
+
+ -- Felix Geyer <debfx-pkg@fobos.de>  Sat, 18 Sep 2010 07:42:37 +0200
+
 unbound (1.4.5-1) unstable; urgency=low
 
   * New upstream release.
