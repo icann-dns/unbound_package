@@ -61,30 +61,6 @@ str_is_ip6(const char* str)
 }
 
 int 
-write_socket(int s, const void *buf, size_t size)
-{
-	const char* data = (const char*)buf;
-	size_t total_count = 0;
-
-	fd_set_block(s);
-	while (total_count < size) {
-		ssize_t count
-			= write(s, data + total_count, size - total_count);
-		if (count == -1) {
-			if (errno != EAGAIN && errno != EINTR) {
-				fd_set_nonblock(s);
-				return 0;
-			} else {
-				continue;
-			}
-		}
-		total_count += count;
-	}
-	fd_set_nonblock(s);
-	return 1;
-}
-
-int 
 fd_set_nonblock(int s) 
 {
 #ifdef HAVE_FCNTL
@@ -500,6 +476,21 @@ int addr_is_broadcast(struct sockaddr_storage* addr, socklen_t addrlen)
 	void* sinaddr = &((struct sockaddr_in*)addr)->sin_addr;
 	return af == AF_INET && addrlen>=(socklen_t)sizeof(struct sockaddr_in)
 		&& memcmp(sinaddr, "\377\377\377\377", 4) == 0;
+}
+
+int addr_is_any(struct sockaddr_storage* addr, socklen_t addrlen)
+{
+	int af = (int)((struct sockaddr_in*)addr)->sin_family;
+	void* sinaddr = &((struct sockaddr_in*)addr)->sin_addr;
+	void* sin6addr = &((struct sockaddr_in6*)addr)->sin6_addr;
+	if(af == AF_INET && addrlen>=(socklen_t)sizeof(struct sockaddr_in)
+		&& memcmp(sinaddr, "\000\000\000\000", 4) == 0)
+		return 1;
+	else if(af==AF_INET6 && addrlen>=(socklen_t)sizeof(struct sockaddr_in6)
+		&& memcmp(sin6addr, "\000\000\000\000\000\000\000\000"
+		"\000\000\000\000\000\000\000\000", 16) == 0)
+		return 1;
+	return 0;
 }
 
 void sock_list_insert(struct sock_list** list, struct sockaddr_storage* addr,

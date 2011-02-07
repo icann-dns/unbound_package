@@ -47,6 +47,10 @@
 #include "util/log.h"
 #include "util/net_help.h"
 #include "util/config_file.h"
+#include "iterator/iterator.h"
+
+/** Timeout when only a single probe query per IP is allowed. */
+#define PROBE_MAXRTO 12000 /* in msec */
 
 size_t 
 infra_host_sizefunc(void* k, void* ATTR_UNUSED(d))
@@ -101,6 +105,7 @@ infra_create(struct config_file* cfg)
 	infra->host_ttl = cfg->host_ttl;
 	infra->lame_ttl = cfg->lame_ttl;
 	infra->max_lame_size = cfg->infra_cache_lame_size;
+	infra->jostle = cfg->jostle_time;
 	return infra;
 }
 
@@ -122,6 +127,7 @@ infra_adjust(struct infra_cache* infra, struct config_file* cfg)
 	infra->host_ttl = cfg->host_ttl;
 	infra->lame_ttl = cfg->lame_ttl;
 	infra->max_lame_size = cfg->infra_cache_lame_size;
+	infra->jostle = cfg->jostle_time;
 	maxmem = cfg->infra_cache_numhosts * 
 		(sizeof(struct infra_host_key)+sizeof(struct infra_host_data));
 	if(maxmem != slabhash_get_size(infra->hosts) ||
@@ -150,6 +156,19 @@ hash_addr(struct sockaddr_storage* addr, socklen_t addrlen)
 		h = hashlittle(&in->sin_addr, INET_SIZE, h);
 	}
 	return h;
+}
+
+void 
+infra_remove_host(struct infra_cache* infra,
+        struct sockaddr_storage* addr, socklen_t addrlen)
+{
+	struct infra_host_key k;
+	k.addrlen = addrlen;
+	memcpy(&k.addr, addr, addrlen);
+	k.entry.hash = hash_addr(addr, addrlen);
+	k.entry.key = (void*)&k;
+	k.entry.data = NULL;
+	slabhash_remove(infra->hosts, k.entry.hash, &k);
 }
 
 /** lookup version that does not check host ttl (you check it) */
@@ -197,7 +216,7 @@ host_entry_init(struct infra_cache* infra, struct lruhash_entry* e,
 	rtt_init(&data->rtt);
 	data->edns_version = 0;
 	data->edns_lame_known = 0;
-	data->num_timeouts = 0;
+	data->probedelay = 0;
 }
 
 /** 
@@ -242,8 +261,10 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
 		addrlen, 0);
 	struct infra_host_data* data;
+	int wr = 0;
 	if(e && ((struct infra_host_data*)e->data)->ttl < timenow) {
 		/* it expired, try to reuse existing entry */
+		int old = ((struct infra_host_data*)e->data)->rtt.rto;
 		lock_rw_unlock(&e->lock);
 		e = infra_lookup_host_nottl(infra, addr, addrlen, 1);
 		if(e) {
@@ -251,6 +272,11 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 			/* re-initialise */
 			/* do not touch lameness, it may be valid still */
 			host_entry_init(infra, e, timenow);
+			wr = 1;
+			/* TOP_TIMEOUT remains on reuse */
+			if(old >= USEFUL_SERVER_TOP_TIMEOUT)
+				((struct infra_host_data*)e->data)->rtt.rto
+					= USEFUL_SERVER_TOP_TIMEOUT;
 		}
 	}
 	if(!e) {
@@ -269,6 +295,22 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 	*to = rtt_timeout(&data->rtt);
 	*edns_vs = data->edns_version;
 	*edns_lame_known = data->edns_lame_known;
+	if(*to >= PROBE_MAXRTO && rtt_notimeout(&data->rtt)*4 <= *to) {
+		/* delay other queries, this is the probe query */
+		if(!wr) {
+			lock_rw_unlock(&e->lock);
+			e = infra_lookup_host_nottl(infra, addr, addrlen, 1);
+			if(!e) { /* flushed from cache real fast, no use to
+				allocate just for the probedelay */
+				return 1;
+			}
+			data = (struct infra_host_data*)e->data;
+		}
+		/* add 999 to round up the timeout value from msec to sec,
+		 * then add a whole second so it is certain that this probe
+		 * has timed out before the next is allowed */
+		data->probedelay = timenow + ((*to)+1999)/1000;
+	}
 	lock_rw_unlock(&e->lock);
 	return 1;
 }
@@ -456,7 +498,7 @@ infra_update_tcp_works(struct infra_cache* infra,
 	if(data->rtt.rto >= RTT_MAX_TIMEOUT)
 		/* do not disqualify this server altogether, it is better
 		 * than nothing */
-		data->rtt.rto = RTT_MAX_TIMEOUT-1;
+		data->rtt.rto = RTT_MAX_TIMEOUT-1000;
 	lock_rw_unlock(&e->lock);
 }
 
@@ -481,11 +523,9 @@ infra_rtt_update(struct infra_cache* infra,
 	data = (struct infra_host_data*)e->data;
 	if(roundtrip == -1) {
 		rtt_lost(&data->rtt, orig_rtt);
-		if(data->num_timeouts<255)
-			data->num_timeouts++; 
 	} else {
 		rtt_update(&data->rtt, roundtrip);
-		data->num_timeouts = 0;
+		data->probedelay = 0;
 	}
 	if(data->rtt.rto > 0)
 		rto = data->rtt.rto;
@@ -494,6 +534,27 @@ infra_rtt_update(struct infra_cache* infra,
 		slabhash_insert(infra->hosts, e->hash, e, e->data, NULL);
 	else 	{ lock_rw_unlock(&e->lock); }
 	return rto;
+}
+
+int infra_get_host_rto(struct infra_cache* infra,
+        struct sockaddr_storage* addr, socklen_t addrlen,
+	struct rtt_info* rtt, int* delay, uint32_t timenow)
+{
+	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
+		addrlen, 0);
+	struct infra_host_data* data;
+	int ttl = -2;
+	if(!e) return -1;
+	data = (struct infra_host_data*)e->data;
+	if(data->ttl >= timenow) {
+		ttl = (int)(data->ttl - timenow);
+		memmove(rtt, &data->rtt, sizeof(*rtt));
+		if(timenow < data->probedelay)
+			*delay = (int)(data->probedelay - timenow);
+		else	*delay = 0;
+	}
+	lock_rw_unlock(&e->lock);
+	return ttl;
 }
 
 int 
@@ -515,7 +576,8 @@ infra_edns_update(struct infra_cache* infra,
 	/* have an entry, update the rtt, and the ttl */
 	data = (struct infra_host_data*)e->data;
 	/* do not update if noEDNS and stored is yesEDNS */
-	if(!(edns_version == -1 && data->edns_version != -1)) {
+	if(!(edns_version == -1 && (data->edns_version != -1 &&
+		data->edns_lame_known))) {
 		data->edns_version = edns_version;
 		data->edns_lame_known = 1;
 	}
@@ -530,8 +592,7 @@ int
 infra_get_lame_rtt(struct infra_cache* infra,
         struct sockaddr_storage* addr, socklen_t addrlen,
         uint8_t* name, size_t namelen, uint16_t qtype, 
-	int* lame, int* dnsseclame, int* reclame, int* rtt, int* lost,
-	uint32_t timenow)
+	int* lame, int* dnsseclame, int* reclame, int* rtt, uint32_t timenow)
 {
 	struct infra_host_data* host;
 	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
@@ -541,7 +602,10 @@ infra_get_lame_rtt(struct infra_cache* infra,
 		return 0;
 	host = (struct infra_host_data*)e->data;
 	*rtt = rtt_unclamped(&host->rtt);
-	*lost = (int)host->num_timeouts;
+	if(host->rtt.rto >= PROBE_MAXRTO && timenow < host->probedelay
+		&& rtt_notimeout(&host->rtt)*4 <= host->rtt.rto)
+		/* single probe for this domain, and we are not probing */
+		*rtt = USEFUL_SERVER_TOP_TIMEOUT;
 	/* check lameness first, if so, ttl on host does not matter anymore */
 	if(infra_lookup_lame(host, name, namelen, timenow, 
 		&dlm, &rlm, &alm, &olm)) {
@@ -576,6 +640,15 @@ infra_get_lame_rtt(struct infra_cache* infra,
 	*dnsseclame = 0;
 	*reclame = 0;
 	if(timenow > host->ttl) {
+		/* expired entry */
+		/* see if this can be a re-probe of an unresponsive server */
+		/* minus 1000 because that is outside of the RTTBAND, so
+		 * blacklisted servers stay blacklisted if this is chosen */
+		if(host->rtt.rto >= USEFUL_SERVER_TOP_TIMEOUT) {
+			*rtt = USEFUL_SERVER_TOP_TIMEOUT-1000;
+			lock_rw_unlock(&e->lock);
+			return 1;
+		}
 		lock_rw_unlock(&e->lock);
 		return 0;
 	}

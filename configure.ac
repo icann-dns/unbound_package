@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.6, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.8, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=6
+LIBUNBOUND_REVISION=8
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -31,6 +31,8 @@ LIBUNBOUND_AGE=0
 # 1.4.4 had 2:4:0
 # 1.4.5 had 2:5:0
 # 1.4.6 had 2:6:0
+# 1.4.7 had 2:7:0
+# 1.4.8 had 2:8:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -153,6 +155,34 @@ AC_SUBST(UNBOUND_PIDFILE)
 ACX_ESCAPE_BACKSLASH($UNBOUND_PIDFILE, hdr_pid)
 AC_DEFINE_UNQUOTED(PIDFILE, ["$hdr_pid"], [default pidfile location])
 
+AC_ARG_WITH(rootkey-file, 
+    AC_HELP_STRING([--with-rootkey-file=filename], 
+    [set default pathname to root key file (default run-dir/root.key). This file is read and written.]), 
+    UNBOUND_ROOTKEY_FILE="$withval", 
+if test $on_mingw = no; then
+    UNBOUND_ROOTKEY_FILE="$UNBOUND_RUN_DIR/root.key"
+else
+    UNBOUND_ROOTKEY_FILE="C:\\Program Files\\Unbound\\root.key"
+fi
+)
+AC_SUBST(UNBOUND_ROOTKEY_FILE)
+ACX_ESCAPE_BACKSLASH($UNBOUND_ROOTKEY_FILE, hdr_rkey)
+AC_DEFINE_UNQUOTED(ROOT_ANCHOR_FILE, ["$hdr_rkey"], [default rootkey location])
+
+AC_ARG_WITH(rootcert-file, 
+    AC_HELP_STRING([--with-rootcert-file=filename], 
+    [set default pathname to root update certificate file (default run-dir/icannbundle.pem).  This file need not exist if you are content with the builtin.]), 
+    UNBOUND_ROOTCERT_FILE="$withval", 
+if test $on_mingw = no; then
+    UNBOUND_ROOTCERT_FILE="$UNBOUND_RUN_DIR/icannbundle.pem"
+else
+    UNBOUND_ROOTCERT_FILE="C:\\Program Files\\Unbound\\icannbundle.pem"
+fi
+)
+AC_SUBST(UNBOUND_ROOTCERT_FILE)
+ACX_ESCAPE_BACKSLASH($UNBOUND_ROOTCERT_FILE, hdr_rpem)
+AC_DEFINE_UNQUOTED(ROOT_CERT_FILE, ["$hdr_rpem"], [default rootcert location])
+
 AC_ARG_WITH(username, 
     AC_HELP_STRING([--with-username=user], 
     [set default user that unbound changes to (default user is unbound)]), 
@@ -173,10 +203,6 @@ ACX_CHECK_COMPILER_FLAG(O2, [CFLAGS="$CFLAGS -O2"])
 AC_PROG_CC
 ACX_DEPFLAG
 ACX_DETERMINE_EXT_FLAGS_UNBOUND
-
-# for Sun studio 11.
-ACX_CHECK_COMPILER_FLAG(xO4, [CFLAGS="$CFLAGS -xO4"])
-ACX_CHECK_COMPILER_FLAG(xtarget=generic, [CFLAGS="$CFLAGS -xtarget=generic"])
 
 # debug mode flags warnings
 AC_ARG_ENABLE(checking, AC_HELP_STRING([--enable-checking], [Enable warnings, asserts, makefile-dependencies]))
@@ -437,20 +463,16 @@ case "$enable_sha2" in
 	;;
 esac
 
-AC_ARG_ENABLE(gost, AC_HELP_STRING([--enable-gost], [Enable GOST support, experimental]))
+AC_ARG_ENABLE(gost, AC_HELP_STRING([--disable-gost], [Disable GOST support]))
 use_gost="no"
 case "$enable_gost" in
-	yes)
-	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL 1.0.0 is needed for GOST support])])
-	use_gost="yes"
-	AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])
-	;;
 	no)
 	;;
-	*) dnl default
-	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [
-	  use_gost="yes"
-	  AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])])
+	*)
+	AC_CHECK_FUNC(EVP_PKEY_set_type_str, [:],[AC_MSG_ERROR([OpenSSL 1.0.0 is needed for GOST support])])
+        AC_CHECK_FUNC(EC_KEY_new, [], [AC_MSG_ERROR([OpenSSL does not support ECC, needed for GOST support])])
+	use_gost="yes"
+	AC_DEFINE([USE_GOST], [1], [Define this to enable GOST support.])
 	;;
 esac
 
@@ -524,12 +546,36 @@ large outgoing port ranges.  ])
 	AC_CHECK_FUNCS([event_base_new]) # only in libevent 1.4.1 and later
 	AC_CHECK_FUNCS([event_base_get_method]) # only in libevent 1.4.3 and later
 	AC_CHECK_FUNCS([ev_loop]) # only in libev. (tested on 3.51)
+	AC_CHECK_FUNCS([ev_default_loop]) # only in libev. (tested on 4.00)
 	if test -n "$BAK_LDFLAGS_SET"; then
 		LDFLAGS="$BAK_LDFLAGS"
 	fi
 else
 	AC_DEFINE(USE_MINI_EVENT, 1, [Define if you want to use internal select based events])
 fi
+
+# check for libexpat
+AC_ARG_WITH(libexpat, AC_HELP_STRING([--with-libexpat=path],
+    [specify explicit path for libexpat.]),
+    [ ],[ withval="/usr/local /opt/local /usr/lib /usr/pkg /usr/sfw /usr" ])
+AC_MSG_CHECKING(for libexpat)
+found_libexpat="no"
+for dir in $withval ; do
+            if test -f "$dir/include/expat.h"; then
+		found_libexpat="yes"
+		dnl assume /usr is in default path.
+		if test "$dir" != "/usr"; then
+                    CPPFLAGS="$CPPFLAGS -I$dir/include"
+		    LDFLAGS="$LDFLAGS -L$dir/lib"
+		fi
+            	AC_MSG_RESULT(found in $dir)
+                break;
+            fi
+done
+if test x_$found_libexpat != x_yes; then
+	AC_ERROR([Could not find libexpat, expat.h])
+fi
+AC_CHECK_HEADERS([expat.h],,, [AC_INCLUDES_DEFAULT])
 
 # set static linking if requested
 AC_SUBST(staticexe)
@@ -606,6 +652,29 @@ if test $ac_cv_func_daemon = yes; then
 ])
 fi
 
+# check wether strptime also works
+AC_DEFUN([AC_CHECK_STRPTIME_WORKS],
+[AC_REQUIRE([AC_PROG_CC])
+AC_MSG_CHECKING(whether strptime works)
+if test c${cross_compiling} = cno; then
+AC_TRY_RUN([
+#define _XOPEN_SOURCE
+#include <time.h>
+int main(void) { struct tm tm; char *res;
+res = strptime("20070207111842", "%Y%m%d%H%M%S", &tm);
+if (!res) return 1; return 0; }
+] , [eval "ac_cv_c_strptime_works=yes"], [eval "ac_cv_c_strptime_works=no"])
+else
+eval "ac_cv_c_strptime_works=maybe"
+fi
+AC_MSG_RESULT($ac_cv_c_strptime_works)
+if test $ac_cv_c_strptime_works = no; then
+AC_LIBOBJ(strptime)
+else
+AC_DEFINE_UNQUOTED([STRPTIME_WORKS], 1, [use default strptime.])
+fi
+])dnl
+AC_CHECK_FUNCS([strptime],[AC_CHECK_STRPTIME_WORKS],[AC_LIBOBJ([strptime])])
 AC_SEARCH_LIBS([setusercontext], [util])
 AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex])
 AC_CHECK_FUNCS([setresuid],,[AC_CHECK_FUNCS([setreuid])])
@@ -630,13 +699,15 @@ use_ldns_builtin="no"
 AC_ARG_WITH(ldns, AC_HELP_STRING([--with-ldns=PATH], 
 	[specify prefix of path of ldns library to use]), 
 	[ specialldnsdir="$withval"
-	if test "$withval" != ""; then
-		CPPFLAGS="-I$withval/include $CPPFLAGS"
-		LDFLAGS="-L$withval -L$withval/lib $LDFLAGS"
-		ACX_RUNTIME_PATH_ADD([$withval/lib])
+	if test "$withval" != "yes"; then
+		if test "$withval" != ""; then
+			CPPFLAGS="-I$withval/include $CPPFLAGS"
+			LDFLAGS="-L$withval -L$withval/lib $LDFLAGS"
+			ACX_RUNTIME_PATH_ADD([$withval/lib])
+		fi
+		ldnsdir="$withval"
+		AC_SUBST(ldnsdir)
 	fi
-	ldnsdir="$withval"
-	AC_SUBST(ldnsdir)
 ])
 
 AC_ARG_WITH(ldns-builtin, AC_HELP_STRING([--with-ldns-builtin], 
@@ -655,7 +726,27 @@ if test "$use_ldns_builtin" = "no"; then
 	else
 	    ac_cv_func_ldns_key_EVP_load_gost_id="yes"
 	fi
-	AC_CHECK_HEADERS([ldns/ldns.h],,, [AC_INCLUDES_DEFAULT])
+	AC_CHECK_HEADERS([ldns/ldns.h],,, [AC_INCLUDES_DEFAULT
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#endif
+
+#ifdef HAVE_WS2TCPIP_H
+#include <ws2tcpip.h>
+#endif
+])
 	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes \
 	    -a $ac_cv_func_ldns_key_buf2rsa_raw = yes \
 	    -a $ac_cv_header_ldns_ldns_h = yes \
@@ -664,7 +755,7 @@ if test "$use_ldns_builtin" = "no"; then
 	    dnl ldns was found
 	    :
 	else
-	    use_ldns_builtin="yes"
+	    AC_MSG_ERROR([No ldns library found (or not recent); install or update ldns library, use --with-ldns=path or --with-ldns-builtin])
 	fi
 fi
 
@@ -773,7 +864,13 @@ AHX_MEMCMP_BROKEN(unbound)
 char *ctime_r(const time_t *timep, char *buf);
 #endif
 
-#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
+#if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)
+#define strptime unbound_strptime
+struct tm;
+char *strptime(const char *s, const char *format, struct tm *tm);
+#endif
+
+#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && !(defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP)) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
    /* using version of libevent that is not threadsafe. */
 #  define LIBEVENT_SIGNAL_PROBLEM 1
 #endif
@@ -819,6 +916,6 @@ void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 #define UNBOUND_DNS_PORT 53
 ])
 
-AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8])
+AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8])
 AC_CONFIG_HEADER([config.h])
 AC_OUTPUT

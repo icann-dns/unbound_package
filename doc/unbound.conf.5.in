@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Aug  3, 2010" "NLnet Labs" "unbound 1.4.6"
+.TH "unbound.conf" "5" "Jan 24, 2011" "NLnet Labs" "unbound 1.4.8"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -124,9 +124,8 @@ interface and port number), if not specified the default port (from
 .TP
 .B interface\-automatic: \fI<yes or no>
 Detect source interface on UDP queries and copy them to replies.  This 
-feature is experimental, and needs support in your OS for IPv6 
-(and its socket options) and IPv4 (and have source\-interface socket options). 
-Default value is no.
+feature is experimental, and needs support in your OS for particular socket
+options.  Default value is no.
 .TP
 .B outgoing\-interface: \fI<ip address>
 Interface to use to connect to the network. This interface is used to send
@@ -231,6 +230,17 @@ needs root permission to bypass the limit, or the admin can use sysctl
 net.core.rmem_max.  On BSD change kern.ipc.maxsockbuf in /etc/sysctl.conf.
 On OpenBSD change header and recompile kernel. On Solaris ndd \-set
 /dev/udp udp_max_buf 8388608.
+.TP
+.B so\-sndbuf: \fI<number>
+If not 0, then set the SO_SNDBUF socket option to get more buffer space on
+UDP port 53 outgoing queries.  This for very busy servers handles spikes
+in answer traffic, otherwise 'send: resource temporarily unavailable'
+can get logged, the buffer overrun is also visible by netstat \-su.
+Default is 0 (use system value).  Specify the number of bytes to ask
+for, try "4m" on a very busy server.  The OS caps it at a maximum, on
+linux unbound needs root permission to bypass the limit, or the admin
+can use sysctl net.core.wmem_max.  On BSD, Solaris changes are similar
+to so\-rcvbuf.
 .TP
 .B rrset\-cache\-size: \fI<number>
 Number of bytes size of the RRset cache. Default is 4 megabytes.
@@ -456,6 +466,13 @@ removes DNSSEC data from packets, or a zone changes from signed to
 unsigned to badly signed often. If turned off you run the risk of a 
 downgrade attack that disables security for a zone. Default is on.
 .TP
+.B harden\-below\-nxdomain: \fI<yes or no>
+From draft-vixie-dnsext-resimprove, returns nxdomain to queries for a name
+below another name that is already known to be nxdomain.  DNSSEC mandates
+noerror for empty nonterminals, hence this is possible.  Very old software
+might return nxdomain for empty nonterminals (that usually happen for reverse
+IP address lookups), and thus may be incompatible with this.  Default is off.
+.TP
 .B harden\-referral\-path: \fI<yes or no>
 Harden the referral path by performing additional queries for
 infrastructure data.  Validates the replies if trust anchors are configured
@@ -488,7 +505,7 @@ that you configured is allowed to, and you can specify additional
 names using \fBprivate\-domain\fR.  No private addresses are enabled
 by default.  We consider to enable this for the RFC1918 private IP
 address space by default in later releases. That would enable private 
-addresses for 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 192.254.0.0/16 
+addresses for 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 
 fd00::/8 and fe80::/10, since the RFC standards say these addresses 
 should not be visible on the public internet.  Turning on 127.0.0.0/8 
 would hinder many spamblocklists as they use that.
@@ -682,11 +699,12 @@ A plain number is in bytes, append 'k', 'm' or 'g' for kilobytes, megabytes
 or gigabytes (1024*1024 bytes in a megabyte).
 .TP
 .B local\-zone: \fI<zone> <type>
-Configure a local zone. The type determines the answer to give if there is
-no match from local\-data. The types are deny, refuse, static, transparent, 
-redirect, nodefault, and are explained below. After that the default settings
-are listed. Use local\-data: to enter data into the local zone. Answers for
-local zones are authoritative DNS answers. By default the zones are class IN.
+Configure a local zone. The type determines the answer to give if
+there is no match from local\-data. The types are deny, refuse, static,
+transparent, redirect, nodefault, typetransparent, and are explained
+below. After that the default settings are listed. Use local\-data: to
+enter data into the local zone. Answers for local zones are authoritative
+DNS answers. By default the zones are class IN.
 .IP
 If you need more complicated authoritative data, with referrals, wildcards,
 CNAME/DNAME support, or DNSSEC authoritative service, setup a stub\-zone for
@@ -713,6 +731,13 @@ If the query is for a name given in localdata but no such type of data is
 given in localdata, then a noerror nodata answer is returned.
 If no local\-zone is given local\-data causes a transparent zone
 to be created by default.
+.TP 10
+\h'5'\fItypetransparent\fR 
+If there is a match from local data, the query is answered.  If the query
+is for a different name, or for the same name but for a different type,
+the query is resolved normally.  So, similar to transparent but types
+that are not listed in local data are resolved normally, so if an A record
+is in the local data that does not cause a nodata reply for AAAA queries.
 .TP 10
 \h'5'\fIredirect\fR 
 The query is answered from the local data for the zone name.
@@ -802,9 +827,6 @@ Reverse data for zone D.F.ip6.arpa.
 .TP 10
 \h'5'\fIreverse RFC4291 IPv6 Link Local Addresses\fR
 Reverse data for zones 8.E.F.ip6.arpa to B.E.F.ip6.arpa.
-.TP 10
-\h'5'\fIreverse RFC4843 Orchid Prefix\fR
-Reverse data for zone 0.1.1.0.0.2.ip6.arpa.
 .TP 10
 \h'5'\fIreverse IPv6 Example Prefix\fR
 Reverse data for zone 8.B.D.0.1.0.0.2.ip6.arpa. This zone is used for

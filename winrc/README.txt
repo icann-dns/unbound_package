@@ -10,7 +10,7 @@ See LICENSE for the license text file.
 Unbound is a recursive DNS server.  It does caching, full recursion, stub
 recursion, DNSSEC validation, NSEC3, IPv6.  More information can be found 
 at the http://unbound.net site.  Unbound has been built and tested on 
-Windows XP and Windows Vista.
+Windows XP, Vista and 7.
 
 At http://unbound.net/documentation is an install and configuration manual
 for windows.
@@ -66,6 +66,7 @@ $ tar xzvf unbound-xxx.tar.gz
 $ cd unbound-xxx
 $ ./configure --enable-static-exe --with-ldns=../ldns-xxx
 If you compiled openssl yourself, pass --with-ssl=../openssl-xxx too.
+If you compiled libexpat yourself, pass --with-libexpat=../expat-install too.
 The configure options for libevent or threads are not applicable for 
 windows, because builtin alternatives for the windows platform are used.
 $ make

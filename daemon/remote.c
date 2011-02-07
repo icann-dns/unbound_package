@@ -59,6 +59,7 @@
 #include "util/module.h"
 #include "services/listen_dnsport.h"
 #include "services/cache/rrset.h"
+#include "services/cache/infra.h"
 #include "services/mesh.h"
 #include "services/localzone.h"
 #include "util/storage/slabhash.h"
@@ -1097,6 +1098,25 @@ do_flush_stats(SSL* ssl, struct worker* worker)
 	send_ok(ssl);
 }
 
+/** flush infra cache */
+static void
+do_flush_infra(SSL* ssl, struct worker* worker, char* arg)
+{
+	struct sockaddr_storage addr;
+	socklen_t len;
+	if(strcmp(arg, "all") == 0) {
+		slabhash_clear(worker->env.infra_cache->hosts);
+		send_ok(ssl);
+		return;
+	}
+	if(!ipstrtoaddr(arg, UNBOUND_DNS_PORT, &addr, &len)) {
+		(void)ssl_printf(ssl, "error parsing ip addr: '%s'\n", arg);
+		return;
+	}
+	infra_remove_host(worker->env.infra_cache, &addr, len);
+	send_ok(ssl);
+}
+
 /** flush requestlist */
 static void
 do_flush_requestlist(SSL* ssl, struct worker* worker)
@@ -1317,7 +1337,7 @@ parse_delegpt(SSL* ssl, struct regional* region, char* args, uint8_t* root)
 			return NULL;
 		}
 		/* add address */
-		if(!delegpt_add_addr(dp, region, &addr, addrlen, 0, 0, 1)) {
+		if(!delegpt_add_addr(dp, region, &addr, addrlen, 0, 0)) {
 			(void)ssl_printf(ssl, "error out of memory\n");
 			return NULL;
 		}
@@ -1494,6 +1514,89 @@ do_dump_requestlist(SSL* ssl, struct worker* worker)
 	}
 }
 
+/** structure for argument data for dump infra host */
+struct infra_arg {
+	/** the infra cache */
+	struct infra_cache* infra;
+	/** the SSL connection */
+	SSL* ssl;
+	/** the time now */
+	uint32_t now;
+	/** ipstr */
+	char* ipstr;
+};
+
+/** callback for every lame element in the infra cache */
+static void
+dump_infra_lame(struct lruhash_entry* e, void* arg)
+{
+	struct infra_arg* a = (struct infra_arg*)arg;
+	struct infra_lame_key* k = (struct infra_lame_key*)e->key;
+	struct infra_lame_data* d = (struct infra_lame_data*)e->data;
+	ldns_rdf* rdf;
+	size_t pos = 0;
+	char* nm;
+	/* skip expired */
+	if(d->ttl < a->now) {
+		return;
+	}
+	/* use ldns print for domain name */
+	if(ldns_wire2dname(&rdf, k->zonename, k->namelen, &pos)
+		!= LDNS_STATUS_OK)
+		return;
+	nm = ldns_rdf2str(rdf);
+	ldns_rdf_deep_free(rdf);
+	if(!ssl_printf(a->ssl, "%s lame %s ttl %d dnssec %d rec %d "
+		"A %d other %d\n", a->ipstr, nm, (int)(d->ttl - a->now),
+		d->isdnsseclame, d->rec_lame, d->lame_type_A, d->lame_other)) {
+		free(nm);
+		return;
+	}
+	free(nm);
+}
+
+/** callback for every host element in the infra cache */
+static void
+dump_infra_host(struct lruhash_entry* e, void* arg)
+{
+	struct infra_arg* a = (struct infra_arg*)arg;
+	struct infra_host_key* k = (struct infra_host_key*)e->key;
+	struct infra_host_data* d = (struct infra_host_data*)e->data;
+	char ip_str[1024];
+	addr_to_str(&k->addr, k->addrlen, ip_str, sizeof(ip_str));
+	a->ipstr = ip_str;
+	/* skip expired stuff (only backed off) */
+	if(d->ttl < a->now) {
+		if(d->rtt.rto >= USEFUL_SERVER_TOP_TIMEOUT) {
+			if(!ssl_printf(a->ssl, "%s expired rto %d\n", ip_str,
+				d->rtt.rto)) return;
+		}
+		if(d->lameness)
+			lruhash_traverse(d->lameness, 0, &dump_infra_lame, arg);
+		return;
+	}
+	if(!ssl_printf(a->ssl, "%s ttl %d ping %d var %d rtt %d rto %d "
+		"ednsknown %d edns %d delay %d\n",
+		ip_str, (int)(d->ttl - a->now),
+		d->rtt.srtt, d->rtt.rttvar, rtt_notimeout(&d->rtt), d->rtt.rto,
+		(int)d->edns_lame_known, (int)d->edns_version,
+		(int)(a->now<d->probedelay?d->probedelay-a->now:0)))
+		return;
+	if(d->lameness)
+		lruhash_traverse(d->lameness, 0, &dump_infra_lame, arg);
+}
+
+/** do the dump_infra command */
+static void
+do_dump_infra(SSL* ssl, struct worker* worker)
+{
+	struct infra_arg arg;
+	arg.infra = worker->env.infra_cache;
+	arg.ssl = ssl;
+	arg.now = *worker->env.now;
+	slabhash_traverse(arg.infra->hosts, 0, &dump_infra_host, (void*)&arg);
+}
+
 /** do the log_reopen command */
 static void
 do_log_reopen(SSL* ssl, struct worker* worker)
@@ -1636,62 +1739,69 @@ distribute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd)
 	}
 }
 
+/** check for name with end-of-string, space or tab after it */
+static int
+cmdcmp(char* p, const char* cmd, size_t len)
+{
+	return strncmp(p,cmd,len)==0 && (p[len]==0||p[len]==' '||p[len]=='\t');
+}
+
 /** execute a remote control command */
 static void
 execute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd, 
 	struct worker* worker)
 {
 	char* p = skipwhite(cmd);
-	/* compare command - check longer strings first in case of substrings*/
-	if(strncmp(p, "stop", 4) == 0) {
+	/* compare command */
+	if(cmdcmp(p, "stop", 4)) {
 		do_stop(ssl, rc);
 		return;
-	} else if(strncmp(p, "reload", 6) == 0) {
+	} else if(cmdcmp(p, "reload", 6)) {
 		do_reload(ssl, rc);
 		return;
-	} else if(strncmp(p, "stats_noreset", 13) == 0) {
+	} else if(cmdcmp(p, "stats_noreset", 13)) {
 		do_stats(ssl, rc, 0);
 		return;
-	} else if(strncmp(p, "stats", 5) == 0) {
+	} else if(cmdcmp(p, "stats", 5)) {
 		do_stats(ssl, rc, 1);
 		return;
-	} else if(strncmp(p, "status", 6) == 0) {
+	} else if(cmdcmp(p, "status", 6)) {
 		do_status(ssl, worker);
 		return;
-	} else if(strncmp(p, "dump_cache", 10) == 0) {
+	} else if(cmdcmp(p, "dump_cache", 10)) {
 		(void)dump_cache(ssl, worker);
 		return;
-	} else if(strncmp(p, "load_cache", 10) == 0) {
+	} else if(cmdcmp(p, "load_cache", 10)) {
 		if(load_cache(ssl, worker)) send_ok(ssl);
 		return;
-	} else if(strncmp(p, "list_forwards", 13) == 0) {
+	} else if(cmdcmp(p, "list_forwards", 13)) {
 		do_list_forwards(ssl, worker);
 		return;
-	} else if(strncmp(p, "list_stubs", 10) == 0) {
+	} else if(cmdcmp(p, "list_stubs", 10)) {
 		do_list_stubs(ssl, worker);
 		return;
-	} else if(strncmp(p, "list_local_zones", 16) == 0) {
+	} else if(cmdcmp(p, "list_local_zones", 16)) {
 		do_list_local_zones(ssl, worker);
 		return;
-	} else if(strncmp(p, "list_local_data", 15) == 0) {
+	} else if(cmdcmp(p, "list_local_data", 15)) {
 		do_list_local_data(ssl, worker);
 		return;
-	} else if(strncmp(p, "forward", 7) == 0) {
+	} else if(cmdcmp(p, "forward", 7)) {
 		/* must always distribute this cmd */
 		if(rc) distribute_cmd(rc, ssl, cmd);
 		do_forward(ssl, worker, skipwhite(p+7));
 		return;
-	} else if(strncmp(p, "flush_stats", 11) == 0) {
+	} else if(cmdcmp(p, "flush_stats", 11)) {
 		/* must always distribute this cmd */
 		if(rc) distribute_cmd(rc, ssl, cmd);
 		do_flush_stats(ssl, worker);
 		return;
-	} else if(strncmp(p, "flush_requestlist", 17) == 0) {
+	} else if(cmdcmp(p, "flush_requestlist", 17)) {
 		/* must always distribute this cmd */
 		if(rc) distribute_cmd(rc, ssl, cmd);
 		do_flush_requestlist(ssl, worker);
 		return;
-	} else if(strncmp(p, "lookup", 6) == 0) {
+	} else if(cmdcmp(p, "lookup", 6)) {
 		do_lookup(ssl, worker, skipwhite(p+6));
 		return;
 	}
@@ -1704,29 +1814,33 @@ execute_cmd(struct daemon_remote* rc, SSL* ssl, char* cmd,
 		distribute_cmd(rc, ssl, cmd);
 	}
 #endif
-	if(strncmp(p, "verbosity", 9) == 0) {
+	if(cmdcmp(p, "verbosity", 9)) {
 		do_verbosity(ssl, skipwhite(p+9));
-	} else if(strncmp(p, "local_zone_remove", 17) == 0) {
+	} else if(cmdcmp(p, "local_zone_remove", 17)) {
 		do_zone_remove(ssl, worker, skipwhite(p+17));
-	} else if(strncmp(p, "local_zone", 10) == 0) {
+	} else if(cmdcmp(p, "local_zone", 10)) {
 		do_zone_add(ssl, worker, skipwhite(p+10));
-	} else if(strncmp(p, "local_data_remove", 17) == 0) {
+	} else if(cmdcmp(p, "local_data_remove", 17)) {
 		do_data_remove(ssl, worker, skipwhite(p+17));
-	} else if(strncmp(p, "local_data", 10) == 0) {
+	} else if(cmdcmp(p, "local_data", 10)) {
 		do_data_add(ssl, worker, skipwhite(p+10));
-	} else if(strncmp(p, "flush_zone", 10) == 0) {
+	} else if(cmdcmp(p, "flush_zone", 10)) {
 		do_flush_zone(ssl, worker, skipwhite(p+10));
-	} else if(strncmp(p, "flush_type", 10) == 0) {
+	} else if(cmdcmp(p, "flush_type", 10)) {
 		do_flush_type(ssl, worker, skipwhite(p+10));
-	} else if(strncmp(p, "flush", 5) == 0) {
+	} else if(cmdcmp(p, "flush_infra", 11)) {
+		do_flush_infra(ssl, worker, skipwhite(p+11));
+	} else if(cmdcmp(p, "flush", 5)) {
 		do_flush_name(ssl, worker, skipwhite(p+5));
-	} else if(strncmp(p, "dump_requestlist", 16) == 0) {
+	} else if(cmdcmp(p, "dump_requestlist", 16)) {
 		do_dump_requestlist(ssl, worker);
-	} else if(strncmp(p, "log_reopen", 10) == 0) {
+	} else if(cmdcmp(p, "dump_infra", 10)) {
+		do_dump_infra(ssl, worker);
+	} else if(cmdcmp(p, "log_reopen", 10)) {
 		do_log_reopen(ssl, worker);
-	} else if(strncmp(p, "set_option", 10) == 0) {
+	} else if(cmdcmp(p, "set_option", 10)) {
 		do_set_option(ssl, worker, skipwhite(p+10));
-	} else if(strncmp(p, "get_option", 10) == 0) {
+	} else if(cmdcmp(p, "get_option", 10)) {
 		do_get_option(ssl, worker, skipwhite(p+10));
 	} else {
 		(void)ssl_printf(ssl, "error unknown command '%s'\n", p);

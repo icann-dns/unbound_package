@@ -1,4 +1,4 @@
-README for Unbound 1.4.6
+README for Unbound 1.4.8
 Copyright 2007 NLnet Labs
 http://unbound.net
 
@@ -28,6 +28,8 @@ This software is under BSD license, see LICENSE for details.
 	of outgoing ports. This improves randomization and spoof 
 	resistance. For the default of 16 ports the builtin alternative 
 	works well and is a little faster.
+  * --with-libexpat=/path/to/libexpat
+  	Can be set to the install directory of libexpat.
   * --without-pthreads 
 	This disables pthreads. Without this option the pthreads library 
 	is detected automatically. Use this option to disable threading
@@ -59,6 +61,13 @@ This software is under BSD license, see LICENSE for details.
   * --with-chroot-dir=path
   	Set default chroot directory,
 	the default is /usr/local/etc/unbound.
+  * --with-rootkey-file=path
+  	Set the default root.key path.  This file is read and written.
+	the default is /usr/local/etc/unbound/root.key
+  * --with-rootcert-file=path
+  	Set the default root update certificate path.  A builtin certificate
+	is used if this file is empty or does not exist.
+	the default is /usr/local/etc/unbound/icannbundle.pem
   * --with-username=user
   	Set default user name to change to,
 	the default is the "unbound" user.
@@ -72,8 +81,7 @@ This software is under BSD license, see LICENSE for details.
   * --disable-gost
   	Disable support for GOST crypto, RFC 5933.
 
-* 'make test' attempts to run a series of tests, depending on the support
-  programs that are installed.
+* 'make test' runs a series of self checks.
 
 Known issues
 ------------
@@ -97,6 +105,7 @@ o The warning 'openssl has no entropy, seeding with time', with chroot
 o On Solaris 5.10 some libtool packages from repositories do not work with
   gcc, showing errors gcc: unrecognized option `-KPIC'
   To solve this do ./configure libtool=./libtool [your options...].
+  On Solaris you may pass CFLAGS="-xO4 -xtarget=generic" if you use sun-cc.
 o If unbound-control (or munin graphs) do not work, this can often be because
   the unbound-control-setup script creates the keys with restricted 
   permissions, and the files need to be made readable or ownered by both the
@@ -119,7 +128,7 @@ o See Credits file for contributors.
 Your Support
 ------------
 NLnet Labs offers all of its software products as open source, most are
-published under a BDS license. You can download them, not only from the
+published under a BSD license. You can download them, not only from the
 NLnet Labs website but also through the various OS distributions for
 which NSD, ldns, and Unbound are packaged. We therefore have little idea
 who uses our software in production environments and have no direct ties

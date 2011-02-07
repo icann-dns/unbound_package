@@ -101,7 +101,7 @@ extern struct config_parser_state* cfg_parser;
 %token VAR_VAL_SIG_SKEW_MAX VAR_CACHE_MIN_TTL VAR_VAL_LOG_LEVEL
 %token VAR_AUTO_TRUST_ANCHOR_FILE VAR_KEEP_MISSING VAR_ADD_HOLDDOWN 
 %token VAR_DEL_HOLDDOWN VAR_SO_RCVBUF VAR_EDNS_BUFFER_SIZE VAR_PREFETCH
-%token VAR_PREFETCH_KEY
+%token VAR_PREFETCH_KEY VAR_SO_SNDBUF VAR_HARDEN_BELOW_NXDOMAIN
 
 %%
 toplevelvars: /* empty */ | toplevelvars toplevelvar ;
@@ -154,7 +154,8 @@ content_server: server_num_threads | server_verbosity | server_port |
 	server_val_sig_skew_max | server_cache_min_ttl | server_val_log_level |
 	server_auto_trust_anchor_file | server_add_holddown | 
 	server_del_holddown | server_keep_missing | server_so_rcvbuf |
-	server_edns_buffer_size | server_prefetch | server_prefetch_key
+	server_edns_buffer_size | server_prefetch | server_prefetch_key |
+	server_so_sndbuf | server_harden_below_nxdomain
 	;
 stubstart: VAR_STUB_ZONE
 	{
@@ -524,7 +525,15 @@ server_version: VAR_VERSION STRING_ARG
 server_so_rcvbuf: VAR_SO_RCVBUF STRING_ARG
 	{
 		OUTYY(("P(server_so_rcvbuf:%s)\n", $2));
-		if(!cfg_parse_memsize($2, &cfg_parser->cfg->socket_rcvbuf))
+		if(!cfg_parse_memsize($2, &cfg_parser->cfg->so_rcvbuf))
+			yyerror("buffer size expected");
+		free($2);
+	}
+	;
+server_so_sndbuf: VAR_SO_SNDBUF STRING_ARG
+	{
+		OUTYY(("P(server_so_sndbuf:%s)\n", $2));
+		if(!cfg_parse_memsize($2, &cfg_parser->cfg->so_sndbuf))
 			yyerror("buffer size expected");
 		free($2);
 	}
@@ -705,6 +714,16 @@ server_harden_dnssec_stripped: VAR_HARDEN_DNSSEC_STRIPPED STRING_ARG
 		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
 			yyerror("expected yes or no.");
 		else cfg_parser->cfg->harden_dnssec_stripped = 
+			(strcmp($2, "yes")==0);
+		free($2);
+	}
+	;
+server_harden_below_nxdomain: VAR_HARDEN_BELOW_NXDOMAIN STRING_ARG
+	{
+		OUTYY(("P(server_harden_below_nxdomain:%s)\n", $2));
+		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+			yyerror("expected yes or no.");
+		else cfg_parser->cfg->harden_below_nxdomain = 
 			(strcmp($2, "yes")==0);
 		free($2);
 	}
@@ -976,9 +995,11 @@ server_local_zone: VAR_LOCAL_ZONE STRING_ARG STRING_ARG
 		OUTYY(("P(server_local_zone:%s %s)\n", $2, $3));
 		if(strcmp($3, "static")!=0 && strcmp($3, "deny")!=0 &&
 		   strcmp($3, "refuse")!=0 && strcmp($3, "redirect")!=0 &&
-		   strcmp($3, "transparent")!=0 && strcmp($3, "nodefault")!=0)
+		   strcmp($3, "transparent")!=0 && strcmp($3, "nodefault")!=0
+		   && strcmp($3, "typetransparent")!=0)
 			yyerror("local-zone type: expected static, deny, "
-				"refuse, redirect, transparent or nodefault");
+				"refuse, redirect, transparent, "
+				"typetransparent or nodefault");
 		else if(strcmp($3, "nodefault")==0) {
 			if(!cfg_strlist_insert(&cfg_parser->cfg->
 				local_zones_nodefault, $2))

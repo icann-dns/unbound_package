@@ -304,6 +304,34 @@ net_test(void)
 		unit_assert(ipstrtoaddr("2::ffff:192.168.0.2", 53, &a, &l));
 		unit_assert(!addr_is_ip4mapped(&a, l));
 	}
+	/* test addr_is_any */
+	unit_show_func("util/net_help.c", "addr_is_any");
+	if(1) {
+		struct sockaddr_storage a;
+		socklen_t l = (socklen_t)sizeof(a);
+		unit_assert(ipstrtoaddr("0.0.0.0", 53, &a, &l));
+		unit_assert(addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("0.0.0.0", 10053, &a, &l));
+		unit_assert(addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("0.0.0.0", 0, &a, &l));
+		unit_assert(addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("::0", 0, &a, &l));
+		unit_assert(addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("::0", 53, &a, &l));
+		unit_assert(addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("::1", 53, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("2001:1667::1", 0, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("2001::0", 0, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("10.0.0.0", 0, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("0.0.0.10", 0, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+		unit_assert(ipstrtoaddr("192.0.2.1", 0, &a, &l));
+		unit_assert(!addr_is_any(&a, l));
+	}
 }
 
 #include "util/config_file.h"
@@ -407,7 +435,7 @@ infra_test(void)
 	unit_assert( infra_edns_update(slab, &one, onelen, -1, now) );
 	unit_assert( infra_host(slab, &one, onelen, 
 			now, &vs, &edns_lame, &to) );
-	unit_assert( vs == 0 && to == init*2  && edns_lame == 0);
+	unit_assert( vs == -1 && to == init*2  && edns_lame == 1);
 
 	now += cfg->host_ttl + 10;
 	unit_assert( infra_host(slab, &one, onelen, 
@@ -436,6 +464,22 @@ infra_test(void)
 		&dlame, &rlame, &alame, &olame) );
 	unit_assert(!dlame && !rlame && alame && olame);
 	lock_rw_unlock(&k->entry.lock);
+
+	/* test that noEDNS cannot overwrite known-yesEDNS */
+	now += cfg->host_ttl + 10;
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init && edns_lame == 0 );
+
+	unit_assert( infra_edns_update(slab, &one, onelen, 0, now) );
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init && edns_lame == 1 );
+
+	unit_assert( infra_edns_update(slab, &one, onelen, -1, now) );
+	unit_assert( infra_host(slab, &one, onelen, 
+			now, &vs, &edns_lame, &to) );
+	unit_assert( vs == 0 && to == init && edns_lame == 1 );
 
 	infra_delete(slab);
 	config_delete(cfg);
@@ -487,6 +531,7 @@ void unit_show_feature(const char* feature)
  * Main unit test program. Setup, teardown and report errors.
  * @param argc: arg count.
  * @param argv: array of commandline arguments.
+ * @return program failure if test fails.
  */
 int 
 main(int argc, char* argv[])

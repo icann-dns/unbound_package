@@ -9,6 +9,7 @@ build: patch build-stamp
 build-stamp:
 	dh build --before configure
 	dh_auto_configure -- \
+		--disable-gost \
 		--disable-rpath \
 		--with-chroot-dir=/var/lib/unbound \
 		--with-pidfile=/var/run/unbound.pid \
@@ -25,6 +26,7 @@ install: build
 	dh_installinit --error-handler=true --restart-after-upgrade
 	dh install --after dh_installinit
 	install -m 0644 doc/example.conf debian/unbound/etc/unbound/unbound.conf
+	echo '$$named unbound' > debian/unbound/etc/insserv.conf.d/unbound
 
 binary-arch: install
 	dh binary-arch

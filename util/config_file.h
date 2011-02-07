@@ -120,7 +120,9 @@ struct config_file {
 	 * and recvmsg/sendmsg ancillary data to detect interfaces, boolean */
 	int if_automatic;
 	/** SO_RCVBUF size to set on port 53 UDP socket */
-	size_t socket_rcvbuf;
+	size_t so_rcvbuf;
+	/** SO_SNDBUF size to set on port 53 UDP socket */
+	size_t so_sndbuf;
 
 	/** number of interfaces to open. If 0 default all interfaces. */
 	int num_ifs;
@@ -154,6 +156,8 @@ struct config_file {
 	int harden_glue;
 	/** harden against receiving no DNSSEC data for trust anchor */
 	int harden_dnssec_stripped;
+	/** harden against queries that fall under known nxdomain names */
+	int harden_below_nxdomain;
 	/** harden the referral path, query for NS,A,AAAA and validate */
 	int harden_referral_path;
 	/** use 0x20 bits in query as random ID bits */

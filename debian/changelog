@@ -1,3 +1,11 @@
+unbound (1.4.8-1) unstable; urgency=low
+
+  * New upstream release; closes: #611527.
+  * Add /etc/insserv.conf.d/unbound file declaring unbound to be a name
+    daemon; closes: #596488, #600118.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 06 Feb 2011 23:33:04 -0500
+
 unbound (1.4.6-1) unstable; urgency=low
 
   * New upstream release.
