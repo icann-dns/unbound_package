@@ -90,7 +90,8 @@ verbose_print_addr(struct addrinfo *addr)
 
 int
 create_udp_sock(int family, int socktype, struct sockaddr* addr,
-        socklen_t addrlen, int v6only, int* inuse, int* noproto, int rcv)
+        socklen_t addrlen, int v6only, int* inuse, int* noproto,
+	int rcv, int snd)
 {
 	int s;
 #if defined(IPV6_USE_MIN_MTU)
@@ -101,6 +102,9 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 #endif
 #if !defined(SO_RCVBUFFORCE) && !defined(SO_RCVBUF)
 	(void)rcv;
+#endif
+#if !defined(SO_SNDBUFFORCE) && !defined(SO_SNDBUF)
+	(void)snd;
 #endif
 #ifndef IPV6_V6ONLY
 	(void)v6only;
@@ -182,6 +186,65 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 		}
 #  endif
 #endif /* SO_RCVBUF */
+	}
+	/* first do RCVBUF as the receive buffer is more important */
+	if(snd) {
+#ifdef SO_SNDBUF
+		int got;
+		socklen_t slen = (socklen_t)sizeof(got);
+#  ifdef SO_SNDBUFFORCE
+		/* Linux specific: try to use root permission to override
+		 * system limits on sndbuf. The limit is stored in 
+		 * /proc/sys/net/core/wmem_max or sysctl net.core.wmem_max */
+		if(setsockopt(s, SOL_SOCKET, SO_SNDBUFFORCE, (void*)&snd, 
+			(socklen_t)sizeof(snd)) < 0) {
+			if(errno != EPERM) {
+#    ifndef USE_WINSOCK
+				log_err("setsockopt(..., SO_SNDBUFFORCE, "
+					"...) failed: %s", strerror(errno));
+				close(s);
+#    else
+				log_err("setsockopt(..., SO_SNDBUFFORCE, "
+					"...) failed: %s", 
+					wsa_strerror(WSAGetLastError()));
+				closesocket(s);
+#    endif
+				*noproto = 0;
+				*inuse = 0;
+				return -1;
+			}
+#  endif /* SO_SNDBUFFORCE */
+			if(setsockopt(s, SOL_SOCKET, SO_SNDBUF, (void*)&snd, 
+				(socklen_t)sizeof(snd)) < 0) {
+#  ifndef USE_WINSOCK
+				log_err("setsockopt(..., SO_SNDBUF, "
+					"...) failed: %s", strerror(errno));
+				close(s);
+#  else
+				log_err("setsockopt(..., SO_SNDBUF, "
+					"...) failed: %s", 
+					wsa_strerror(WSAGetLastError()));
+				closesocket(s);
+#  endif
+				*noproto = 0;
+				*inuse = 0;
+				return -1;
+			}
+			/* check if we got the right thing or if system
+			 * reduced to some system max.  Warn if so */
+			if(getsockopt(s, SOL_SOCKET, SO_SNDBUF, (void*)&got, 
+				&slen) >= 0 && got < snd/2) {
+				log_warn("so-sndbuf %u was not granted. "
+					"Got %u. To fix: start with "
+					"root permissions(linux) or sysctl "
+					"bigger net.core.wmem_max(linux) or "
+					"kern.ipc.maxsockbuf(bsd) values.",
+					(unsigned)snd, (unsigned)got);
+			}
+#  ifdef SO_SNDBUFFORCE
+		}
+#  endif
+#endif /* SO_SNDBUF */
 	}
 	if(family == AF_INET6) {
 # if defined(IPV6_V6ONLY)
@@ -280,15 +343,21 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 		/* detect freebsd jail with no ipv6 permission */
 		if(family==AF_INET6 && errno==EINVAL)
 			*noproto = 1;
-		else if(errno != EADDRINUSE)
+		else if(errno != EADDRINUSE) {
 			log_err("can't bind socket: %s", strerror(errno));
+			log_addr(0, "failed address",
+				(struct sockaddr_storage*)addr, addrlen);
+		}
 #endif /* EADDRINUSE */
 		close(s);
 #else /* USE_WINSOCK */
 		if(WSAGetLastError() != WSAEADDRINUSE &&
-			WSAGetLastError() != WSAEADDRNOTAVAIL)
+			WSAGetLastError() != WSAEADDRNOTAVAIL) {
 			log_err("can't bind socket: %s", 
 				wsa_strerror(WSAGetLastError()));
+			log_addr(0, "failed address",
+				(struct sockaddr_storage*)addr, addrlen);
+		}
 		closesocket(s);
 #endif
 		return -1;
@@ -368,10 +437,18 @@ create_tcp_accept_sock(struct addrinfo *addr, int v6only, int* noproto)
 		/* detect freebsd jail with no ipv6 permission */
 		if(addr->ai_family==AF_INET6 && errno==EINVAL)
 			*noproto = 1;
-		else log_err("can't bind socket: %s", strerror(errno));
+		else {
+			log_err("can't bind socket: %s", strerror(errno));
+			log_addr(0, "failed address",
+				(struct sockaddr_storage*)addr->ai_addr,
+				addr->ai_addrlen);
+		}
 #else
 		log_err("can't bind socket: %s", 
 			wsa_strerror(WSAGetLastError()));
+		log_addr(0, "failed address",
+			(struct sockaddr_storage*)addr->ai_addr,
+			addr->ai_addrlen);
 #endif
 		return -1;
 	}
@@ -394,7 +471,7 @@ create_tcp_accept_sock(struct addrinfo *addr, int v6only, int* noproto)
  */
 static int
 make_sock(int stype, const char* ifname, const char* port, 
-	struct addrinfo *hints, int v6only, int* noip6, size_t rcv)
+	struct addrinfo *hints, int v6only, int* noip6, size_t rcv, size_t snd)
 {
 	struct addrinfo *res = NULL;
 	int r, s, inuse, noproto;
@@ -420,8 +497,8 @@ make_sock(int stype, const char* ifname, const char* port,
 	if(stype == SOCK_DGRAM) {
 		verbose_print_addr(res);
 		s = create_udp_sock(res->ai_family, res->ai_socktype,
-			(struct sockaddr*)res->ai_addr,
-			res->ai_addrlen, v6only, &inuse, &noproto, (int)rcv);
+			(struct sockaddr*)res->ai_addr, res->ai_addrlen,
+			v6only, &inuse, &noproto, (int)rcv, (int)snd);
 		if(s == -1 && inuse) {
 			log_err("bind: address already in use");
 		} else if(s == -1 && noproto && hints->ai_family == AF_INET6){
@@ -440,7 +517,7 @@ make_sock(int stype, const char* ifname, const char* port,
 /** make socket and first see if ifname contains port override info */
 static int
 make_sock_port(int stype, const char* ifname, const char* port, 
-	struct addrinfo *hints, int v6only, int* noip6, size_t rcv)
+	struct addrinfo *hints, int v6only, int* noip6, size_t rcv, size_t snd)
 {
 	char* s = strchr(ifname, '@');
 	if(s) {
@@ -461,9 +538,10 @@ make_sock_port(int stype, const char* ifname, const char* port,
 		newif[s-ifname] = 0;
 		strncpy(p, s+1, sizeof(p));
 		p[strlen(s+1)]=0;
-		return make_sock(stype, newif, p, hints, v6only, noip6, rcv);
+		return make_sock(stype, newif, p, hints, v6only, noip6,
+			rcv, snd);
 	}
-	return make_sock(stype, ifname, port, hints, v6only, noip6, rcv);
+	return make_sock(stype, ifname, port, hints, v6only, noip6, rcv, snd);
 }
 
 /**
@@ -553,19 +631,20 @@ set_recvpktinfo(int s, int family)
  * @param port: Port number to use (as string).
  * @param list: list of open ports, appended to, changed to point to list head.
  * @param rcv: receive buffer size for UDP
+ * @param snd: send buffer size for UDP
  * @return: returns false on error.
  */
 static int
 ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp, 
 	struct addrinfo *hints, const char* port, struct listen_port** list,
-	size_t rcv)
+	size_t rcv, size_t snd)
 {
 	int s, noip6=0;
 	if(!do_udp && !do_tcp)
 		return 0;
 	if(do_auto) {
 		if((s = make_sock_port(SOCK_DGRAM, ifname, port, hints, 1, 
-			&noip6, rcv)) == -1) {
+			&noip6, rcv, snd)) == -1) {
 			if(noip6) {
 				log_warn("IPv6 protocol not available");
 				return 1;
@@ -586,7 +665,7 @@ ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp,
 	} else if(do_udp) {
 		/* regular udp socket */
 		if((s = make_sock_port(SOCK_DGRAM, ifname, port, hints, 1, 
-			&noip6, rcv)) == -1) {
+			&noip6, rcv, snd)) == -1) {
 			if(noip6) {
 				log_warn("IPv6 protocol not available");
 				return 1;
@@ -604,7 +683,7 @@ ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp,
 	}
 	if(do_tcp) {
 		if((s = make_sock_port(SOCK_STREAM, ifname, port, hints, 1, 
-			&noip6, 0)) == -1) {
+			&noip6, 0, 0)) == -1) {
 			if(noip6) {
 				/*log_warn("IPv6 protocol not available");*/
 				return 1;
@@ -715,32 +794,6 @@ listen_delete(struct listen_dnsport* front)
 	free(front);
 }
 
-void listen_pushback(struct listen_dnsport* listen)
-{
-	struct listen_list *p;
-	log_assert(listen);
-	for(p = listen->cps; p; p = p->next)
-	{
-		if(p->com->type != comm_udp &&
-			p->com->type != comm_tcp_accept)
-			continue;
-		comm_point_stop_listening(p->com);
-	}
-}
-
-void listen_resume(struct listen_dnsport* listen)
-{
-	struct listen_list *p;
-	log_assert(listen);
-	for(p = listen->cps; p; p = p->next)
-	{
-		if(p->com->type != comm_udp &&
-			p->com->type != comm_tcp_accept)
-			continue;
-		comm_point_start_listening(p->com, -1, -1);
-	}
-}
-
 struct listen_port* 
 listening_ports_open(struct config_file* cfg)
 {
@@ -770,17 +823,14 @@ listening_ports_open(struct config_file* cfg)
 	if(!do_ip4 && !do_ip6) {
 		return NULL;
 	}
-	if(do_auto && (!do_ip4 || !do_ip6)) {
-		log_warn("interface_automatic option does not work when either do-ip4 or do-ip6 is not enabled. Disabling option.");
-		do_auto = 0;
-	}
 	/* create ip4 and ip6 ports so that return addresses are nice. */
 	if(do_auto || cfg->num_ifs == 0) {
 		if(do_ip6) {
 			hints.ai_family = AF_INET6;
 			if(!ports_create_if(do_auto?"::0":"::1", 
 				do_auto, cfg->do_udp, do_tcp, 
-				&hints, portbuf, &list, cfg->socket_rcvbuf)) {
+				&hints, portbuf, &list,
+				cfg->so_rcvbuf, cfg->so_sndbuf)) {
 				listening_ports_free(list);
 				return NULL;
 			}
@@ -789,7 +839,8 @@ listening_ports_open(struct config_file* cfg)
 			hints.ai_family = AF_INET;
 			if(!ports_create_if(do_auto?"0.0.0.0":"127.0.0.1", 
 				do_auto, cfg->do_udp, do_tcp, 
-				&hints, portbuf, &list, cfg->socket_rcvbuf)) {
+				&hints, portbuf, &list,
+				cfg->so_rcvbuf, cfg->so_sndbuf)) {
 				listening_ports_free(list);
 				return NULL;
 			}
@@ -801,7 +852,7 @@ listening_ports_open(struct config_file* cfg)
 			hints.ai_family = AF_INET6;
 			if(!ports_create_if(cfg->ifs[i], 0, cfg->do_udp, 
 				do_tcp, &hints, portbuf, &list, 
-				cfg->socket_rcvbuf)) {
+				cfg->so_rcvbuf, cfg->so_sndbuf)) {
 				listening_ports_free(list);
 				return NULL;
 			}
@@ -811,7 +862,7 @@ listening_ports_open(struct config_file* cfg)
 			hints.ai_family = AF_INET;
 			if(!ports_create_if(cfg->ifs[i], 0, cfg->do_udp, 
 				do_tcp, &hints, portbuf, &list, 
-				cfg->socket_rcvbuf)) {
+				cfg->so_rcvbuf, cfg->so_sndbuf)) {
 				listening_ports_free(list);
 				return NULL;
 			}

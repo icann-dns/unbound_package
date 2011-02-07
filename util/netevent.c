@@ -176,7 +176,7 @@ comm_base_create(int sigs)
 	/* use mini event time-sharing feature */
 	b->eb->base = event_init(&b->eb->secs, &b->eb->now);
 #else
-#  ifdef HAVE_EV_LOOP
+#  if defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP)
 	/* libev */
 	if(sigs)
 		b->eb->base=(struct event_base *)ev_default_loop(EVFLAG_AUTO);
@@ -200,7 +200,7 @@ comm_base_create(int sigs)
 	/* avoid event_get_method call which causes crashes even when
 	 * not printing, because its result is passed */
 	verbose(VERB_ALGO, 
-#ifdef HAVE_EV_LOOP
+#if defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP)
 		"libev"
 #elif defined(USE_MINI_EVENT)
 		"event "
@@ -266,6 +266,46 @@ struct event_base* comm_base_internal(struct comm_base* b)
 	return b->eb->base;
 }
 
+/** see if errno for udp has to be logged or not uses globals */
+static int
+udp_send_errno_needs_log(struct sockaddr* addr, socklen_t addrlen)
+{
+	/* do not log transient errors (unless high verbosity) */
+#if defined(ENETUNREACH) || defined(EHOSTDOWN) || defined(EHOSTUNREACH) || defined(ENETDOWN)
+	switch(errno) {
+#  ifdef ENETUNREACH
+		case ENETUNREACH:
+#  endif
+#  ifdef EHOSTDOWN
+		case EHOSTDOWN:
+#  endif
+#  ifdef EHOSTUNREACH
+		case EHOSTUNREACH:
+#  endif
+#  ifdef ENETDOWN
+		case ENETDOWN:
+#  endif
+			if(verbosity < VERB_ALGO)
+				return 0;
+		default:
+			break;
+	}
+#endif
+	/* squelch errors where people deploy AAAA ::ffff:bla for
+	 * authority servers, which we try for intranets. */
+	if(errno == EINVAL && addr_is_ip4mapped(
+		(struct sockaddr_storage*)addr, addrlen) &&
+		verbosity < VERB_DETAIL)
+		return 0;
+	/* SO_BROADCAST sockopt can give access to 255.255.255.255,
+	 * but a dns cache does not need it. */
+	if(errno == EACCES && addr_is_broadcast(
+		(struct sockaddr_storage*)addr, addrlen) &&
+		verbosity < VERB_DETAIL)
+		return 0;
+	return 1;
+}
+
 /* send a UDP reply */
 int
 comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
@@ -282,38 +322,7 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 		ldns_buffer_remaining(packet), 0,
 		addr, addrlen);
 	if(sent == -1) {
-		/* do not log transient errors (unless high verbosity) */
-#if defined(ENETUNREACH) || defined(EHOSTDOWN) || defined(EHOSTUNREACH) || defined(ENETDOWN)
-		switch(errno) {
-#  ifdef ENETUNREACH
-			case ENETUNREACH:
-#  endif
-#  ifdef EHOSTDOWN
-			case EHOSTDOWN:
-#  endif
-#  ifdef EHOSTUNREACH
-			case EHOSTUNREACH:
-#  endif
-#  ifdef ENETDOWN
-			case ENETDOWN:
-#  endif
-				if(verbosity < VERB_ALGO)
-					return 0;
-			default:
-				break;
-		}
-#endif
-		/* squelch errors where people deploy AAAA ::ffff:bla for
-		 * authority servers, which we try for intranets. */
-		if(errno == EINVAL && addr_is_ip4mapped(
-			(struct sockaddr_storage*)addr, addrlen) &&
-			verbosity < VERB_DETAIL)
-			return 0;
-		/* SO_BROADCAST sockopt can give access to 255.255.255.255,
-		 * but a dns cache does not need it. */
-		if(errno == EACCES && addr_is_broadcast(
-			(struct sockaddr_storage*)addr, addrlen) &&
-			verbosity < VERB_DETAIL)
+		if(!udp_send_errno_needs_log(addr, addrlen))
 			return 0;
 #ifndef USE_WINSOCK
 		verbose(VERB_OPS, "sendto failed: %s", strerror(errno));
@@ -332,10 +341,10 @@ comm_point_send_udp_msg(struct comm_point *c, ldns_buffer* packet,
 	return 1;
 }
 
+#if defined(AF_INET6) && defined(IPV6_PKTINFO) && (defined(HAVE_RECVMSG) || defined(HAVE_SENDMSG))
 /** print debug ancillary info */
 static void p_ancil(const char* str, struct comm_reply* r)
 {
-#if defined(AF_INET6) && defined(IPV6_PKTINFO) && (defined(HAVE_RECVMSG) || defined(HAVE_SENDMSG))
 	if(r->srctype != 4 && r->srctype != 6) {
 		log_info("%s: unknown srctype %d", str, r->srctype);
 		return;
@@ -371,13 +380,10 @@ static void p_ancil(const char* str, struct comm_reply* r)
 		}
 		buf1[sizeof(buf1)-1]=0;
 		log_info("%s: %s", str, buf1);
-#endif
+#endif /* IP_PKTINFO or PI_RECVDSTDADDR */
 	}
-#else
-	(void)str;
-	(void)r;
-#endif
 }
+#endif /* AF_INET6 && IPV6_PKTINFO && HAVE_RECVMSG||HAVE_SENDMSG */
 
 /** send a UDP reply over specified interface*/
 static int
@@ -431,7 +437,7 @@ comm_point_send_udp_msg_if(struct comm_point *c, ldns_buffer* packet,
 #else
 		verbose(VERB_ALGO, "no IP_PKTINFO or IP_SENDSRCADDR");
 		msg.msg_control = NULL;
-#endif
+#endif /* IP_PKTINFO or IP_SENDSRCADDR */
 	} else if(r->srctype == 6) {
 		msg.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
 		log_assert(msg.msg_controllen <= sizeof(control));
@@ -454,6 +460,8 @@ comm_point_send_udp_msg_if(struct comm_point *c, ldns_buffer* packet,
 		p_ancil("send_udp over interface", r);
 	sent = sendmsg(c->fd, &msg, 0);
 	if(sent == -1) {
+		if(!udp_send_errno_needs_log(addr, addrlen))
+			return 0;
 		verbose(VERB_OPS, "sendmsg failed: %s", strerror(errno));
 		log_addr(VERB_OPS, "remote address is", 
 			(struct sockaddr_storage*)addr, addrlen);
@@ -472,7 +480,7 @@ comm_point_send_udp_msg_if(struct comm_point *c, ldns_buffer* packet,
 	(void)r;
 	log_err("sendmsg: IPV6_PKTINFO not supported");
 	return 0;
-#endif
+#endif /* AF_INET6 && IPV6_PKTINFO && HAVE_SENDMSG */
 }
 
 void 
@@ -546,7 +554,7 @@ comm_point_udp_ancil_callback(int fd, short event, void* arg)
 				memmove(&rep.pktinfo.v4addr, CMSG_DATA(cmsg),
 					sizeof(struct in_addr));
 				break;
-#endif
+#endif /* IP_PKTINFO or IP_RECVDSTADDR */
 			}
 		}
 		if(verbosity >= VERB_ALGO)
@@ -567,7 +575,7 @@ comm_point_udp_ancil_callback(int fd, short event, void* arg)
 	(void)arg;
 	fatal_exit("recvmsg: No support for IPV6_PKTINFO. "
 		"Please disable interface-automatic");
-#endif
+#endif /* AF_INET6 && IPV6_PKTINFO && HAVE_RECVMSG */
 }
 
 void 
@@ -883,22 +891,8 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
 		if(error == EINPROGRESS || error == EWOULDBLOCK)
 			return 1; /* try again later */
 #endif
-#ifdef ECONNREFUSED
-                else if(error == ECONNREFUSED && verbosity < 2)
-                        return 0; /* silence 'connection refused' */
-#endif
-#ifdef EHOSTUNREACH
-                else if(error == EHOSTUNREACH && verbosity < 2)
-                        return 0; /* silence 'no route to host' */
-#endif
-#ifdef EHOSTDOWN
-                else if(error == EHOSTDOWN && verbosity < 2)
-                        return 0; /* silence 'host is down' */
-#endif
-#ifdef ETIMEDOUT
-                else if(error == ETIMEDOUT && verbosity < 2)
-                        return 0; /* silence 'connection timed out' */
-#endif
+		else if(error != 0 && verbosity < 2)
+			return 0; /* silence lots of chatter in the logs */
                 else if(error != 0) {
 			log_err("tcp connect: %s", strerror(error));
 #else /* USE_WINSOCK */
@@ -908,7 +902,7 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
 		else if(error == WSAEWOULDBLOCK) {
 			winsock_tcp_wouldblock(&c->ev->ev, EV_WRITE);
 			return 1;
-		} else if(error == WSAECONNREFUSED || error == WSAEHOSTUNREACH)
+		} else if(error != 0 && verbosity < 2)
 			return 0;
 		else if(error != 0) {
 			log_err("tcp connect: %s", wsa_strerror(error));
@@ -936,6 +930,10 @@ comm_point_tcp_handle_write(int fd, struct comm_point* c)
 #endif /* HAVE_WRITEV */
 		if(r == -1) {
 #ifndef USE_WINSOCK
+#ifdef EPIPE
+                	if(errno == EPIPE && verbosity < 2)
+                        	return 0; /* silence 'broken pipe' */
+#endif
 			if(errno == EINTR || errno == EAGAIN)
 				return 1;
 			log_err("tcp writev: %s", strerror(errno));
@@ -1487,13 +1485,6 @@ comm_point_delete(struct comm_point* c)
 		ldns_buffer_free(c->buffer);
 	free(c->ev);
 	free(c);
-}
-
-void 
-comm_point_set_cb_arg(struct comm_point* c, void *arg)
-{
-	log_assert(c);
-	c->cb_arg = arg;
 }
 
 void 

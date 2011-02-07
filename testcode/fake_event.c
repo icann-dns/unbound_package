@@ -228,7 +228,7 @@ pending_find_match(struct replay_runtime* runtime, struct entry** entry,
  * @param runtime: runtime.
  * @param entry: if true, the entry that matches is returned.
  * @param pend: if true, the outgoing message that matches is returned.
- * return: true if pending query matches the now event.
+ * @return: true if pending query matches the now event.
  */
 static int 
 pending_matches_range(struct replay_runtime* runtime, 
@@ -1117,14 +1117,6 @@ struct listen_port* listening_ports_open(struct config_file* ATTR_UNUSED(cfg))
 void listening_ports_free(struct listen_port* list)
 {
 	free(list);
-}
-
-void listen_pushback(struct listen_dnsport* ATTR_UNUSED(listen))
-{
-}
-
-void listen_resume(struct listen_dnsport* ATTR_UNUSED(listen))
-{
 }
 
 struct comm_point* comm_point_create_local(struct comm_base* ATTR_UNUSED(base),

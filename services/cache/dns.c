@@ -49,6 +49,7 @@
 #include "util/module.h"
 #include "util/net_help.h"
 #include "util/regional.h"
+#include "util/config_file.h"
 
 /** store rrsets in the rrset cache. 
  * @param env: module environment with caches.
@@ -180,7 +181,7 @@ find_add_addrs(struct module_env* env, uint16_t qclass,
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_A, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_A(dp, region, akey, 0, 0)) {
+			if(!delegpt_add_rrset_A(dp, region, akey, 0)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
@@ -198,7 +199,7 @@ find_add_addrs(struct module_env* env, uint16_t qclass,
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_AAAA(dp, region, akey, 0, 0)) {
+			if(!delegpt_add_rrset_AAAA(dp, region, akey, 0)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
@@ -230,7 +231,7 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_A, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_A(dp, region, akey, (int)ns->lame, 1)) {
+			if(!delegpt_add_rrset_A(dp, region, akey, (int)ns->lame)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
@@ -248,7 +249,7 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
 		if(akey) {
-			if(!delegpt_add_rrset_AAAA(dp, region, akey, (int)ns->lame, 1)) {
+			if(!delegpt_add_rrset_AAAA(dp, region, akey, (int)ns->lame)) {
 				lock_rw_unlock(&akey->entry.lock);
 				return 0;
 			}
@@ -417,14 +418,14 @@ gen_dns_msg(struct regional* region, struct query_info* q, size_t num)
 
 /** generate dns_msg from cached message */
 static struct dns_msg*
-tomsg(struct module_env* env, struct msgreply_entry* e, struct reply_info* r, 
+tomsg(struct module_env* env, struct query_info* q, struct reply_info* r, 
 	struct regional* region, uint32_t now, struct regional* scratch)
 {
 	struct dns_msg* msg;
 	size_t i;
 	if(now > r->ttl)
 		return NULL;
-	msg = gen_dns_msg(region, &e->key, r->rrset_count);
+	msg = gen_dns_msg(region, q, r->rrset_count);
 	if(!msg)
 		return NULL;
 	msg->rep->flags = r->flags;
@@ -606,7 +607,7 @@ dns_cache_lookup(struct module_env* env,
 	if(e) {
 		struct msgreply_entry* key = (struct msgreply_entry*)e->key;
 		struct reply_info* data = (struct reply_info*)e->data;
-		struct dns_msg* msg = tomsg(env, key, data, region, now, 
+		struct dns_msg* msg = tomsg(env, &key->key, data, region, now, 
 			scratch);
 		if(msg) {
 			lock_rw_unlock(&e->lock);
@@ -630,8 +631,10 @@ dns_cache_lookup(struct module_env* env,
 		lock_rw_unlock(&rrset->entry.lock);
 	}
 
-	/* see if we have CNAME for this domain */
-	if( (rrset=rrset_cache_lookup(env->rrset_cache, qname, qnamelen, 
+	/* see if we have CNAME for this domain,
+	 * but not for DS records (which are part of the parent) */
+	if( qtype != LDNS_RR_TYPE_DS &&
+	   (rrset=rrset_cache_lookup(env->rrset_cache, qname, qnamelen, 
 		LDNS_RR_TYPE_CNAME, qclass, 0, now, 0))) {
 		struct dns_msg* msg = rrset_msg(rrset, region, now, &k);
 		if(msg) {
@@ -668,6 +671,33 @@ dns_cache_lookup(struct module_env* env,
 		}
 		lock_rw_unlock(&rrset->entry.lock);
 	}
+
+	/* stop downwards cache search on NXDOMAIN.
+	 * Empty nonterminals are NOERROR, so an NXDOMAIN for foo
+	 * means bla.foo also does not exist.  The DNSSEC proofs are
+	 * the same.  We search upwards for NXDOMAINs. */
+	if(env->cfg->harden_below_nxdomain)
+	    while(!dname_is_root(k.qname)) {
+		dname_remove_label(&k.qname, &k.qname_len);
+		h = query_info_hash(&k);
+		e = slabhash_lookup(env->msg_cache, h, &k, 0);
+		if(e) {
+			struct reply_info* data = (struct reply_info*)e->data;
+			struct dns_msg* msg;
+			if(FLAGS_GET_RCODE(data->flags) == LDNS_RCODE_NXDOMAIN
+			  && data->security != sec_status_bogus
+			  && (msg=tomsg(env, &k, data, region, now, scratch))){
+				lock_rw_unlock(&e->lock);
+				msg->qinfo.qname=qname;
+				msg->qinfo.qname_len=qnamelen;
+				/* check that DNSSEC really works out */
+				msg->rep->security = sec_status_unchecked;
+				return msg;
+			}
+			lock_rw_unlock(&e->lock);
+		}
+	}
+
 	return NULL;
 }
 

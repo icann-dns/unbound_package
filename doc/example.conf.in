@@ -79,6 +79,10 @@ server:
 	# 0 is system default.  Use 4m to catch query spikes for busy servers.
 	# so-rcvbuf: 0
 
+	# buffer size for UDP port 53 outgoing (SO_SNDBUF socket option).
+	# 0 is system default.  Use 4m to handle spikes on very busy servers.
+	# so-sndbuf: 0
+
 	# EDNS reassembly buffer to advertise to UDP peers (the actual buffer
 	# is set with msg-buffer-size). 1480 can solve fragmentation (timeouts).
 	# edns-buffer-size: 4096
@@ -253,6 +257,10 @@ server:
 	# Default on, which insists on dnssec data for trust-anchored zones.
 	# harden-dnssec-stripped: yes
 
+	# Harden against queries that fall under known nxdomain names.
+	# Default off because very old software can be incompatible.
+	# harden-below-nxdomain: no
+
         # Harden the referral path by performing additional queries for
 	# infrastructure data.  Validates the replies (if possible).
 	# Default off, because the lookups burden the server.  Experimental 
@@ -271,7 +279,7 @@ server:
 	# private-address: 10.0.0.0/8
 	# private-address: 172.16.0.0/12
 	# private-address: 192.168.0.0/16
-	# private-address: 192.254.0.0/16
+	# private-address: 169.254.0.0/16
 	# private-address: fd00::/8
 	# private-address: fe80::/10
 
@@ -305,6 +313,14 @@ server:
 	# separated by spaces. "iterator" or "validator iterator"
 	# module-config: "validator iterator"
 
+	# File with trusted keys, kept uptodate using RFC5011 probes,
+	# initial file like trust-anchor-file, then it stores metadata.
+	# Use several entries, one per domain name, to track multiple zones.
+	#
+	# If you want to perform DNSSEC validation, run unbound-anchor before
+	# you start unbound (i.e. in the system boot scripts).  And enable:
+	# auto-trust-anchor-file: "@UNBOUND_ROOTKEY_FILE@"
+
 	# File with DLV trusted keys. Same format as trust-anchor-file.
 	# There can be only one DLV configured, it is trusted from root down.
 	# Download http://ftp.isc.org/www/dlv/dlv.isc.org.key
@@ -313,15 +329,12 @@ server:
 	# File with trusted keys for validation. Specify more than one file
 	# with several entries, one file per entry.
 	# Zone file format, with DS and DNSKEY entries.
+	# Note this gets out of date, use auto-trust-anchor-file please.
 	# trust-anchor-file: ""
 	
-	# File with trusted keys, kept uptodate using RFC5011 probes,
-	# initial file like trust-anchor-file, then it stores metadata.
-	# Use several entries, one per domain name, to track multiple zones.
-	# auto-trust-anchor-file: ""
-
 	# Trusted key for validation. DS or DNSKEY. specify the RR on a
 	# single line, surrounded by "". TTL is ignored. class is IN default.
+	# Note this gets out of date, use auto-trust-anchor-file please.
 	# (These examples are from August 2007 and may not be valid anymore).
 	# trust-anchor: "nlnetlabs.nl. DNSKEY 257 3 5 AQPzzTWMz8qSWIQlfRnPckx2BiVmkVN6LPupO3mbz7FhLSnm26n6iG9N Lby97Ji453aWZY3M5/xJBSOS2vWtco2t8C0+xeO1bc/d6ZTy32DHchpW 6rDH1vp86Ll+ha0tmwyy9QP7y2bVw5zSbFCrefk8qCUBgfHm9bHzMG1U BYtEIQ=="
 	# trust-anchor: "jelte.nlnetlabs.nl. DS 42860 5 1 14D739EB566D2B1A5E216A0BA4D17FA9B038BE4A"
@@ -330,6 +343,7 @@ server:
 	# with several entries, one file per entry. Like trust-anchor-file
 	# but has a different file format. Format is BIND-9 style format, 
 	# the trusted-keys { name flag proto algo "key"; }; clauses are read.
+	# you need external update procedures to track changes in keys.
 	# trusted-keys-file: ""
 
 	# Ignore chain of trust. Domain is treated as insecure.
@@ -405,6 +419,7 @@ server:
 	# o transparent gives local data, but resolves normally for other names
 	# o redirect serves the zone data for any subdomain in the zone.
 	# o nodefault can be used to normally resolve AS112 zones.
+	# o typetransparent resolves normally for other types and other names
 	#
 	# defaults are localhost address, reverse for 127.0.0.1 and ::1
 	# and nxdomain for AS112 zones. If you configure one of these zones

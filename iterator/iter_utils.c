@@ -183,7 +183,7 @@ iter_filter_unsuitable(struct iter_env* iter_env, struct module_env* env,
 	uint8_t* name, size_t namelen, uint16_t qtype, uint32_t now, 
 	struct delegpt_addr* a)
 {
-	int rtt, lame, reclame, dnsseclame, lost;
+	int rtt, lame, reclame, dnsseclame;
 	if(a->bogus)
 		return -1; /* address of server is bogus */
 	if(donotq_lookup(iter_env->donotq, &a->addr, a->addrlen)) {
@@ -197,19 +197,18 @@ iter_filter_unsuitable(struct iter_env* iter_env, struct module_env* env,
 	/* check lameness - need zone , class info */
 	if(infra_get_lame_rtt(env->infra_cache, &a->addr, a->addrlen, 
 		name, namelen, qtype, &lame, &dnsseclame, &reclame, 
-		&rtt, &lost, now)) {
+		&rtt, now)) {
 		log_addr(VERB_ALGO, "servselect", &a->addr, a->addrlen);
-		verbose(VERB_ALGO, "   rtt=%d lost=%d%s%s%s%s", rtt, lost,
+		verbose(VERB_ALGO, "   rtt=%d%s%s%s%s", rtt,
 			lame?" LAME":"",
 			dnsseclame?" DNSSEC_LAME":"",
 			reclame?" REC_LAME":"",
 			a->lame?" ADDR_LAME":"");
 		if(lame)
 			return -1; /* server is lame */
-		else if(rtt >= USEFUL_SERVER_TOP_TIMEOUT && 
-			lost >= USEFUL_SERVER_MAX_LOST)
-			/* server is unresponsive, but keep trying slowly */
-			return USEFUL_SERVER_TOP_TIMEOUT+1;
+		else if(rtt >= USEFUL_SERVER_TOP_TIMEOUT)
+			/* server is unresponsive */
+			return USEFUL_SERVER_TOP_TIMEOUT;
 		/* select remainder from worst to best */
 		else if(reclame)
 			return rtt+USEFUL_SERVER_TOP_TIMEOUT*3; /* nonpref */
@@ -217,8 +216,6 @@ iter_filter_unsuitable(struct iter_env* iter_env, struct module_env* env,
 			return rtt+USEFUL_SERVER_TOP_TIMEOUT*2; /* nonpref */
 		else if(a->lame)
 			return rtt+USEFUL_SERVER_TOP_TIMEOUT+1; /* nonpref */
-		else if(rtt >= USEFUL_SERVER_TOP_TIMEOUT) /* not blacklisted*/
-			return USEFUL_SERVER_TOP_TIMEOUT+1;
 		else	return rtt;
 	}
 	/* no server information present */
@@ -852,7 +849,7 @@ int iter_lookup_parent_glue_from_cache(struct module_env* env,
 			log_rrset_key(VERB_ALGO, "found parent-side", akey);
 			ns->done_pside4 = 1;
 			/* a negative-cache-element has no addresses it adds */
-			if(!delegpt_add_rrset_A(dp, region, akey, 1, 1))
+			if(!delegpt_add_rrset_A(dp, region, akey, 1))
 				log_err("malloc failure in lookup_parent_glue");
 			lock_rw_unlock(&akey->entry.lock);
 		}
@@ -864,7 +861,7 @@ int iter_lookup_parent_glue_from_cache(struct module_env* env,
 			log_rrset_key(VERB_ALGO, "found parent-side", akey);
 			ns->done_pside6 = 1;
 			/* a negative-cache-element has no addresses it adds */
-			if(!delegpt_add_rrset_AAAA(dp, region, akey, 1, 1))
+			if(!delegpt_add_rrset_AAAA(dp, region, akey, 1))
 				log_err("malloc failure in lookup_parent_glue");
 			lock_rw_unlock(&akey->entry.lock);
 		}

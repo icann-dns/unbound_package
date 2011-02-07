@@ -185,7 +185,6 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 		libworker_delete(w);
 		return NULL;
 	}
-	w->env->send_packet = &libworker_send_packet;
 	w->env->send_query = &libworker_send_query;
 	w->env->detach_subs = &mesh_detach_subs;
 	w->env->attach_sub = &mesh_attach_sub;
@@ -671,18 +670,6 @@ void libworker_alloc_cleanup(void* arg)
         slabhash_clear(w->env->msg_cache);
 }
 
-int libworker_send_packet(ldns_buffer* pkt, struct sockaddr_storage* addr,
-        socklen_t addrlen, int timeout, struct module_qstate* q, int use_tcp)
-{
-	struct libworker* w = (struct libworker*)q->env->worker;
-	if(use_tcp) {
-		return pending_tcp_query(w->back, pkt, addr, addrlen,
-			timeout, libworker_handle_reply, q) != 0;
-	}
-	return pending_udp_query(w->back, pkt, addr, addrlen,
-		timeout*1000, libworker_handle_reply, q) != 0;
-}
-
 /** compare outbound entry qstates */
 static int
 outbound_entry_compare(void* a, void* b)
@@ -821,15 +808,6 @@ int remote_control_callback(struct comm_point* ATTR_UNUSED(c),
 void worker_sighandler(int ATTR_UNUSED(sig), void* ATTR_UNUSED(arg))
 {
 	log_assert(0);
-}
-
-int worker_send_packet(ldns_buffer* ATTR_UNUSED(pkt), 
-	struct sockaddr_storage* ATTR_UNUSED(addr), 
-	socklen_t ATTR_UNUSED(addrlen), int ATTR_UNUSED(timeout), 
-	struct module_qstate* ATTR_UNUSED(q), int ATTR_UNUSED(use_tcp))
-{
-	log_assert(0);
-	return 0;
 }
 
 struct outbound_entry* worker_send_query(uint8_t* ATTR_UNUSED(qname), 

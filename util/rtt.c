@@ -99,6 +99,10 @@ rtt_lost(struct rtt_info* rtt, int orig)
 {
 	/* exponential backoff */
 
+	/* if a query succeeded and put down the rto meanwhile, ignore this */
+	if(rtt->rto < orig)
+		return;
+
 	/* the original rto is doubled, not the current one to make sure
 	 * that the values in the cache are not increased by lots of
 	 * queries simultaneously as they time out at the same time */
@@ -108,4 +112,9 @@ rtt_lost(struct rtt_info* rtt, int orig)
 		if(rtt->rto > RTT_MAX_TIMEOUT)
 			rtt->rto = RTT_MAX_TIMEOUT;
 	}
+}
+
+int rtt_notimeout(const struct rtt_info* rtt)
+{
+	return calc_rto(rtt);
 }

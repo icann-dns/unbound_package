@@ -49,6 +49,7 @@
 #include "validator/val_nsec.h"
 #include "validator/val_nsec3.h"
 #include "validator/val_neg.h"
+#include "validator/val_sigcrypt.h"
 #include "validator/autotrust.h"
 #include "services/cache/dns.h"
 #include "util/data/dname.h"
@@ -695,6 +696,11 @@ validate_nodata_response(struct module_env* env, struct val_env* ve,
 			if(val_nsec_proves_name_error(s, qchase->qname)) {
 				ce = nsec_closest_encloser(qchase->qname, s);
 			}
+			if(val_nsec_proves_insecuredelegation(s, qchase)) {
+				verbose(VERB_ALGO, "delegation is insecure");
+				chase_reply->security = sec_status_insecure;
+				return;
+			}
 		} else if(ntohs(s->rk.type) == LDNS_RR_TYPE_NSEC3) {
 			nsec3s_seen = 1;
 		}
@@ -773,6 +779,11 @@ validate_nameerror_response(struct module_env* env, struct val_env* ve,
 			if(val_nsec_proves_no_wc(s, qchase->qname, 
 				qchase->qname_len))
 				has_valid_wnsec = 1;
+			if(val_nsec_proves_insecuredelegation(s, qchase)) {
+				verbose(VERB_ALGO, "delegation is insecure");
+				chase_reply->security = sec_status_insecure;
+				return;
+			}
 		} else if(ntohs(s->rk.type) == LDNS_RR_TYPE_NSEC3)
 			nsec3s_seen = 1;
 	}
@@ -1116,6 +1127,11 @@ validate_cname_noanswer_response(struct module_env* env, struct val_env* ve,
 			if(val_nsec_proves_no_wc(s, qchase->qname, 
 				qchase->qname_len))
 				nxdomain_valid_wnsec = 1;
+			if(val_nsec_proves_insecuredelegation(s, qchase)) {
+				verbose(VERB_ALGO, "delegation is insecure");
+				chase_reply->security = sec_status_insecure;
+				return;
+			}
 		} else if(ntohs(s->rk.type) == LDNS_RR_TYPE_NSEC3) {
 			nsec3s_seen = 1;
 		}
@@ -1488,7 +1504,8 @@ processFindKey(struct module_qstate* qstate, struct val_qstate* vq, int id)
 		struct dns_msg* msg;
 		if(!qstate->blacklist && !vq->chain_blacklist &&
 			(msg=val_find_DS(qstate->env, target_key_name, 
-			target_key_len, vq->qchase.qclass, qstate->region)) ) {
+			target_key_len, vq->qchase.qclass, qstate->region,
+			vq->key_entry->name)) ) {
 			verbose(VERB_ALGO, "Process cached DS response");
 			process_ds_response(qstate, vq, id, LDNS_RCODE_NOERROR,
 				msg, &msg->qinfo, NULL);
@@ -2224,6 +2241,7 @@ primeResponseToKE(struct ub_packed_rrset_key* dnskey_rrset,
 	struct key_entry_key* kkey = NULL;
 	enum sec_status sec = sec_status_unchecked;
 	char* reason = NULL;
+	int downprot = 1;
 
 	if(!dnskey_rrset) {
 		log_nametypeclass(VERB_OPS, "failed to prime trust anchor -- "
@@ -2244,35 +2262,19 @@ primeResponseToKE(struct ub_packed_rrset_key* dnskey_rrset,
 		return kkey;
 	}
 	/* attempt to verify with trust anchor DS and DNSKEY */
-	if(ta->ds_rrset) {
-		kkey = val_verify_new_DNSKEYs(qstate->region, qstate->env, ve, 
-			dnskey_rrset, ta->ds_rrset, &reason);
-		if(!kkey) {
-			log_err("out of memory: verifying prime DS");
-			return NULL;
-		}
-		if(key_entry_isgood(kkey))
-			sec = sec_status_secure;
-		else
-			sec = sec_status_bogus;
-		verbose(VERB_DETAIL, "validate keys with anchor(DS): %s", 
-			sec_status_to_string(sec));
+	kkey = val_verify_new_DNSKEYs_with_ta(qstate->region, qstate->env, ve, 
+		dnskey_rrset, ta->ds_rrset, ta->dnskey_rrset, downprot,
+		&reason);
+	if(!kkey) {
+		log_err("out of memory: verifying prime TA");
+		return NULL;
 	}
-	if(sec != sec_status_secure && ta->dnskey_rrset) {
-		sec = val_verify_rrset(qstate->env, ve, dnskey_rrset,
-			ta->dnskey_rrset, &reason);
-		verbose(VERB_DETAIL, "validate keys with anchor(DNSKEY): %s", 
-			sec_status_to_string(sec));
-		if(sec == sec_status_secure) {
-			kkey = key_entry_create_rrset(qstate->region, 
-				ta->name, ta->namelen, ta->dclass, 
-				dnskey_rrset, *qstate->env->now);
-			if(!kkey) {
-				log_err("out of memory: allocate primed key");
-				return NULL;
-			}
-		}
-	}
+	if(key_entry_isgood(kkey))
+		sec = sec_status_secure;
+	else
+		sec = sec_status_bogus;
+	verbose(VERB_DETAIL, "validate keys with anchor(DS): %s", 
+		sec_status_to_string(sec));
 
 	if(sec != sec_status_secure) {
 		log_nametypeclass(VERB_OPS, "failed to prime trust anchor -- "
@@ -2374,7 +2376,7 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 		log_query_info(VERB_DETAIL, "validated DS", qinfo);
 		*ke = key_entry_create_rrset(qstate->region,
 			qinfo->qname, qinfo->qname_len, qinfo->qclass, ds,
-			*qstate->env->now);
+			NULL, *qstate->env->now);
 		return (*ke) != NULL;
 	} else if(subtype == VAL_CLASS_NODATA || 
 		subtype == VAL_CLASS_NAMEERROR) {
@@ -2428,6 +2430,10 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 			msg->rep->rrsets + msg->rep->an_numrrsets,
 			msg->rep->ns_numrrsets, qinfo, vq->key_entry, &reason);
 		switch(sec) {
+			case sec_status_insecure:
+				/* case insecure also continues to unsigned
+				 * space.  If nsec3-iter-count too high or
+				 * optout, then treat below as unsigned */
 			case sec_status_secure:
 				verbose(VERB_DETAIL, "NSEC3s for the "
 					"referral proved no DS.");
@@ -2446,7 +2452,6 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 					"referral did not prove no DS.");
 				errinf(qstate, reason);
 				goto return_bogus;
-			case sec_status_insecure:
 			case sec_status_unchecked:
 			default:
 				/* NSEC3 proof did not work */
@@ -2611,6 +2616,7 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 	struct val_env* ve = (struct val_env*)qstate->env->modinfo[id];
 	struct key_entry_key* old = vq->key_entry;
 	struct ub_packed_rrset_key* dnskey = NULL;
+	int downprot;
 	char* reason = NULL;
 
 	if(rcode == LDNS_RCODE_NOERROR)
@@ -2646,8 +2652,9 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 		vq->state = VAL_VALIDATE_STATE;
 		return;
 	}
+	downprot = 1;
 	vq->key_entry = val_verify_new_DNSKEYs(qstate->region, qstate->env,
-		ve, dnskey, vq->ds_rrset, &reason);
+		ve, dnskey, vq->ds_rrset, downprot, &reason);
 
 	if(!vq->key_entry) {
 		log_err("out of memory in verify new DNSKEYs");

@@ -178,6 +178,8 @@ worker_mem_report(struct worker* ATTR_UNUSED(worker),
 		+ sizeof(*worker->env.scratch_buffer) 
 		+ ldns_buffer_capacity(worker->env.scratch_buffer)
 		+ forwards_get_mem(worker->env.fwds);
+	if(worker->thread_num == 0)
+		me += acl_list_get_mem(worker->daemon->acl);
 	if(cur_serv) {
 		me += serviced_get_mem(cur_serv);
 	}
@@ -283,9 +285,10 @@ worker_handle_service_reply(struct comm_point* c, void* arg, int error,
 	return 0;
 }
 
-/** check request sanity. Returns error code, 0 OK, or -1 discard. 
+/** check request sanity.
  * @param pkt: the wire packet to examine for sanity.
  * @param worker: parameters for checking.
+ * @return error code, 0 OK, or -1 discard.
 */
 static int 
 worker_check_request(ldns_buffer* pkt, struct worker* worker)
@@ -993,6 +996,7 @@ void worker_probe_timer_cb(void* arg)
 struct worker* 
 worker_create(struct daemon* daemon, int id, int* ports, int n)
 {
+	unsigned int seed;
 	struct worker* worker = (struct worker*)calloc(1, 
 		sizeof(struct worker));
 	if(!worker) 
@@ -1010,6 +1014,19 @@ worker_create(struct daemon* daemon, int id, int* ports, int n)
 		free(worker);
 		return NULL;
 	}
+	/* create random state here to avoid locking trouble in RAND_bytes */
+	seed = (unsigned int)time(NULL) ^ (unsigned int)getpid() ^
+		(((unsigned int)worker->thread_num)<<17);
+		/* shift thread_num so it does not match out pid bits */
+	if(!(worker->rndstate = ub_initstate(seed, daemon->rand))) {
+		seed = 0;
+		log_err("could not init random numbers.");
+		tube_delete(worker->cmd);
+		free(worker->ports);
+		free(worker);
+		return NULL;
+	}
+	seed = 0;
 	return worker;
 }
 
@@ -1017,7 +1034,6 @@ int
 worker_init(struct worker* worker, struct config_file *cfg, 
 	struct listen_port* ports, int do_sigs)
 {
-	unsigned int seed;
 	worker->need_to_exit = 0;
 	worker->base = comm_base_create(do_sigs);
 	if(!worker->base) {
@@ -1062,16 +1078,6 @@ worker_init(struct worker* worker, struct config_file *cfg,
 	} else { /* !do_sigs */
 		worker->comsig = NULL;
 	}
-	seed = (unsigned int)time(NULL) ^ (unsigned int)getpid() ^
-		(((unsigned int)worker->thread_num)<<17);
-		/* shift thread_num so it does not match out pid bits */
-	if(!(worker->rndstate = ub_initstate(seed, NULL))) {
-		seed = 0;
-		log_err("could not init random numbers.");
-		worker_delete(worker);
-		return 0;
-	}
-	seed = 0;
 	worker->front = listen_create(worker->base, ports,
 		cfg->msg_buffer_size, (int)cfg->incoming_num_tcp, 
 		worker_handle_request, worker);
@@ -1124,7 +1130,6 @@ worker_init(struct worker* worker, struct config_file *cfg,
 	if(worker->thread_num == 0)
 		log_set_time(worker->env.now);
 	worker->env.worker = worker;
-	worker->env.send_packet = &worker_send_packet;
 	worker->env.send_query = &worker_send_query;
 	worker->env.alloc = &worker->alloc;
 	worker->env.rnd = worker->rndstate;
@@ -1213,19 +1218,6 @@ worker_delete(struct worker* worker)
 	free(worker);
 }
 
-int 
-worker_send_packet(ldns_buffer* pkt, struct sockaddr_storage* addr,
-        socklen_t addrlen, int timeout, struct module_qstate* q, int use_tcp)
-{
-	struct worker* worker = q->env->worker;
-	if(use_tcp) {
-		return pending_tcp_query(worker->back, pkt, addr, addrlen, 
-			timeout, worker_handle_reply, q) != 0;
-	}
-	return pending_udp_query(worker->back, pkt, addr, addrlen, 
-		timeout*1000, worker_handle_reply, q) != 0;
-}
-
 /** compare outbound entry qstates */
 static int
 outbound_entry_compare(void* a, void* b)
@@ -1275,15 +1267,6 @@ void worker_stats_clear(struct worker* worker)
 }
 
 /* --- fake callbacks for fptr_wlist to work --- */
-int libworker_send_packet(ldns_buffer* ATTR_UNUSED(pkt), 
-	struct sockaddr_storage* ATTR_UNUSED(addr), 
-	socklen_t ATTR_UNUSED(addrlen), int ATTR_UNUSED(timeout), 
-	struct module_qstate* ATTR_UNUSED(q), int ATTR_UNUSED(use_tcp))
-{
-	log_assert(0);
-	return 0;
-}
-
 struct outbound_entry* libworker_send_query(uint8_t* ATTR_UNUSED(qname), 
 	size_t ATTR_UNUSED(qnamelen), uint16_t ATTR_UNUSED(qtype), 
 	uint16_t ATTR_UNUSED(qclass), uint16_t ATTR_UNUSED(flags), 

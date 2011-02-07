@@ -117,12 +117,14 @@ void val_find_signer(enum val_classification subtype,
  * @param ve: validator environment (verification settings)
  * @param rrset: what to verify
  * @param keys: dnskey rrset to verify with.
+ * @param sigalg: if nonNULL provide downgrade protection otherwise one
+ *   algorithm is enough.  Algo list is constructed in here.
  * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return security status of verification.
  */
 enum sec_status val_verify_rrset(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* keys,
-	char** reason);
+	uint8_t* sigalg, char** reason);
 
 /**
  * Verify RRset with keys from a keyset.
@@ -144,6 +146,9 @@ enum sec_status val_verify_rrset_entry(struct module_env* env,
  * @param ve: validator environment (verification settings)
  * @param dnskey_rrset: DNSKEY rrset to verify
  * @param ds_rrset: DS rrset to verify with.
+ * @param sigalg: if nonNULL provide downgrade protection otherwise one
+ *   algorithm is enough.  The list of signalled algorithms is returned,
+ *   must have enough space for ALGO_NEEDS_MAX+1.
  * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return: sec_status_secure if a DS matches.
  *     sec_status_insecure if end of trust (i.e., unknown algorithms).
@@ -151,7 +156,28 @@ enum sec_status val_verify_rrset_entry(struct module_env* env,
  */
 enum sec_status val_verify_DNSKEY_with_DS(struct module_env* env, 
 	struct val_env* ve, struct ub_packed_rrset_key* dnskey_rrset, 
-	struct ub_packed_rrset_key* ds_rrset, char** reason);
+	struct ub_packed_rrset_key* ds_rrset, uint8_t* sigalg, char** reason);
+
+/**
+ * Verify DNSKEYs with DS and DNSKEY rrset.  Like val_verify_DNSKEY_with_DS
+ * but for a trust anchor.
+ * @param env: module environment (scratch buffer)
+ * @param ve: validator environment (verification settings)
+ * @param dnskey_rrset: DNSKEY rrset to verify
+ * @param ta_ds: DS rrset to verify with.
+ * @param ta_dnskey: DNSKEY rrset to verify with.
+ * @param sigalg: if nonNULL provide downgrade protection otherwise one
+ *   algorithm is enough.  The list of signalled algorithms is returned,
+ *   must have enough space for ALGO_NEEDS_MAX+1.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
+ * @return: sec_status_secure if a DS matches.
+ *     sec_status_insecure if end of trust (i.e., unknown algorithms).
+ *     sec_status_bogus if it fails.
+ */
+enum sec_status val_verify_DNSKEY_with_TA(struct module_env* env, 
+	struct val_env* ve, struct ub_packed_rrset_key* dnskey_rrset, 
+	struct ub_packed_rrset_key* ta_ds,
+	struct ub_packed_rrset_key* ta_dnskey, uint8_t* sigalg, char** reason);
 
 /**
  * Verify new DNSKEYs with DS rrset. The DS contains hash values that should
@@ -163,6 +189,8 @@ enum sec_status val_verify_DNSKEY_with_DS(struct module_env* env,
  * @param ve: validator environment (verification settings)
  * @param dnskey_rrset: DNSKEY rrset to verify
  * @param ds_rrset: DS rrset to verify with.
+ * @param downprot: if true provide downgrade protection otherwise one
+ *   algorithm is enough.
  * @param reason: reason of failure. Fixed string or alloced in scratch.
  * @return a KeyEntry. This will either contain the now trusted
  *         dnskey_rrset, a "null" key entry indicating that this DS
@@ -172,11 +200,42 @@ enum sec_status val_verify_DNSKEY_with_DS(struct module_env* env,
  *         generally only occur in a private algorithm scenario: normally
  *         this sort of thing is checked before fetching the matching DNSKEY
  *         rrset.
+ *         if downprot is set, a key entry with an algo list is made.
  */
 struct key_entry_key* val_verify_new_DNSKEYs(struct regional* region, 
 	struct module_env* env, struct val_env* ve, 
 	struct ub_packed_rrset_key* dnskey_rrset, 
-	struct ub_packed_rrset_key* ds_rrset, char** reason);
+	struct ub_packed_rrset_key* ds_rrset, int downprot, char** reason);
+
+
+/**
+ * Verify rrset with trust anchor: DS and DNSKEY rrset.
+ *
+ * @param region: where to allocate key entry result.
+ * @param env: module environment (scratch buffer)
+ * @param ve: validator environment (verification settings)
+ * @param dnskey_rrset: DNSKEY rrset to verify
+ * @param ta_ds_rrset: DS rrset to verify with.
+ * @param ta_dnskey_rrset: the DNSKEY rrset to verify with.
+ * @param downprot: if true provide downgrade protection otherwise one
+ *   algorithm is enough.
+ * @param reason: reason of failure. Fixed string or alloced in scratch.
+ * @return a KeyEntry. This will either contain the now trusted
+ *         dnskey_rrset, a "null" key entry indicating that this DS
+ *         rrset/DNSKEY pair indicate an secure end to the island of trust
+ *         (i.e., unknown algorithms), or a "bad" KeyEntry if the dnskey
+ *         rrset fails to verify. Note that the "null" response should
+ *         generally only occur in a private algorithm scenario: normally
+ *         this sort of thing is checked before fetching the matching DNSKEY
+ *         rrset.
+ *         if downprot is set, a key entry with an algo list is made.
+ */
+struct key_entry_key* val_verify_new_DNSKEYs_with_ta(struct regional* region, 
+	struct module_env* env, struct val_env* ve, 
+	struct ub_packed_rrset_key* dnskey_rrset, 
+	struct ub_packed_rrset_key* ta_ds_rrset, 
+	struct ub_packed_rrset_key* ta_dnskey_rrset,
+	int downprot, char** reason);
 
 /**
  * Determine if DS rrset is usable for validator or not.
@@ -333,9 +392,12 @@ int val_favorite_ds_algo(struct ub_packed_rrset_key* ds_rrset);
  * @param nmlen: length of name.
  * @param c: class of DS RR.
  * @param region: where to allocate result.
+ * @param topname: name of the key that is currently in use, that will get
+ *	used to validate the result, and thus no higher entries from the
+ *	negative cache need to be examined.
  * @return a dns_msg on success. NULL on failure.
  */
 struct dns_msg* val_find_DS(struct module_env* env, uint8_t* nm, size_t nmlen,
-	uint16_t c, struct regional* region);
+	uint16_t c, struct regional* region, uint8_t* topname);
 
 #endif /* VALIDATOR_VAL_UTILS_H */

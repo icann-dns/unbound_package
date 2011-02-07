@@ -81,8 +81,14 @@
 /* Define to 1 if you have the `EVP_sha512' function. */
 #undef HAVE_EVP_SHA512
 
+/* Define to 1 if you have the `ev_default_loop' function. */
+#undef HAVE_EV_DEFAULT_LOOP
+
 /* Define to 1 if you have the `ev_loop' function. */
 #undef HAVE_EV_LOOP
+
+/* Define to 1 if you have the <expat.h> header file. */
+#undef HAVE_EXPAT_H
 
 /* Define to 1 if you have the `fcntl' function. */
 #undef HAVE_FCNTL
@@ -286,6 +292,9 @@
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
+/* Define to 1 if you have the `strptime' function. */
+#undef HAVE_STRPTIME
+
 /* Define if you have Swig libraries and header files. */
 #undef HAVE_SWIG
 
@@ -427,6 +436,12 @@
 /* Define as the return type of signal handlers (`int' or `void'). */
 #undef RETSIGTYPE
 
+/* default rootkey location */
+#undef ROOT_ANCHOR_FILE
+
+/* default rootcert location */
+#undef ROOT_CERT_FILE
+
 /* version number for resource files */
 #undef RSRC_PACKAGE_VERSION
 
@@ -438,6 +453,9 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* use default strptime. */
+#undef STRPTIME_WORKS
 
 /* Use win32 resources and API */
 #undef UB_ON_WINDOWS
@@ -803,7 +821,13 @@ int memcmp(const void *x, const void *y, size_t n);
 char *ctime_r(const time_t *timep, char *buf);
 #endif
 
-#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
+#if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)
+#define strptime unbound_strptime
+struct tm;
+char *strptime(const char *s, const char *format, struct tm *tm);
+#endif
+
+#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && !(defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP)) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
    /* using version of libevent that is not threadsafe. */
 #  define LIBEVENT_SIGNAL_PROBLEM 1
 #endif

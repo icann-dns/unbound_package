@@ -323,11 +323,8 @@ iter_prepend(struct iter_qstate* iq, struct dns_msg* msg,
 		(msg->rep->ns_numrrsets + msg->rep->ar_numrrsets) *
 		sizeof(struct ub_packed_rrset_key*));
 
-	/* if the rcode was NXDOMAIN, and we prepended DNAME/CNAMEs, then
-	 * it should now be NOERROR. */
-	if(FLAGS_GET_RCODE(msg->rep->flags) == LDNS_RCODE_NXDOMAIN) {
-		FLAGS_SET_RCODE(msg->rep->flags, LDNS_RCODE_NOERROR);
-	}
+	/* NXDOMAIN rcode can stay if we prepended DNAME/CNAMEs, because
+	 * this is what recursors should give. */
 	msg->rep->rrset_count += num_an + num_ns;
 	msg->rep->an_numrrsets += num_an;
 	msg->rep->ns_numrrsets += num_ns;
@@ -537,6 +534,7 @@ generate_sub_request(uint8_t* qname, size_t qnamelen, uint16_t qtype,
  * @param ie: iterator global state.
  * @param id: module id.
  * @param qclass: the class to prime.
+ * @return 0 on failure
  */
 static int
 prime_root(struct module_qstate* qstate, struct iter_qstate* iq, 
@@ -596,6 +594,8 @@ prime_root(struct module_qstate* qstate, struct iter_qstate* iq,
  * @param q: request name.
  * @return true if a priming subrequest was made, false if not. The will only
  *         issue a priming request if it detects an unprimed stub.
+ *         Uses value of 2 to signal during stub-prime in root-prime situation
+ *         that a noprime-stub is available and resolution can continue.
  */
 static int
 prime_stub(struct module_qstate* qstate, struct iter_qstate* iq, 
@@ -621,6 +621,8 @@ prime_stub(struct module_qstate* qstate, struct iter_qstate* iq,
 
 	/* is it a noprime stub (always use) */
 	if(stub->noprime) {
+		int r = 0;
+		if(iq->dp == NULL) r = 2;
 		/* copy the dp out of the fixed hints structure, so that
 		 * it can be changed when servicing this query */
 		iq->dp = delegpt_copy(stub_dp, qstate->region);
@@ -631,7 +633,7 @@ prime_stub(struct module_qstate* qstate, struct iter_qstate* iq,
 		}
 		log_nametypeclass(VERB_DETAIL, "use stub", stub_dp->name, 
 			LDNS_RR_TYPE_NS, q->qclass);
-		return 0;
+		return r;
 	}
 
 	/* Otherwise, we need to (re)prime the stub. */
@@ -936,8 +938,13 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 			msg = val_neg_getmsg(qstate->env->neg_cache, &iq->qchase,
 				qstate->region, qstate->env->rrset_cache,
 				qstate->env->scratch_buffer, 
-				*qstate->env->now, 1/*add SOA*/);
+				*qstate->env->now, 1/*add SOA*/, NULL);
 		}
+		/* item taken from cache does not match our query name, thus
+		 * security needs to be re-examined later */
+		if(msg && query_dname_compare(qstate->qinfo.qname,
+			iq->qchase.qname) != 0)
+			msg->rep->security = sec_status_unchecked;
 	}
 	if(msg) {
 		/* handle positive cache response */
@@ -1011,10 +1018,16 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		delname = iq->qchase.qname;
 		delnamelen = iq->qchase.qname_len;
 	}
-	if(iq->qchase.qtype == LDNS_RR_TYPE_DS || iq->refetch_glue) {
+	if(iq->qchase.qtype == LDNS_RR_TYPE_DS || iq->refetch_glue ||
+	   (iq->qchase.qtype == LDNS_RR_TYPE_NS && qstate->prefetch_leeway)) {
 		/* remove first label from delname, root goes to hints,
 		 * but only to fetch glue, not for qtype=DS. */
-		if(dname_is_root(delname) && iq->refetch_glue)
+		/* also when prefetching an NS record, fetch it again from
+		 * its parent, just as if it expired, so that you do not
+		 * get stuck on an older nameserver that gives old NSrecords */
+		if(dname_is_root(delname) && (iq->refetch_glue ||
+			(iq->qchase.qtype == LDNS_RR_TYPE_NS &&
+			qstate->prefetch_leeway)))
 			delname = NULL; /* go to root priming */
 		else 	dname_remove_label(&delname, &delnamelen);
 		iq->refetch_glue = 0; /* if CNAME causes restart, no refetch */
@@ -1033,6 +1046,12 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		/* If the cache has returned nothing, then we have a 
 		 * root priming situation. */
 		if(iq->dp == NULL) {
+			/* if there is a stub, then no root prime needed */
+			int r = prime_stub(qstate, iq, ie, id, &iq->qchase);
+			if(r == 2)
+				break; /* got noprime-stub-zone, continue */
+			else if(r)
+				return 0; /* stub prime request made */
 			if(forwards_lookup_root(qstate->env->fwds, 
 				iq->qchase.qclass)) {
 				/* forward zone root, no root prime needed */
@@ -1302,6 +1321,9 @@ query_for_targets(struct module_qstate* qstate, struct iter_qstate* iq,
 	int missing;
 	int toget = 0;
 
+	if(iq->depth == ie->max_dependency_depth)
+		return 0;
+
 	iter_mark_cycle_targets(qstate, iq->dp);
 	missing = (int)delegpt_count_missing_targets(iq->dp);
 	log_assert(maxtargets != 0); /* that would not be useful */
@@ -1433,6 +1455,10 @@ processLastResort(struct module_qstate* qstate, struct iter_qstate* iq,
 			qstate->ext_state[id] = module_wait_subquery;
 			return 0; /* and wait for them */
 		}
+	}
+	if(iq->depth == ie->max_dependency_depth) {
+		verbose(VERB_QUERY, "maxdepth and need more nameservers, fail");
+		return error_response_cache(qstate, id, LDNS_RCODE_SERVFAIL);
 	}
 	/* mark cycle targets for parent-side lookups */
 	iter_mark_pside_cycle_targets(qstate, iq->dp);
@@ -2383,6 +2409,8 @@ processFinished(struct module_qstate* qstate, struct iter_qstate* iq,
 		}
 		/* reset the query name back */
 		iq->response->qinfo = qstate->qinfo;
+		/* the security state depends on the combination */
+		iq->response->rep->security = sec_status_unchecked;
 		/* store message with the finished prepended items,
 		 * but only if we did recursion. The nonrecursion referral
 		 * from cache does not need to be stored in the msg cache. */
@@ -2658,7 +2686,8 @@ iter_get_mem(struct module_env* env, int id)
 	if(!ie)
 		return 0;
 	return sizeof(*ie) + sizeof(int)*((size_t)ie->max_dependency_depth+1)
-		+ hints_get_mem(ie->hints) + donotq_get_mem(ie->donotq);
+		+ hints_get_mem(ie->hints) + donotq_get_mem(ie->donotq)
+		+ priv_get_mem(ie->priv);
 }
 
 /**

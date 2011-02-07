@@ -1,5 +1,250 @@
+18 January 2011: Wouter
+	- ldns 1.6.8 tarball included.
+
+17 January 2011: Wouter
+	- add get and set option for harden-below-nxdomain feature.
+	- iana portlist updated.
+
+14 January 2011: Wouter
+	- Fix so a changed NS RRset does not get moved name stuck on old
+	  server, for type NS the TTL is not increased.
+
+13 January 2011: Wouter
+	- Fix prefetch so it does not get stuck on old server for moved names.
+
+12 January 2011: Wouter
+	- iana portlist updated.
+
+11 January 2011: Wouter
+	- Fix insecure CNAME sequence marked as secure, reported by Bert
+	  Hubert.
+
+10 January 2011: Wouter
+	- faster lruhash get_mem routine.
+
+4 January 2011: Wouter
+	- bug#346: remove ITAR scripts from contrib, the service is discontinued, use the root.
+	- iana portlist updated.
+
+23 December 2010: Wouter
+	- Fix in infra cache that could cause rto larger than TOP_TIMEOUT kept.
+
+21 December 2010: Wouter
+	- algorithm compromise protection using the algorithms signalled in
+	  the DS record.  Also, trust anchors, DLV, and RFC5011 receive this,
+	  and thus, if you have multiple algorithms in your trust-anchor-file
+	  then it will now behave different than before.  Also, 5011 rollover
+	  for algorithms needs to be double-signature until the old algorithm
+	  is revoked.
+	  It is not an option, because I see no use to turn the security off.
+	- iana portlist updated.
+
+17 December 2010: Wouter
+	- squelch 'tcp connect: bla' in logfile, (set verbosity 2 to see them).
+	- fix validation in this case: CNAME to nodata for co-hosted opt-in
+	  NSEC3 insecure delegation, was bogus, fixed to be insecure.
+
+16 December 2010: Wouter
+	- Fix our 'BDS' license (typo reported by Xavier Belanger).
+
+10 December 2010: Wouter
+	- iana portlist updated.
+	- review changes for unbound-anchor.
+
+2 December 2010: Wouter
+	- feature typetransparent localzone, does not block other RR types.
+
+1 December 2010: Wouter
+	- Fix bug#338: print address when socket creation fails.
+
+30 November 2010: Wouter
+	- Fix storage of EDNS failures in the infra cache.
+	- iana portlist updated.
+
+18 November 2010: Wouter
+	- harden-below-nxdomain option, default off (because very old
+	  software may be incompatible).  We could enable it by default in
+	  the future.
+
+17 November 2010: Wouter
+	- implement draft-vixie-dnsext-resimprove-00, we stop on NXDOMAIN.
+	- make test output nicer.
+
+15 November 2010: Wouter
+	- silence 'tcp connect: broken pipe' and 'net down' at low verbosity.
+	- iana portlist updated.
+	- so-sndbuf option for very busy servers, a bit like so-rcvbuf.
+
+9 November 2010: Wouter
+	- unbound-anchor compiles with openssl 0.9.7.
+
+8 November 2010: Wouter
+	- release tag 1.4.7.
+	- trunk is version 1.4.8.
+	- Be lenient and accept imgw.pl malformed packet (like BIND).
+
+5 November 2010: Wouter
+	- do not synthesize a CNAME message from cache for qtype DS.
+
+4 November 2010: Wouter
+	- Use central entropy to seed threads.
+
+3 November 2010: Wouter
+	- Change the rtt used to probe EDNS-timeout hosts to 1000 msec.
+
+2 November 2010: Wouter
+	- tag 1.4.7rc1.
+	- code review.
+
+1 November 2010: Wouter
+	- GOST code enabled by default (RFC 5933).
+
+27 October 2010: Wouter
+	- Fix uninit value in dump_infra print.
+	- Fix validation failure for parent and child on same server with an
+	  insecure childzone and a CNAME from parent to child.
+	- Configure detects libev-4.00.
+
+26 October 2010: Wouter
+	- dump_infra and flush_infra commands for unbound-control.
+	- no timeout backoff if meanwhile a query succeeded.
+	- Change of timeout code.  No more lost and backoff in blockage.
+	  At 12sec timeout (and at least 2x lost before) one probe per IP
+	  is allowed only.  At 120sec, the IP is blocked.  After 15min, a
+	  120sec entry has a single retry packet.
+
+25 October 2010: Wouter
+	- Configure errors if ldns is not found.
+
+22 October 2010: Wouter
+	- Windows 7 fix for the installer.
+
+21 October 2010: Wouter
+	- Fix bug where fallback_tcp causes wrong roundtrip and edns
+	  observation to be noted in cache.  Fix bug where EDNSprobe halted
+	  exponential backoff if EDNS status unknown.
+	- new unresponsive host method, exponentially increasing block backoff.
+	- iana portlist updated.
+
+20 October 2010: Wouter
+	- interface automatic works for some people with ip6 disabled.
+	  Therefore the error check is removed, so they can use the option.
+
+19 October 2010: Wouter
+	- Fix for request list growth, if a server has long timeout but the
+	  lost counter is low, then its effective rtt is the one without
+	  exponential backoff applied.  Because the backoff is not working.
+	  The lost counter can then increase and the server is blacklisted,
+	  or the lost counter does not increase and the server is working
+	  for some queries.
+
+18 October 2010: Wouter
+	- iana portlist updated.
+
+13 October 2010: Wouter
+	- Fix TCP so it uses a random outgoing-interface.
+	- unbound-anchor handles ADDPEND keystate.
+
+11 October 2010: Wouter
+	- Fix bug when DLV below a trust-anchor that uses NSEC3 optout where
+	  the zone has a secure delegation hosted on the same server did not
+	  verify as secure (it was insecure by mistake).
+	- iana portlist updated.
+	- ldns tarball updated (for reading cachedumps with bad RR data).
+
+1 October 2010: Wouter
+	- test for unbound-anchor. fix for reading certs.
+	- Fix alloc_reg_release for longer uptime in out of memory conditions.
+
+28 September 2010: Wouter
+	- unbound-anchor working, it creates or updates a root.key file.
+	  Use it before you start the validator (e.g. at system boot time).
+
+27 September 2010: Wouter
+	- iana portlist updated.
+
+24 September 2010: Wouter
+	- bug#329: in example.conf show correct ipv4 link-local 169.254/16.
+
+23 September 2010: Wouter
+	- unbound-anchor app, unbound requires libexpat (xml parser library).
+
+22 September 2010: Wouter
+	- compliance with draft-ietf-dnsop-default-local-zones-14, removed
+	  reverse ipv6 orchid prefix from builtin list.
+	- iana portlist updated.
+
+17 September 2010: Wouter
+	- DLV has downgrade protection again, because the RFC says so.
+	- iana portlist updated.
+
+16 September 2010: Wouter
+	- Algorithm rollover operational reality intrudes, for trust-anchor,
+	  5011-store, and DLV-anchor if one key matches it's good enough.
+	- iana portlist updated.
+	- Fix reported validation error in out of memory condition.
+
+15 September 2010: Wouter
+	- Abide RFC5155 section 9.2: no AD flag for replies with NSEC3 optout.
+
+14 September 2010: Wouter
+	- increased mesh-max-activation from 1000 to 3000 for crazy domains
+	  like _tcp.slb.com with 262 servers.
+	- iana portlist updated.
+
+13 September 2010: Wouter
+	- bug#327: Fix for cannot access stub zones until the root is primed.
+
+9 September 2010: Wouter
+	- unresponsive servers are not completely blacklisted (because of
+	  firewalls), but also not probed all the time (because of the request
+	  list size it generates).  The probe rate is 1%.
+	- iana portlist updated.
+
+20 August 2010: Wouter
+	- openbsd-lint fixes: acl_list_get_mem used if debug-alloc enabled.
+	  iterator get_mem includes priv_get_mem.  delegpt nodup removed.
+	  listen_pushback, query_info_allocqname, write_socket, send_packet,
+	  comm_point_set_cb_arg and listen_resume removed.
+
+19 August 2010: Wouter
+	- Fix bug#321: resolution of rs.ripe.net artifacts with 0x20.
+	  Delegpt structures checked for duplicates always.
+	  No more nameserver lookups generated when depth is full anyway.
+	- example.conf notes how to do DNSSEC validation and track the root.
+	- iana portlist updated.
+
+18 August 2010: Wouter
+	- Fix bug#322: configure does not respect CFLAGS on Solaris.
+	  Pass CFLAGS="-xO4 -xtarget=generic" on the configure command line
+	  if use sun-cc, but some systems need different flags.
+
+16 August 2010: Wouter
+	- Fix acx_nlnetlabs.m4 configure output for autoconf-2.66 AS_TR_CPP
+	  changes, uses m4_bpatsubst now.
+	- make test (or make check) should be more portable and run the unit 
+	  test and testbound scripts. (make longtest has special requirements).
+
+13 August 2010: Wouter
+	- More pleasant remote control command parsing.
+	- documentation added for return values reported by doxygen 1.7.1.
+	- iana portlist updated.
+
+9 August 2010: Wouter
+	- Fix name of rrset printed that failed validation.
+
+5 August 2010: Wouter
+	- Return NXDOMAIN after chain of CNAMEs ends at name-not-found.
+
+4 August 2010: Wouter
+	- Fix validation in case a trust anchor enters into a zone with
+	  unsupported algorithms.
+
 3 August 2010: Wouter
 	- updated ldns tarball with bugfixes.
+	- release tag 1.4.6.
+	- trunk becomes 1.4.7 develop.
+	- iana portlist updated.
 
 22 July 2010: Wouter
 	- more error details on failed remote control connection.

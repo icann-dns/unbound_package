@@ -155,6 +155,7 @@ dnskey_get_flags(struct ub_packed_rrset_key* k, size_t idx)
  * Get DNSKEY protocol value from rdata
  * @param k: DNSKEY rrset.
  * @param idx: which key.
+ * @return protocol octet value
  */
 static int
 dnskey_get_protocol(struct ub_packed_rrset_key* k, size_t idx)
@@ -452,26 +453,44 @@ int dnskey_algo_is_supported(struct ub_packed_rrset_key* dnskey_rrset,
 		dnskey_idx));
 }
 
-void algo_needs_init_dnskey(struct algo_needs* n,
-        struct ub_packed_rrset_key* dnskey)
+void algo_needs_init_dnskey_add(struct algo_needs* n,
+        struct ub_packed_rrset_key* dnskey, uint8_t* sigalg)
 {
 	uint8_t algo;
-	size_t i, total = 0;
+	size_t i, total = n->num;
 	size_t num = rrset_get_count(dnskey);
 
-	memset(n->needs, 0, sizeof(uint8_t)*ALGO_NEEDS_MAX);
 	for(i=0; i<num; i++) {
 		algo = (uint8_t)dnskey_get_algo(dnskey, i);
+		if(!dnskey_algo_id_is_supported((int)algo))
+			continue;
 		if(n->needs[algo] == 0) {
 			n->needs[algo] = 1;
+			sigalg[total] = algo;
 			total++;
 		}
+	}
+	sigalg[total] = 0;
+	n->num = total;
+}
+
+void algo_needs_init_list(struct algo_needs* n, uint8_t* sigalg)
+{
+	uint8_t algo;
+	size_t total = 0;
+
+	memset(n->needs, 0, sizeof(uint8_t)*ALGO_NEEDS_MAX);
+	while( (algo=*sigalg++) != 0) {
+		log_assert(dnskey_algo_id_is_supported((int)algo));
+		log_assert(n->needs[algo] == 0);
+		n->needs[algo] = 1;
+		total++;
 	}
 	n->num = total;
 }
 
 void algo_needs_init_ds(struct algo_needs* n, struct ub_packed_rrset_key* ds,
-	int fav_ds_algo)
+	int fav_ds_algo, uint8_t* sigalg)
 {
 	uint8_t algo;
 	size_t i, total = 0;
@@ -482,11 +501,16 @@ void algo_needs_init_ds(struct algo_needs* n, struct ub_packed_rrset_key* ds,
 		if(ds_get_digest_algo(ds, i) != fav_ds_algo)
 			continue;
 		algo = (uint8_t)ds_get_key_algo(ds, i);
+		if(!dnskey_algo_id_is_supported((int)algo))
+			continue;
+		log_assert(algo != 0); /* we do not support 0 and is EOS */
 		if(n->needs[algo] == 0) {
 			n->needs[algo] = 1;
+			sigalg[total] = algo;		
 			total++;
 		}
 	}
+	sigalg[total] = 0;
 	n->num = total;
 }
 
@@ -528,7 +552,7 @@ int algo_needs_missing(struct algo_needs* n)
 enum sec_status 
 dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
-	char** reason)
+	uint8_t* sigalg, char** reason)
 {
 	enum sec_status sec;
 	size_t i, num;
@@ -545,23 +569,32 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 		return sec_status_bogus;
 	}
 
-	algo_needs_init_dnskey(&needs, dnskey);
+	if(sigalg) {
+		algo_needs_init_list(&needs, sigalg);
+		if(algo_needs_num_missing(&needs) == 0) {
+			verbose(VERB_QUERY, "zone has no known algorithms");
+			*reason = "zone has no known algorithms";
+			return sec_status_insecure;
+		}
+	}
 	for(i=0; i<num; i++) {
 		sec = dnskeyset_verify_rrset_sig(env, ve, *env->now, rrset, 
 			dnskey, i, &sortree, reason);
 		/* see which algorithm has been fixed up */
 		if(sec == sec_status_secure) {
-			if(algo_needs_set_secure(&needs,
+			if(!sigalg)
+				return sec; /* done! */
+			else if(algo_needs_set_secure(&needs,
 				(uint8_t)rrset_get_sig_algo(rrset, i)))
 				return sec; /* done! */
-		} else if(sec == sec_status_bogus) {
+		} else if(sigalg && sec == sec_status_bogus) {
 			algo_needs_set_bogus(&needs,
 				(uint8_t)rrset_get_sig_algo(rrset, i));
 		}
 	}
 	verbose(VERB_ALGO, "rrset failed to verify: no valid signatures for "
 		"%d algorithms", (int)algo_needs_num_missing(&needs));
-	if((alg=algo_needs_missing(&needs)) != 0) {
+	if(sigalg && (alg=algo_needs_missing(&needs)) != 0) {
 		algo_needs_reason(env, alg, reason, "no signatures");
 	}
 	return sec_status_bogus;
@@ -577,7 +610,7 @@ void algo_needs_reason(struct module_env* env, int alg, char** reason, char* s)
 			(unsigned)alg);
 	*reason = regional_strdup(env->scratch, buf);
 	if(!*reason)
-		*reason = "%s with all algorithms";
+		*reason = s;
 }
 
 enum sec_status 
@@ -613,7 +646,7 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 		numchecked ++;
 	}
 	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
-	if(!numchecked) *reason = "signatures from unknown keys";
+	if(!numchecked) *reason = "signature missing";
 	return sec_status_bogus;
 }
 
@@ -631,6 +664,10 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 	size_t numchecked = 0;
 	int buf_canon = 0;
 	verbose(VERB_ALGO, "verify sig %d %d", (int)tag, algo);
+	if(!dnskey_algo_id_is_supported(algo)) {
+		verbose(VERB_QUERY, "verify sig: unknown algorithm");
+		return sec_status_insecure;
+	}
 	
 	for(i=0; i<num; i++) {
 		/* see if key matches keytag and algo */

@@ -140,7 +140,8 @@ config_create(void)
 	cfg->root_hints = NULL;
 	cfg->do_daemonize = 1;
 	cfg->if_automatic = 0;
-	cfg->socket_rcvbuf = 0;
+	cfg->so_rcvbuf = 0;
+	cfg->so_sndbuf = 0;
 	cfg->num_ifs = 0;
 	cfg->ifs = NULL;
 	cfg->num_out_ifs = 0;
@@ -152,6 +153,7 @@ config_create(void)
 	cfg->harden_large_queries = 0;
 	cfg->harden_glue = 1;
 	cfg->harden_dnssec_stripped = 1;
+	cfg->harden_below_nxdomain = 0;
 	cfg->harden_referral_path = 0;
 	cfg->use_caps_bits_for_id = 0;
 	cfg->private_address = NULL;
@@ -334,7 +336,8 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_POW2("msg-cache-slabs:", msg_cache_slabs)
 	else S_SIZET_NONZERO("num-queries-per-thread:",num_queries_per_thread)
 	else S_SIZET_OR_ZERO("jostle-timeout:", jostle_time)
-	else S_MEMSIZE("so-rcvbuf:", socket_rcvbuf)
+	else S_MEMSIZE("so-rcvbuf:", so_rcvbuf)
+	else S_MEMSIZE("so-sndbuf:", so_sndbuf)
 	else S_MEMSIZE("rrset-cache-size:", rrset_cache_size)
 	else S_POW2("rrset-cache-slabs:", rrset_cache_slabs)
 	else S_YNO("prefetch:", prefetch)
@@ -359,6 +362,7 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_YNO("harden-short-bufsize:", harden_short_bufsize)
 	else S_YNO("harden-large-queries:", harden_large_queries)
 	else S_YNO("harden-dnssec-stripped:", harden_dnssec_stripped)
+	else S_YNO("harden-below-nxdomain:", harden_below_nxdomain)
 	else S_YNO("harden-referral-path:", harden_referral_path)
 	else S_YNO("use-caps-for-id", use_caps_bits_for_id)
 	else S_SIZET_OR_ZERO("unwanted-reply-threshold:", unwanted_threshold)
@@ -553,7 +557,8 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_DEC(opt, "msg-cache-slabs", msg_cache_slabs)
 	else O_DEC(opt, "num-queries-per-thread", num_queries_per_thread)
 	else O_UNS(opt, "jostle-timeout", jostle_time)
-	else O_MEM(opt, "so-rcvbuf", socket_rcvbuf)
+	else O_MEM(opt, "so-rcvbuf", so_rcvbuf)
+	else O_MEM(opt, "so-sndbuf", so_sndbuf)
 	else O_MEM(opt, "rrset-cache-size", rrset_cache_size)
 	else O_DEC(opt, "rrset-cache-slabs", rrset_cache_slabs)
 	else O_YNO(opt, "prefetch-key", prefetch_key)
@@ -583,6 +588,7 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_YNO(opt, "harden-large-queries", harden_large_queries)
 	else O_YNO(opt, "harden-glue", harden_glue)
 	else O_YNO(opt, "harden-dnssec-stripped", harden_dnssec_stripped)
+	else O_YNO(opt, "harden-below-nxdomain", harden_below_nxdomain)
 	else O_YNO(opt, "harden-referral-path", harden_referral_path)
 	else O_YNO(opt, "use-caps-for-id", use_caps_bits_for_id)
 	else O_DEC(opt, "unwanted-reply-threshold", unwanted_threshold)
@@ -1392,7 +1398,7 @@ void errinf_rrset(struct module_qstate* qstate, struct ub_packed_rrset_key *rr)
 		log_err("malloc failure in errinf_rrset");
 		return;
 	}
-	dname_str(qstate->qinfo.qname, dname);
+	dname_str(rr->rk.dname, dname);
 	snprintf(buf, sizeof(buf), "for <%s %s %s>", dname, t, c);
 	free(t);
 	free(c);
