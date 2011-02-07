@@ -1,3 +1,10 @@
+unbound (1.4.8-2) unstable; urgency=low
+
+  * Add build-dependency on libexpat1-dev; closes: #612261.
+  * Install unbound-anchor utility in unbound package.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Mon, 07 Feb 2011 16:06:00 -0500
+
 unbound (1.4.8-1) unstable; urgency=low
 
   * New upstream release; closes: #611527.
