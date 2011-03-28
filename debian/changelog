@@ -1,3 +1,9 @@
+unbound (1.4.9-0ubuntu1) natty; urgency=low
+
+  * New bugfix upstream release
+
+ -- Scott Kitterman <scott@kitterman.com>  Mon, 28 Mar 2011 09:12:53 -0400
+
 unbound (1.4.8-2) unstable; urgency=low
 
   * Add build-dependency on libexpat1-dev; closes: #612261.
