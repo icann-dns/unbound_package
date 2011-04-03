@@ -1,5 +1,58 @@
+24 March 2011: Wouter
+	- iana portlist updated.
+	- release 1.4.9.
+
+17 March 2011: Wouter
+	- bug#370: new unbound.spec for CentOS 5.x from Harold Jones.
+	  Applied but did not do the --disable-gost.
+
+10 March 2011: Wouter
+	- tag 1.4.9 release candidate 1 created.
+
+3 March 2011: Wouter
+	- updated ldns to today.
+
+1 March 2011: Wouter
+	- Fix no ADflag for NXDOMAIN in NSEC3 optout. And wildcard in optout.
+	- give config parse error for multiple names on a stub or forward zone.
+	- updated ldns tarball to 1.6.9(todays snapshot).
+
+24 February 2011: Wouter
+	- bug #361: Fix, time.elapsed variable not reset with stats_noreset.
+
+23 February 2011: Wouter
+	- iana portlist updated.
+	- common.sh to version 3.
+
+18 February 2011: Wouter
+	- common.sh in testdata updated to version 2.
+
+15 February 2011: Wouter
+	- Added explicit note on unbound-anchor usage:
+	  Please note usage of unbound-anchor root anchor is at your own risk
+	  and under the terms of our LICENSE (see that file in the source).
+
+11 February 2011: Wouter
+	- iana portlist updated.
+	- tpkg updated with common.sh for common functionality.
+
+7 February 2011: Wouter
+	- Added regression test for addition of a .net DS to the root, and
+	  cache effects with different TTL for glue and DNSKEY.
+	- iana portlist updated.
+
+28 January 2011: Wouter
+	- Fix remove private address does not throw away entire response.
+
+24 January 2011: Wouter
+	- release 1.4.8
+
+19 January 2011: Wouter
+	- fix bug#349: no -L/usr for ldns.
+
 18 January 2011: Wouter
 	- ldns 1.6.8 tarball included.
+	- release 1.4.8rc1.
 
 17 January 2011: Wouter
 	- add get and set option for harden-below-nxdomain feature.

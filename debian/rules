@@ -3,30 +3,37 @@
 %:
 	dh $@
 
-include /usr/share/quilt/quilt.make
-
-build: patch build-stamp
+build: build-stamp
 build-stamp:
 	dh build --before configure
 	dh_auto_configure -- \
 		--disable-gost \
 		--disable-rpath \
-		--with-chroot-dir=/var/lib/unbound \
 		--with-pidfile=/var/run/unbound.pid \
-		--with-libevent
+		--with-libevent \
+		--with-pythonmodule \
+		--with-pyunbound
 	dh_auto_build
 	dh build --after test
 	touch $@
 
-clean: unpatch
+clean:
 	dh clean
 
 install: build
 	dh install --before dh_installinit
 	dh_installinit --error-handler=true --restart-after-upgrade
 	dh install --after dh_installinit
-	install -m 0644 doc/example.conf debian/unbound/etc/unbound/unbound.conf
 	echo '$$named unbound' > debian/unbound/etc/insserv.conf.d/unbound
+	install -m 0755 debian/resolvconf debian/unbound/etc/resolvconf/update.d/unbound
+	install -m 0644 doc/example.conf debian/unbound/usr/share/doc/unbound/examples/unbound.conf
+
+	# XXX gross hack to prevent python module from linking against everything
+	rm -f _unbound.la
+	sed -i -e 's/^dependency_libs=.*/dependency_libs=''/' libunbound.la
+	make _unbound.la LIBS=""
+	install -m 0644 .libs/_unbound.so.2.*.* \
+		debian/python-unbound/usr/lib/pyshared/python2.6/_unbound.so
 
 binary-arch: install
 	dh binary-arch

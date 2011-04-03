@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Jan 24, 2011" "NLnet Labs" "unbound 1.4.8"
+.TH "unbound.conf" "5" "Mar 24, 2011" "NLnet Labs" "unbound 1.4.9"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -868,7 +868,7 @@ section for options.  To setup the correct self\-signed certificates use the
 \fIunbound\-control\-setup\fR(8) utility.
 .TP 5
 .B control\-enable:     \fI<yes or no>
-The option is used to enable remote control, default is "no".
+The option is used to enable remote control, default is "yes".
 If turned off, the server does not listen for control commands.
 .TP 5
 .B control\-interface: <ip address>
@@ -877,7 +877,7 @@ By default localhost (127.0.0.1 and ::1) is listened to.
 Use 0.0.0.0 and ::0 to listen to all interfaces.
 .TP 5
 .B control\-port: <port number>
-The port number to listen on for control commands, default is 953
+The port number to listen on for control commands, default is 53953
 (that is the same port number named uses to listen to rndc).
 If you change this port number, and permissions have been dropped, a
 reload is not sufficient to open the port again, you must then restart.

@@ -1,3 +1,4 @@
+debian/unbound.conf etc/unbound
 usr/sbin/unbound usr/sbin
 usr/sbin/unbound-anchor usr/sbin
 usr/sbin/unbound-control usr/sbin
