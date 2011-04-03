@@ -265,8 +265,6 @@ checkrlimits(struct config_file* cfg)
 				"ports in config to remove this warning");
 			return;
 		}
-		log_warn("increased limit(open files) from %u to %u",
-			(unsigned)avail, (unsigned)total+10);
 	}
 #else	
 	(void)cfg;
