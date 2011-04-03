@@ -7,7 +7,7 @@ It was downloaded from
 Upstream Author:
     Wouter Wijngaards, NLnet Labs
 
-Copyright: 
+Copyright:
     Copyright (C) 2008 Wouter Wijngaards
     Copyright (C) 2008 NLnet Labs
 
@@ -41,8 +41,13 @@ License:
     ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
     POSSIBILITY OF SUCH DAMAGE.
 
-The Debian packaging is (C) 2008, Robert S. Edmonds <edmonds@debian.org> and
-is licensed under the GPL, see `/usr/share/common-licenses/GPL'.
+
+The Debian packaging is:
+
+    Copyright (C) 2008-2011 Robert S. Edmonds <edmonds@debian.org>
+
+and is licensed under the GPL version 3,
+see `/usr/share/common-licenses/GPL-3'.
 
 Files: compat/fake-rfc2553.c, compat/fake-rfc2553.h
 Copyright: 2000-2003 Damien Miller, 1999 WIDE Project
