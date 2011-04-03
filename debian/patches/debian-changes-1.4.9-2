@@ -1,40 +1,15 @@
-Description: Upstream changes introduced in version 1.4.9-1
+Description: Upstream changes introduced in version 1.4.9-2
  This patch has been created by dpkg-source during the package build.
  Here's the last changelog entry, hopefully it gives details on why
  those changes were made:
  .
- unbound (1.4.9-1) unstable; urgency=low
+ unbound (1.4.9-2) unstable; urgency=low
  .
-   * New upstream release.
-   * Convert packaging to git.
-   * Configure with --with-pythonmodule.
-   * Configure with --with-pyunbound.
-   * Build new python-unbound package; closes: #542094.
-   * Automatically create and remove remote control key material on package
-     configuration and package purge.
-   * Set default remote control port to 53953 to avoid conflicting with the
-     bind9 package's default use of port 953 for rndc.
-   * Securely fetch or update the root trust anchor at postinst and before
-     starting the unbound daemon if ROOT_TRUST_ANCHOR_UPDATE is set in
-     /etc/default/unbound; closes: #594911.
-   * If unbound is listening on a loopback address, provide this address as
-     a nameserver to resolvconf if RESOLVCONF is enabled in
-     /etc/default/unbound; closes: #562031.
-   * Configure resolvconf discovered nameservers as forwarders if
-     RESOLVCONF_FORWARDERS is enabled in /etc/default/unbound; closes: #567879.
-   * Don't exit from the init script with an error if UNBOUND_ENABLE is not
-     true; default UNBOUND_ENABLE to true if the default file is missing
-     entirely; closes: #618815.
-   * Support /etc/init.d/unbound reload; closes: #620256.
+   * Build-depend on libldns-dev (>= 1.6.9-2~) for GOST support.
+   * Configure without --disable-gost.
  .
  The person named in the Author field signed this changelog entry.
 Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/542094
-Bug-Debian: http://bugs.debian.org/562031
-Bug-Debian: http://bugs.debian.org/567879
-Bug-Debian: http://bugs.debian.org/594911
-Bug-Debian: http://bugs.debian.org/618815
-Bug-Debian: http://bugs.debian.org/620256
 
 ---
 The information above should follow the Patch Tagging Guidelines, please

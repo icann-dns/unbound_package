@@ -1,3 +1,10 @@
+unbound (1.4.9-2) unstable; urgency=low
+
+  * Build-depend on libldns-dev (>= 1.6.9-2~) for GOST support.
+  * Configure without --disable-gost.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 03 Apr 2011 14:31:40 -0400
+
 unbound (1.4.9-1) unstable; urgency=low
 
   * New upstream release.
