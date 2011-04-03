@@ -81,7 +81,7 @@ while test $# -ne 0; do
 	echo "	-d dir	use directory to store keys and certificates."
 	echo "		default: $DESTDIR"
 	echo "please run this command using the same user id that the "
-	echo "unboun daemon uses, it needs read privileges."
+	echo "unbound daemon uses, it needs read privileges."
 	exit 1
 	;;
 	esac
@@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $CTL_BASE.pem $CTL_BASE.key
 rm -f request.cfg
 rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
 
-echo "Setup success. Certificates created. Enable in unbound.conf file to use"
+echo "Setup success. Certificates created."
 
 exit 0
