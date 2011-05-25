@@ -1,3 +1,10 @@
+unbound (1.4.10-1) unstable; urgency=low
+
+  * New upstream release:
+    - CVE-2011-1922.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Wed, 25 May 2011 15:48:34 -0700
+
 unbound (1.4.9-2) unstable; urgency=low
 
   * Build-depend on libldns-dev (>= 1.6.9-2~) for GOST support.
