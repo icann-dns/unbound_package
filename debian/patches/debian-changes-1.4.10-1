@@ -1,12 +1,12 @@
-Description: Upstream changes introduced in version 1.4.9-2
+Description: Upstream changes introduced in version 1.4.10-1
  This patch has been created by dpkg-source during the package build.
  Here's the last changelog entry, hopefully it gives details on why
  those changes were made:
  .
- unbound (1.4.9-2) unstable; urgency=low
+ unbound (1.4.10-1) unstable; urgency=low
  .
-   * Build-depend on libldns-dev (>= 1.6.9-2~) for GOST support.
-   * Configure without --disable-gost.
+   * New upstream release:
+     - CVE-2011-1922.
  .
  The person named in the Author field signed this changelog entry.
 Author: Robert S. Edmonds <edmonds@debian.org>
@@ -24,8 +24,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.4.9.orig/doc/unbound.conf.5.in
-+++ unbound-1.4.9/doc/unbound.conf.5.in
+--- unbound-1.4.10.orig/doc/unbound.conf.5.in
++++ unbound-1.4.10/doc/unbound.conf.5.in
 @@ -868,7 +868,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
@@ -44,8 +44,8 @@ Last-Update: <YYYY-MM-DD>
  (that is the same port number named uses to listen to rndc).
  If you change this port number, and permissions have been dropped, a
  reload is not sufficient to open the port again, you must then restart.
---- unbound-1.4.9.orig/util/config_file.c
-+++ unbound-1.4.9/util/config_file.c
+--- unbound-1.4.10.orig/util/config_file.c
++++ unbound-1.4.10/util/config_file.c
 @@ -129,7 +129,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
@@ -67,8 +67,8 @@ Last-Update: <YYYY-MM-DD>
  	if(!(cfg->server_key_file = strdup(RUN_DIR"/unbound_server.key"))) 
  		goto error_exit;
  	if(!(cfg->server_cert_file = strdup(RUN_DIR"/unbound_server.pem"))) 
---- unbound-1.4.9.orig/daemon/unbound.c
-+++ unbound-1.4.9/daemon/unbound.c
+--- unbound-1.4.10.orig/daemon/unbound.c
++++ unbound-1.4.10/daemon/unbound.c
 @@ -265,8 +265,6 @@ checkrlimits(struct config_file* cfg)
  				"ports in config to remove this warning");
  			return;
@@ -78,8 +78,8 @@ Last-Update: <YYYY-MM-DD>
  	}
  #else	
  	(void)cfg;
---- unbound-1.4.9.orig/smallapp/unbound-control-setup.sh
-+++ unbound-1.4.9/smallapp/unbound-control-setup.sh
+--- unbound-1.4.10.orig/smallapp/unbound-control-setup.sh
++++ unbound-1.4.10/smallapp/unbound-control-setup.sh
 @@ -81,7 +81,7 @@ while test $# -ne 0; do
  	echo "	-d dir	use directory to store keys and certificates."
  	echo "		default: $DESTDIR"
