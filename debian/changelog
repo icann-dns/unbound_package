@@ -1,9 +1,30 @@
+unbound (1.4.10-1ubuntu1) oneiric; urgency=low
+
+  * Merge from debian unstable.  Remaining changes:
+    - Fix build to work with default python other than python2.6
+      - Generalize install rule in debian/python-unbound.install
+      - Use pyversions -d to determine where to install .so files instead of
+        hard coding python2.6
+      - Remove hard coded XB-Python-Version: 2.6 from debian/control
+
+ -- Scott Kitterman <scott@kitterman.com>  Thu, 26 May 2011 15:44:54 -0400
+
 unbound (1.4.10-1) unstable; urgency=low
 
   * New upstream release:
     - CVE-2011-1922.
 
  -- Robert S. Edmonds <edmonds@debian.org>  Wed, 25 May 2011 15:48:34 -0700
+
+unbound (1.4.9-2ubuntu1) oneiric; urgency=low
+
+  * Fix build to work with default python other than python2.6
+    - Generalize install rule in debian/python-unbound.install
+    - Use pyversions -d to determine where to install .so files instead of
+      hard coding python2.6
+    - Remove hard coded XB-Python-Version: 2.6 from debian/control
+
+ -- Scott Kitterman <scott@kitterman.com>  Tue, 03 May 2011 23:43:18 -0400
 
 unbound (1.4.9-2) unstable; urgency=low
 
