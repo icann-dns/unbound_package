@@ -1,7 +1,8 @@
 Source: unbound
 Section: net
 Priority: optional
-Maintainer: Robert S. Edmonds <edmonds@debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Robert S. Edmonds <edmonds@debian.org>
 Build-Depends: dpkg-dev (>= 1.14.9), debhelper (>= 7), doxygen,
  autoconf, automake, autotools-dev, libtool, flex, bison, libldns-dev (>= 1.6.9-2~),
  libssl-dev, libev-libevent-dev, libexpat1-dev, python-all-dev (>= 2.5.4-1~),
@@ -56,7 +57,6 @@ Package: python-unbound
 Section: python
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
-XB-Python-Version: 2.6
 Description: library implementing DNS resolution and validation (Python bindings)
  Python extension module for libunbound.
  .
