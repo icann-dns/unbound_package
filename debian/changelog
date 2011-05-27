@@ -1,3 +1,11 @@
+unbound (1.4.9-0ubuntu1.1) natty-security; urgency=high
+
+  * SECURITY UPDATE:
+  * References: CVE 2011-1922 (LP: #788818)
+  * Add debian/patches/30_cve2011-1922 backported from 1.4.10
+
+ -- Scott Kitterman <scott@kitterman.com>  Fri, 27 May 2011 00:23:21 -0400
+
 unbound (1.4.9-0ubuntu1) natty; urgency=low
 
   * New bugfix upstream release
