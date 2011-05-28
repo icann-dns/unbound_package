@@ -1,3 +1,11 @@
+unbound (1.4.1-2ubuntu0.1) lucid-security; urgency=low
+
+  * SECURITY UPDATE:
+  * References: CVE 2011-1922 (LP: #788818)
+  * Add debian/patches/30_cve2011-1922 backported from 1.4.10
+
+ -- Scott Kitterman <scott@kitterman.com>  Sat, 28 May 2011 08:46:36 -0400
+
 unbound (1.4.1-2) unstable; urgency=low
 
   * Invoke dh_installinit with --restart-after-upgrade; closes: #563033.
