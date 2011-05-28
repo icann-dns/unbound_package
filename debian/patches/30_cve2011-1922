@@ -1,0 +1,13 @@
+Backport from upstream 1.4.10 release
+Index: unbound-1.4.5/daemon/worker.c
+===================================================================
+--- unbound-1.4.5.orig/daemon/worker.c	2011-05-28 00:10:58.462097645 -0400
++++ unbound-1.4.5/daemon/worker.c	2011-05-28 00:11:06.086097641 -0400
+@@ -774,6 +774,7 @@
+ 		qinfo.qtype == LDNS_RR_TYPE_IXFR) {
+ 		verbose(VERB_ALGO, "worker request: refused zone transfer.");
+ 		log_addr(VERB_CLIENT,"from",&repinfo->addr, repinfo->addrlen);
++		ldns_buffer_rewind(c->buffer);
+ 		LDNS_QR_SET(ldns_buffer_begin(c->buffer));
+ 		LDNS_RCODE_SET(ldns_buffer_begin(c->buffer), 
+ 			LDNS_RCODE_REFUSED);
