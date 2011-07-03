@@ -31,8 +31,9 @@ install: build
 	rm -f _unbound.la
 	sed -i -e 's/^dependency_libs=.*/dependency_libs=''/' libunbound.la
 	make _unbound.la LIBS=""
+	find debian/python-unbound/usr/lib/pyshared -name '*.so.*' -delete
 	install -m 0644 .libs/_unbound.so.2.*.* \
-		debian/python-unbound/usr/lib/pyshared/python2.6/_unbound.so
+		debian/python-unbound/usr/lib/pyshared/$(shell pyversions -d)/_unbound.so
 
 binary-arch: install
 	dh binary-arch

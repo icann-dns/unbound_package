@@ -192,6 +192,8 @@ struct config_file {
 	int use_syslog;
 	/** log timestamp in ascii UTC */
 	int log_time_ascii;
+	/** log queries with one line per query */
+	int log_queries;
 
 	/** do not report identity (id.server, hostname.bind) */
 	int hide_identity;
@@ -236,6 +238,8 @@ struct config_file {
 	int val_log_squelch;
 	/** should validator allow bogus messages to go through */
 	int val_permissive_mode;
+	/** ignore the CD flag in incoming queries and refuse them bogus data */
+	int ignore_cd;
 	/** nsec3 maximum iterations per key size, string */
 	char* val_nsec3_key_iterations;
 	/** autotrust add holddown time, in seconds */

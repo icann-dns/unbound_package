@@ -1,11 +1,75 @@
-25 March 2011: Wouter
+23 June 2011: Wouter
+	- Changed -flto check to support clang compiler.
+	- tag 1.4.11rc3 created.
+
+17 June 2011: Wouter
+	- tag 1.4.11rc1 created.
+	- remove warning about signed/unsigned from flex (other flex version).
+	- updated aclocal.m4 and libtool to match.
+	- tag 1.4.11rc2 created.
+
+16 June 2011: Wouter
+	- log-queries: yesno option, default is no, prints querylog.
+	- version is 1.4.11.
+
+14 June 2011: Wouter
+	- Use -flto compiler flag for link time optimization, if supported.
+	- iana portlist updated.
+
+12 June 2011: Wouter
+	- IPv6 service address for d.root-servers.net (2001:500:2D::D).
+
+10 June 2011: Wouter
+	- unbound-control has version number in the header,
+	  UBCT[version]_space_ is the header sent by the client now.
+	- Unbound control port number is registered with IANA:
+	  ub-dns-control  8953/tcp    unbound dns nameserver control
+	  This is the new default for the control-port config setting.
+	- statistics-interval prints the number of jostled queries to log.
+
+30 May 2011: Wouter
+	- Fix Makefile for U in environment, since wrong U is more common than
+	  deansification necessity.
+	- iana portlist updated.
+	- updated ldns tarball to 1.6.10rc2 snapshot of today.
+
+25 May 2011: Wouter
 	- Fix assertion failure when unbound generates an empty error reply
 	  in response to a query, CVE-2011-1922 VU#531342.
-	- release 1.4.10.
+	- This fix is in tag 1.4.10.
+	- defense in depth against the above bug, an error is printed to log
+	  instead of an assertion failure.
+
+10 May 2011: Wouter
+	- bug#386: --enable-allsymbols option links all binaries to libunbound
+	  and reduces install size significantly.
+	- feature, ignore-cd-flag: yesno to provide dnssec to legacy servers.
+	- iana portlist updated.
+	- Fix TTL of SOA so negative TTL is separately cached from normal TTL.
+
+14 April 2011: Wouter
+	- configure created with newer autoconf 2.66.
+
+12 April 2011: Wouter
+	- bug#378: Fix that configure checks for ldns_get_random presence.
+
+8 April 2011: Wouter
+	- iana portlist updated.
+	- queries with CD flag set cause DNSSEC validation, but the answer is
+	  not withheld if it is bogus.  Thus, unbound will retry if it is bad
+	  and curb the TTL if it is bad, thus protecting the cache for use by
+	  downstream validators.
+	- val-override-date: -1 ignores dates entirely, for NTP usage.
+
+29 March 2011: Wouter
+	- harden-below-nxdomain: changed so that it activates when the
+	  cached nxdomain is dnssec secure.  This avoids backwards
+	  incompatibility because those old servers do not have dnssec.
 
 24 March 2011: Wouter
 	- iana portlist updated.
 	- release 1.4.9.
+	- trunk is 1.5.0
 
 17 March 2011: Wouter
 	- bug#370: new unbound.spec for CentOS 5.x from Harold Jones.

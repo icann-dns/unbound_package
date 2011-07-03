@@ -56,7 +56,6 @@ Package: python-unbound
 Section: python
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
-XB-Python-Version: 2.6
 Description: library implementing DNS resolution and validation (Python bindings)
  Python extension module for libunbound.
  .
