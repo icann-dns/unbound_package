@@ -1,3 +1,18 @@
+1 July 2011: Wouter
+	- version number in example config file.
+	- fix that --enable-static-exe does not complain about it unknown.
+
+30 June 2011: Wouter
+	- tag relase 1.4.11, trunk is 1.4.12 development.
+	- iana portlist updated.
+	- fix bug#395: id bits of other query may leak out under conditions
+	- fix replyaddr count wrong after jostled queries, which leads to
+	  eventual starvation where the daemon has no replyaddrs left to use.
+	- fix comment about rndc port, that referred to the old port number.
+	- fix that the listening socket is not closed when too many remote
+	  control connections are made at the same time.
+	- removed ldns-src tarball inside the unbound tarball.
+
 23 June 2011: Wouter
 	- Changed -flto check to support clang compiler.
 	- tag 1.4.11rc3 created.
