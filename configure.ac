@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.12, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.13, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=12
+LIBUNBOUND_REVISION=13
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -37,6 +37,7 @@ LIBUNBOUND_AGE=0
 # 1.4.10 had 2:10:0
 # 1.4.11 had 2:11:0
 # 1.4.12 had 2:12:0
+# 1.4.13 had 2:13:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -298,13 +299,13 @@ if test "$on_mingw" = "yes"; then
 # check windows threads
 	AC_CHECK_HEADERS([windows.h],,, [AC_INCLUDES_DEFAULT])
 	AC_MSG_CHECKING([for CreateThread])
-	AC_TRY_COMPILE([
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
 #ifdef HAVE_WINDOWS_H
 #include <windows.h>
 #endif
 ], [
 	HANDLE t = CreateThread(NULL, 0, NULL, NULL, 0, NULL);
-],
+])],
 	AC_MSG_RESULT(yes)
 	AC_DEFINE(HAVE_WINDOWS_THREADS, 1, [Using Windows threads])
 ,	
@@ -662,13 +663,13 @@ AC_DEFUN([AC_CHECK_STRPTIME_WORKS],
 [AC_REQUIRE([AC_PROG_CC])
 AC_MSG_CHECKING(whether strptime works)
 if test c${cross_compiling} = cno; then
-AC_TRY_RUN([
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #define _XOPEN_SOURCE
 #include <time.h>
 int main(void) { struct tm tm; char *res;
 res = strptime("20070207111842", "%Y%m%d%H%M%S", &tm);
 if (!res) return 1; return 0; }
-] , [eval "ac_cv_c_strptime_works=yes"], [eval "ac_cv_c_strptime_works=no"])
+]])] , [eval "ac_cv_c_strptime_works=yes"], [eval "ac_cv_c_strptime_works=no"])
 else
 eval "ac_cv_c_strptime_works=maybe"
 fi
