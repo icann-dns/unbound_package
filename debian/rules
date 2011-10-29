@@ -4,30 +4,60 @@
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 LIBRARY = libunbound2
 
-%:
-	dh $@ --with python-support
+clean:
+	dh clean
 
-build: build-stamp
-build-stamp:
-	dh build --before configure
-	dh_auto_configure -- \
+build:
+build-arch:
+build-indep:
+
+binary-arch: build
+	dh_testdir
+
+	autoreconf -fvi
+
+	# first build -- build unbound daemon
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
 		--disable-rpath \
 		--with-pidfile=/var/run/unbound.pid \
 		--with-libevent \
 		--with-pythonmodule \
-		--with-pyunbound \
-		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
-	dh_auto_build
-	dh build --after test
-	touch $@
+		--with-pyunbound
+	$(MAKE) unbound
+	install -D -m 0755 unbound debian/unbound/usr/sbin/unbound
 
-clean:
-	dh clean
+	# XXX gross hack to prevent python module from linking against everything
+	rm -f _unbound.la
+	sed -i -e 's/^dependency_libs=.*/dependency_libs=''/' libunbound.la
+	make _unbound.la LIBS=""
+	install -D -m 0644 .libs/_unbound.so.2.*.* \
+		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages/_unbound.so
+	install -m 0644 \
+		pythonmod/unboundmodule.py \
+		libunbound/python/unbound.py \
+		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages
 
-install: build
-	dh install --before dh_installinit
+	$(MAKE) clean
+
+	# second build -- build libunbound and utilities, without extra dependencies
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--disable-rpath \
+		--without-libevent \
+		--without-pythonmodule \
+		--without-pyunbound \
+		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+		CFLAGS="-fPIC"
+	$(MAKE)
+	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
+
+	dh_installdirs
+
 	dh_installinit --error-handler=true --restart-after-upgrade
-	dh install --after dh_installinit
+
 	echo '$$named unbound' > debian/unbound/etc/insserv.conf.d/unbound
 	install -m 0755 debian/resolvconf debian/unbound/etc/resolvconf/update.d/unbound
 	install -m 0644 doc/example.conf debian/unbound/usr/share/doc/unbound/examples/unbound.conf
@@ -44,18 +74,19 @@ install: build
 		debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)
 	chmod 0644 debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)/*
 
-	# XXX gross hack to prevent python module from linking against everything
-	rm -f _unbound.la
-	sed -i -e 's/^dependency_libs=.*/dependency_libs=''/' libunbound.la
-	make _unbound.la LIBS=""
-	install -D -m 0644 .libs/_unbound.so.2.*.* \
-		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages/_unbound.so
-	install -m 0644 \
-		pythonmod/unboundmodule.py \
-		libunbound/python/unbound.py \
-		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages
+	dh_install
+	dh_installchangelogs
+	dh_installdocs
+	dh_installman
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
 
-binary-arch: install
-	dh binary-arch
-
+binary-indep:
 binary: binary-arch binary-indep
