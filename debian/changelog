@@ -1,3 +1,10 @@
+unbound (1.4.13-2) unstable; urgency=low
+
+  * Reduce the run-time dependencies of libunbound and the unbound-*
+    utilities.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sat, 29 Oct 2011 16:16:19 -0400
+
 unbound (1.4.13-1) unstable; urgency=low
 
   * New upstream release.

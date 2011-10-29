@@ -5,16 +5,11 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.13-1) unstable; urgency=low
+ unbound (1.4.13-2) unstable; urgency=low
  .
-   * New upstream release.
-   * Only install forwarders learned from resolvconf into unbound if
-     RESOLVCONF_FORWARDERS is enabled in /etc/default/unbound; closes: #637198.
-   * Split unbound-anchor utility into separate binary package.
-   * Support multi-arch.
-   * Fix FTBFS with dpkg-dev 1.16.1.
+   * Reduce the run-time dependencies of libunbound and the unbound-*
+     utilities.
 Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/637198
 
 ---
 The information above should follow the Patch Tagging Guidelines, please

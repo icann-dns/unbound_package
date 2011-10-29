@@ -1,5 +1,4 @@
 debian/unbound.conf etc/unbound
-usr/sbin/unbound usr/sbin
 usr/sbin/unbound-control usr/sbin
 usr/sbin/unbound-control-setup usr/sbin
 usr/sbin/unbound-checkconf usr/sbin
