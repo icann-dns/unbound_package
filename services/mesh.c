@@ -43,7 +43,7 @@
  * send back to clients.
  */
 #include "config.h"
-#include "ldns/wire2host.h"
+#include <ldns/wire2host.h>
 #include "services/mesh.h"
 #include "services/outbound_list.h"
 #include "services/cache/dns.h"
@@ -162,7 +162,8 @@ mesh_create(struct module_stack* stack, struct module_env* env)
 		return NULL;
 	}
 	mesh->histogram = timehist_setup();
-	if(!mesh->histogram) {
+	mesh->qbuf_bak = ldns_buffer_new(env->cfg->msg_buffer_size);
+	if(!mesh->histogram || !mesh->qbuf_bak) {
 		free(mesh);
 		log_err("mesh area alloc: out of memory");
 		return NULL;
@@ -209,6 +210,7 @@ mesh_delete(struct mesh_area* mesh)
 	while(mesh->all.count)
 		mesh_delete_helper(mesh->all.root);
 	timehist_delete(mesh->histogram);
+	ldns_buffer_free(mesh->qbuf_bak);
 	free(mesh);
 }
 
@@ -232,7 +234,7 @@ mesh_delete_all(struct mesh_area* mesh)
 	mesh->jostle_last = NULL;
 }
 
-int mesh_make_new_space(struct mesh_area* mesh)
+int mesh_make_new_space(struct mesh_area* mesh, ldns_buffer* qbuf)
 {
 	struct mesh_state* m = mesh->jostle_first;
 	/* free space is available */
@@ -250,6 +252,8 @@ int mesh_make_new_space(struct mesh_area* mesh)
 				"make space for a new one",
 				m->s.qinfo.qname, m->s.qinfo.qtype,
 				m->s.qinfo.qclass);
+			/* backup the query */
+			if(qbuf) ldns_buffer_copy(mesh->qbuf_bak, qbuf);
 			/* notify supers */
 			if(m->super_set.count > 0) {
 				verbose(VERB_ALGO, "notify supers of failure");
@@ -259,6 +263,9 @@ int mesh_make_new_space(struct mesh_area* mesh)
 			}
 			mesh->stats_jostled ++;
 			mesh_state_delete(&m->s);
+			/* restore the query - note that the qinfo ptr to
+			 * the querybuffer is then correct again. */
+			if(qbuf) ldns_buffer_copy(qbuf, mesh->qbuf_bak);
 			return 1;
 		}
 	}
@@ -280,7 +287,7 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 	int added = 0;
 	/* does this create a new reply state? */
 	if(!s || s->list_select == mesh_no_list) {
-		if(!mesh_make_new_space(mesh)) {
+		if(!mesh_make_new_space(mesh, rep->c->buffer)) {
 			verbose(VERB_ALGO, "Too many queries. dropping "
 				"incoming query.");
 			comm_point_drop_reply(rep);
@@ -301,7 +308,9 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 	}
 	/* see if it already exists, if not, create one */
 	if(!s) {
+#ifdef UNBOUND_DEBUG
 		struct rbnode_t* n;
+#endif
 		s = mesh_state_create(mesh->env, qinfo, qflags&BIT_RD, 0);
 		if(!s) {
 			log_err("mesh_state_create: out of memory; SERVFAIL");
@@ -310,7 +319,10 @@ void mesh_new_client(struct mesh_area* mesh, struct query_info* qinfo,
 			comm_point_send_reply(rep);
 			return;
 		}
-		n = rbtree_insert(&mesh->all, &s->node);
+#ifdef UNBOUND_DEBUG
+		n =
+#endif
+		rbtree_insert(&mesh->all, &s->node);
 		log_assert(n != NULL);
 		/* set detached (it is now) */
 		mesh->num_detached_states++;
@@ -369,12 +381,17 @@ mesh_new_callback(struct mesh_area* mesh, struct query_info* qinfo,
 
 	/* see if it already exists, if not, create one */
 	if(!s) {
+#ifdef UNBOUND_DEBUG
 		struct rbnode_t* n;
+#endif
 		s = mesh_state_create(mesh->env, qinfo, qflags&BIT_RD, 0);
 		if(!s) {
 			return 0;
 		}
-		n = rbtree_insert(&mesh->all, &s->node);
+#ifdef UNBOUND_DEBUG
+		n =
+#endif
+		rbtree_insert(&mesh->all, &s->node);
 		log_assert(n != NULL);
 		/* set detached (it is now) */
 		mesh->num_detached_states++;
@@ -408,7 +425,9 @@ void mesh_new_prefetch(struct mesh_area* mesh, struct query_info* qinfo,
         uint16_t qflags, uint32_t leeway)
 {
 	struct mesh_state* s = mesh_area_find(mesh, qinfo, qflags&BIT_RD, 0);
+#ifdef UNBOUND_DEBUG
 	struct rbnode_t* n;
+#endif
 	/* already exists, and for a different purpose perhaps.
 	 * if mesh_no_list, keep it that way. */
 	if(s) {
@@ -419,7 +438,7 @@ void mesh_new_prefetch(struct mesh_area* mesh, struct query_info* qinfo,
 			s->s.prefetch_leeway = leeway;
 		return;
 	}
-	if(!mesh_make_new_space(mesh)) {
+	if(!mesh_make_new_space(mesh, NULL)) {
 		verbose(VERB_ALGO, "Too many queries. dropped prefetch.");
 		mesh->stats_dropped ++;
 		return;
@@ -429,7 +448,10 @@ void mesh_new_prefetch(struct mesh_area* mesh, struct query_info* qinfo,
 		log_err("prefetch mesh_state_create: out of memory");
 		return;
 	}
-	n = rbtree_insert(&mesh->all, &s->node);
+#ifdef UNBOUND_DEBUG
+	n =
+#endif
+	rbtree_insert(&mesh->all, &s->node);
 	log_assert(n != NULL);
 	/* set detached (it is now) */
 	mesh->num_detached_states++;
@@ -627,11 +649,16 @@ void mesh_detach_subs(struct module_qstate* qstate)
 {
 	struct mesh_area* mesh = qstate->env->mesh;
 	struct mesh_state_ref* ref, lookup;
+#ifdef UNBOUND_DEBUG
 	struct rbnode_t* n;
+#endif
 	lookup.node.key = &lookup;
 	lookup.s = qstate->mesh_info;
 	RBTREE_FOR(ref, struct mesh_state_ref*, &qstate->mesh_info->sub_set) {
-		n = rbtree_delete(&ref->s->super_set, &lookup);
+#ifdef UNBOUND_DEBUG
+		n =
+#endif
+		rbtree_delete(&ref->s->super_set, &lookup);
 		log_assert(n != NULL); /* must have been present */
 		if(!ref->s->reply_list && !ref->s->cb_list
 			&& ref->s->super_set.count == 0) {
@@ -654,19 +681,27 @@ int mesh_attach_sub(struct module_qstate* qstate, struct query_info* qinfo,
 		return 0;
 	}
 	if(!sub) {
+#ifdef UNBOUND_DEBUG
 		struct rbnode_t* n;
+#endif
 		/* create a new one */
 		sub = mesh_state_create(qstate->env, qinfo, qflags, prime);
 		if(!sub) {
 			log_err("mesh_attach_sub: out of memory");
 			return 0;
 		}
-		n = rbtree_insert(&mesh->all, &sub->node);
+#ifdef UNBOUND_DEBUG
+		n =
+#endif
+		rbtree_insert(&mesh->all, &sub->node);
 		log_assert(n != NULL);
 		/* set detached (it is now) */
 		mesh->num_detached_states++;
 		/* set new query state to run */
-		n = rbtree_insert(&mesh->run, &sub->run_node);
+#ifdef UNBOUND_DEBUG
+		n =
+#endif
+		rbtree_insert(&mesh->run, &sub->run_node);
 		log_assert(n != NULL);
 		*newq = &sub->s;
 	} else
@@ -684,7 +719,9 @@ int mesh_attach_sub(struct module_qstate* qstate, struct query_info* qinfo,
 
 int mesh_state_attachment(struct mesh_state* super, struct mesh_state* sub)
 {
+#ifdef UNBOUND_DEBUG
 	struct rbnode_t* n;
+#endif
 	struct mesh_state_ref* subref; /* points to sub, inserted in super */
 	struct mesh_state_ref* superref; /* points to super, inserted in sub */
 	if( !(subref = regional_alloc(super->s.region,
@@ -698,9 +735,15 @@ int mesh_state_attachment(struct mesh_state* super, struct mesh_state* sub)
 	superref->s = super;
 	subref->node.key = subref;
 	subref->s = sub;
-	n = rbtree_insert(&sub->super_set, &superref->node);
+#ifdef UNBOUND_DEBUG
+	n =
+#endif
+	rbtree_insert(&sub->super_set, &superref->node);
 	log_assert(n != NULL);
-	n = rbtree_insert(&super->sub_set, &subref->node);
+#ifdef UNBOUND_DEBUG
+	n =
+#endif
+	rbtree_insert(&super->sub_set, &subref->node);
 	log_assert(n != NULL);
 	return 1;
 }
@@ -1101,7 +1144,8 @@ mesh_get_mem(struct mesh_area* mesh)
 {
 	struct mesh_state* m;
 	size_t s = sizeof(*mesh) + sizeof(struct timehist) +
-		sizeof(struct th_buck)*mesh->histogram->num;
+		sizeof(struct th_buck)*mesh->histogram->num +
+		sizeof(ldns_buffer) + ldns_buffer_capacity(mesh->qbuf_bak);
 	RBTREE_FOR(m, struct mesh_state*, &mesh->all) {
 		/* all, including m itself allocated in qstate region */
 		s += regional_get_mem(m->s.region);
