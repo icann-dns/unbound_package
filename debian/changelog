@@ -1,3 +1,10 @@
+unbound (1.4.14-2) unstable; urgency=high
+
+  * Work around gcc bugs by disabling link time optimization on build
+    architectures that are not i386/amd64.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Wed, 21 Dec 2011 15:52:17 -0500
+
 unbound (1.4.14-1) unstable; urgency=high
 
    * New upstream release.

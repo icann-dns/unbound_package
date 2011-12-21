@@ -5,13 +5,11 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.14-1) unstable; urgency=high
+ unbound (1.4.14-2) unstable; urgency=high
  .
-    * New upstream release.
-      - CVE-2011-4528.
-    * Call dh_python2 in debian/rules; closes: #652294.
+   * Work around gcc bugs by disabling link time optimization on build
+     architectures that are not i386/amd64.
 Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/652294
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -78,3 +76,18 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
+--- unbound-1.4.14.orig/configure.ac
++++ unbound-1.4.14/configure.ac
+@@ -228,7 +228,11 @@ case "$debug_enabled" in
+ 		# nothing to do.
+ 		;;
+ esac
+-ACX_CHECK_FLTO
++case "`dpkg-architecture -qDEB_BUILD_ARCH 2>/dev/null`" in
++    amd64|i386)
++    ACX_CHECK_FLTO
++    ;;
++esac
+ 
+ AC_C_INLINE
+ ACX_CHECK_FORMAT_ATTRIBUTE
