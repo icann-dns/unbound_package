@@ -1,3 +1,12 @@
+unbound (1.4.9-0ubuntu1.2) natty-security; urgency=high
+
+  * SECURITY UPDATE:
+  * References: CVE 2011-4528, 2011-4869 (LP: #907983)
+  * Add debian/patches/CVE-2011-4528 to fix DoS with DNSSEC
+    - Patch from Debian security update
+
+ -- Scott Kitterman <scott@kitterman.com>  Fri, 23 Dec 2011 00:12:43 -0500
+
 unbound (1.4.9-0ubuntu1.1) natty-security; urgency=high
 
   * SECURITY UPDATE:
