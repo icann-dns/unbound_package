@@ -1,3 +1,12 @@
+unbound (1.4.12-1ubuntu1) oneiric-security; urgency=high
+
+  * SECURITY UPDATE:
+  * References: CVE 2011-4528, 2011-4869 (LP: #907983)
+  * Add debian/patches/CVE-2011-4528 to fix DoS with DNSSEC
+    - Patch from Debian security update
+
+ -- Scott Kitterman <scott@kitterman.com>  Fri, 23 Dec 2011 00:15:46 -0500
+
 unbound (1.4.12-1) unstable; urgency=medium
 
   * New upstream release.
