@@ -26,4 +26,5 @@ libunbound.so.2 libunbound2 #MINVER#
  ub_resolve_async@Base 1.4.1
  ub_resolve_free@Base 1.4.1
  ub_strerror@Base 1.4.1
+ ub_version@Base 1.4.16
  ub_wait@Base 1.4.1
