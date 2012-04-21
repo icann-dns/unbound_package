@@ -5,10 +5,11 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.16-1) unstable; urgency=low
+ unbound (1.4.16-2) unstable; urgency=low
  .
-   * New upstream release.
+   * Enable hardened build flags; closes: #658021.
 Author: Robert S. Edmonds <edmonds@debian.org>
+Bug-Debian: http://bugs.debian.org/658021
 
 ---
 The information above should follow the Patch Tagging Guidelines, please

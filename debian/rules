@@ -4,6 +4,11 @@
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 LIBRARY = libunbound2
 
+CFLAGS = `dpkg-buildflags --get CFLAGS`
+CFLAGS += -fPIC
+LDFLAGS = `dpkg-buildflags --get LDFLAGS`
+CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
+
 clean:
 	dh clean
 
@@ -17,7 +22,7 @@ binary-arch: build
 	autoreconf -fvi
 
 	# first build -- build unbound daemon
-	./configure \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--disable-rpath \
@@ -42,15 +47,15 @@ binary-arch: build
 	$(MAKE) clean
 
 	# second build -- build libunbound and utilities, without extra dependencies
-	./configure \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--disable-rpath \
 		--without-libevent \
 		--without-pythonmodule \
 		--without-pyunbound \
-		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
-		CFLAGS="-fPIC"
+		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
+
 	$(MAKE)
 	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
 
