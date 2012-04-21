@@ -1,3 +1,9 @@
+unbound (1.4.16-2) unstable; urgency=low
+
+  * Enable hardened build flags; closes: #658021.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sat, 21 Apr 2012 15:35:16 -0400
+
 unbound (1.4.16-1) unstable; urgency=low
 
   * New upstream release.
