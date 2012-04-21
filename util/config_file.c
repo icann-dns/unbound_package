@@ -133,7 +133,7 @@ config_create(void)
 	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
 	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
 #ifdef HAVE_CHROOT
-	if(!(cfg->chrootdir = strdup(CHROOT_DIR))) goto error_exit;
+	if(!(cfg->chrootdir = strdup(""))) goto error_exit;
 #endif
 	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
 	if(!(cfg->logfile = strdup(""))) goto error_exit;
@@ -192,7 +192,7 @@ config_create(void)
 	cfg->local_zones_nodefault = NULL;
 	cfg->local_data = NULL;
 	cfg->python_script = NULL;
-	cfg->remote_control_enable = 0;
+	cfg->remote_control_enable = 1;
 	cfg->control_ifs = NULL;
 	cfg->control_port = UNBOUND_CONTROL_PORT;
 	if(!(cfg->server_key_file = strdup(RUN_DIR"/unbound_server.key"))) 
