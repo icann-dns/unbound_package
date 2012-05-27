@@ -11,7 +11,7 @@ CONFIG_END
 SCENARIO_BEGIN Test resolver prefetch of NS record for moved domain
 
 ; K.ROOT-SERVERS.NET.
-RANGE_BEGIN 0 100
+RANGE_BEGIN 0 200
 	ADDRESS 193.0.14.129 
 ENTRY_BEGIN
 MATCH opcode qtype qname
@@ -26,11 +26,11 @@ K.ROOT-SERVERS.NET.	IN	A	193.0.14.129
 ENTRY_END
 
 ENTRY_BEGIN
-MATCH opcode qtype qname
-ADJUST copy_id
+MATCH opcode subdomain
+ADJUST copy_id copy_query
 REPLY QR NOERROR
 SECTION QUESTION
-www.example.com. IN A
+example.com. IN A
 SECTION AUTHORITY
 com.	IN NS	a.gtld-servers.net.
 SECTION ADDITIONAL
@@ -265,10 +265,31 @@ ENTRY_END
 STEP 80 TRAFFIC
 ; let traffic flow for prefetch to happen
 
-; after 360 + 2000 we are after the change to new owner.
+; check result of that prefetch
+STEP 90 QUERY
+ENTRY_BEGIN
+REPLY RD
+SECTION QUESTION
+example.com. IN NS
+ENTRY_END
+; recursion happens here.
+
+; because the prefetch+current makes old-NS expired, new delegation is picked up
+STEP 91 CHECK_ANSWER
+ENTRY_BEGIN
+MATCH all ttl
+REPLY QR RD RA NOERROR
+SECTION QUESTION
+example.com. IN NS
+SECTION ANSWER
+example.com.	3600 IN NS	ns.example.com.
+SECTION AUTHORITY
+SECTION ADDITIONAL
+ns.example.com.	3600 	IN 	A	8.8.8.8
+ENTRY_END
+
 STEP 100 TIME_PASSES ELAPSE 2360
 
-; the NS record should have timed out.
 STEP 120 QUERY
 ENTRY_BEGIN
 REPLY RD
@@ -287,7 +308,7 @@ www.example.com. 3600 IN A	88.88.88.88
 SECTION AUTHORITY
 example.com.	1240 IN NS	ns.example.com.
 SECTION ADDITIONAL
-ns.example.com.	820 	IN 	A	8.8.8.8
+ns.example.com.	1240 	IN 	A	8.8.8.8
 ENTRY_END
 
 SCENARIO_END

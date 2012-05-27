@@ -62,6 +62,7 @@
 #include "util/fptr_wlist.h"
 #include <signal.h>
 struct worker;
+struct daemon_remote;
 
 /** Global variable: the scenario. Saved here for when event_init is done. */
 static struct replay_scenario* saved_scenario = NULL;
@@ -147,6 +148,7 @@ delete_fake_pending(struct fake_pending* pend)
 {
 	if(!pend)
 		return;
+	free(pend->zone);
 	ldns_buffer_free(pend->buffer);
 	ldns_pkt_free(pend->pkt);
 	free(pend);
@@ -554,12 +556,30 @@ do_infra_rtt(struct replay_runtime* runtime)
 	if(!dp) fatal_exit("cannot parse %s", now->variable);
 	rto = infra_rtt_update(runtime->infra, &now->addr,
 		now->addrlen, ldns_rdf_data(dp), ldns_rdf_size(dp),
-		atoi(now->string), -1, runtime->now_secs);
+		LDNS_RR_TYPE_A, atoi(now->string), -1, runtime->now_secs);
 	log_addr(0, "INFRA_RTT for", &now->addr, now->addrlen);
 	log_info("INFRA_RTT(%s roundtrip %d): rto of %d", now->variable,
 		atoi(now->string), rto);
 	if(rto == 0) fatal_exit("infra_rtt_update failed");
 	ldns_rdf_deep_free(dp);
+}
+
+/** perform exponential backoff on the timout */
+static void
+expon_timeout_backoff(struct replay_runtime* runtime)
+{
+	struct fake_pending* p = runtime->pending_list;
+	int rtt, vs;
+	uint8_t edns_lame_known;
+	int last_rtt, rto;
+	if(!p) return; /* no pending packet to backoff */
+	if(!infra_host(runtime->infra, &p->addr, p->addrlen, p->zone,
+		p->zonelen, runtime->now_secs, &vs, &edns_lame_known, &rtt))
+		return;
+	last_rtt = rtt;
+	rto = infra_rtt_update(runtime->infra, &p->addr, p->addrlen, p->zone,
+		p->zonelen, p->qtype, -1, last_rtt, runtime->now_secs);
+	log_info("infra_rtt_update returned rto %d", rto);
 }
 
 /**
@@ -608,6 +628,7 @@ do_moment_and_advance(struct replay_runtime* runtime)
 	case repevt_timeout:
 		mom = runtime->now;
 		advance_moment(runtime);
+		expon_timeout_backoff(runtime);
 		fake_pending_callback(runtime, mom, NETEVENT_TIMEOUT);
 		break;
 	case repevt_back_reply:
@@ -929,6 +950,7 @@ pending_udp_query(struct outside_network* outnet, ldns_buffer* packet,
 	pend->timeout = timeout/1000;
 	pend->transport = transport_udp;
 	pend->pkt = NULL;
+	pend->zone = NULL;
 	pend->serviced = 0;
 	pend->runtime = runtime;
 	status = ldns_buffer2pkt_wire(&pend->pkt, packet);
@@ -982,6 +1004,7 @@ pending_tcp_query(struct outside_network* outnet, ldns_buffer* packet,
 	pend->timeout = timeout;
 	pend->transport = transport_tcp;
 	pend->pkt = NULL;
+	pend->zone = NULL;
 	pend->runtime = runtime;
 	pend->serviced = 0;
 	status = ldns_buffer2pkt_wire(&pend->pkt, packet);
@@ -1017,9 +1040,8 @@ struct serviced_query* outnet_serviced_query(struct outside_network* outnet,
 	uint16_t flags, int dnssec, int ATTR_UNUSED(want_dnssec),
 	int ATTR_UNUSED(tcp_upstream), int ATTR_UNUSED(ssl_upstream),
 	struct sockaddr_storage* addr, socklen_t addrlen, uint8_t* zone,
-	size_t ATTR_UNUSED(zonelen), comm_point_callback_t* callback,
-	void* callback_arg, ldns_buffer* ATTR_UNUSED(buff),
-	int (*arg_compare)(void*,void*))
+	size_t zonelen, comm_point_callback_t* callback, void* callback_arg,
+	ldns_buffer* ATTR_UNUSED(buff), int (*arg_compare)(void*,void*))
 {
 	struct replay_runtime* runtime = (struct replay_runtime*)outnet->base;
 	struct fake_pending* pend = (struct fake_pending*)calloc(1,
@@ -1062,6 +1084,10 @@ struct serviced_query* outnet_serviced_query(struct outside_network* outnet,
 	}
 	memcpy(&pend->addr, addr, addrlen);
 	pend->addrlen = addrlen;
+	pend->zone = memdup(zone, zonelen);
+	pend->zonelen = zonelen;
+	pend->qtype = (int)qtype;
+	log_assert(pend->zone);
 	pend->callback = callback;
 	pend->cb_arg = callback_arg;
 	pend->timeout = UDP_AUTH_QUERY_TIMEOUT;
@@ -1112,6 +1138,7 @@ void outnet_serviced_query_stop(struct serviced_query* sq, void* cb_arg)
 			else 	runtime->pending_list = p->next;
 			ldns_buffer_free(p->buffer);
 			ldns_pkt_free(p->pkt);
+			free(p->zone);
 			free(p);
 			return;
 		}
@@ -1260,6 +1287,12 @@ void comm_point_raw_handle_callback(int ATTR_UNUSED(fd),
 	log_assert(0);
 }
 
+void comm_base_handle_slow_accept(int ATTR_UNUSED(fd), 
+	short ATTR_UNUSED(event), void* ATTR_UNUSED(arg))
+{
+	log_assert(0);
+}
+
 int serviced_udp_callback(struct comm_point* ATTR_UNUSED(c), 
 	void* ATTR_UNUSED(arg), int ATTR_UNUSED(error),
         struct comm_reply* ATTR_UNUSED(reply_info))
@@ -1342,6 +1375,15 @@ void comm_timer_delete(struct comm_timer* timer)
 	free(timer);
 }
 
+void comm_base_set_slow_accept_handlers(struct comm_base* ATTR_UNUSED(b),
+	void (*stop_acc)(void*), void (*start_acc)(void*),
+	void* ATTR_UNUSED(arg))
+{
+	/* ignore this */
+	(void)stop_acc;
+	(void)start_acc;
+}
+
 struct event_base* comm_base_internal(struct comm_base* ATTR_UNUSED(b))
 {
 	/* no pipe comm possible in testbound */
@@ -1349,6 +1391,22 @@ struct event_base* comm_base_internal(struct comm_base* ATTR_UNUSED(b))
 }
 
 void daemon_remote_exec(struct worker* ATTR_UNUSED(worker))
+{
+}
+
+void listen_start_accept(struct listen_dnsport* ATTR_UNUSED(listen))
+{
+}
+
+void listen_stop_accept(struct listen_dnsport* ATTR_UNUSED(listen))
+{
+}
+
+void daemon_remote_start_accept(struct daemon_remote* ATTR_UNUSED(rc))
+{
+}
+
+void daemon_remote_stop_accept(struct daemon_remote* ATTR_UNUSED(rc))
 {
 }
 

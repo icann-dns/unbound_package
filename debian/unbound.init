@@ -144,9 +144,15 @@ case "$1" in
         fi
         ;;
 
+    status)
+        status="4"
+        status_of_proc -p $PIDFILE $DAEMON $NAME || status="$?"
+        exit $status
+        ;;
+
     *)
         N=/etc/init.d/$NAME
-        echo "Usage: $N {start|stop|restart|reload|force-reload}" >&2
+        echo "Usage: $N {start|stop|restart|status|reload|force-reload}" >&2
         exit 1
         ;;
 esac
