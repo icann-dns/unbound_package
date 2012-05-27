@@ -217,6 +217,7 @@ www.example.com. IN A
 SECTION ANSWER
 www.example.com. 3600 IN A	10.20.30.40
 SECTION AUTHORITY
+; NS rrset picked up from parent-NS (the child-NS timed out at now+prefetch)
 example.com.	3600 IN NS	ns.example.com.
 SECTION ADDITIONAL
 ns.example.com.	3600 	IN 	A	1.2.3.4

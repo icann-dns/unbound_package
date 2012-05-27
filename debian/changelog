@@ -1,3 +1,14 @@
+unbound (1.4.17-1) unstable; urgency=low
+
+  * New upstream release; closes: #674434.
+  * Implement 'status' command in init script; closes: #666388.
+  * Fix build system bug that negated fully hardening the build;
+    closes: #658021. (Patch from Simon Ruderich.)
+  * Disable ECDSA support (for now) as this requires a newer ldns than is in
+    the archive.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Sun, 27 May 2012 16:41:41 -0400
+
 unbound (1.4.16-2) unstable; urgency=low
 
   * Enable hardened build flags; closes: #658021.

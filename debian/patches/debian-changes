@@ -5,11 +5,18 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.16-2) unstable; urgency=low
+ unbound (1.4.17-1) unstable; urgency=low
  .
-   * Enable hardened build flags; closes: #658021.
+   * New upstream release; closes: #674434.
+   * Implement 'status' command in init script; closes: #666388.
+   * Fix build system bug that negated fully hardening the build;
+     closes: #658021. (Patch from Simon Ruderich.)
+   * Disable ECDSA support (for now) as this requires a newer ldns than is in
+     the archive.
 Author: Robert S. Edmonds <edmonds@debian.org>
 Bug-Debian: http://bugs.debian.org/658021
+Bug-Debian: http://bugs.debian.org/666388
+Bug-Debian: http://bugs.debian.org/674434
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -24,9 +31,25 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.4.16.orig/configure.ac
-+++ unbound-1.4.16/configure.ac
-@@ -231,7 +231,11 @@ case "$debug_enabled" in
+--- unbound-1.4.17.orig/acx_python.m4
++++ unbound-1.4.17/acx_python.m4
+@@ -164,8 +164,11 @@ $ac_distutils_result])
+         AC_MSG_CHECKING([consistency of all components of python development environment])
+         AC_LANG_PUSH([C])
+         # save current global flags
+-        LIBS="$ac_save_LIBS $PYTHON_LDFLAGS"
+-        CPPFLAGS="$ac_save_CPPFLAGS $PYTHON_CPPFLAGS"
++        ac_save_LIBS="$LIBS"
++        ac_save_CPPFLAGS="$CPPFLAGS"
++
++        LIBS="$LIBS $PYTHON_LDFLAGS"
++        CPPFLAGS="$CPPFLAGS $PYTHON_CPPFLAGS"
+         AC_TRY_LINK([
+                 #include <Python.h>
+         ],[
+--- unbound-1.4.17.orig/configure.ac
++++ unbound-1.4.17/configure.ac
+@@ -232,7 +232,11 @@ case "$debug_enabled" in
  		# nothing to do.
  		;;
  esac
@@ -39,8 +62,8 @@ Last-Update: <YYYY-MM-DD>
  
  AC_C_INLINE
  ACX_CHECK_FORMAT_ATTRIBUTE
---- unbound-1.4.16.orig/daemon/unbound.c
-+++ unbound-1.4.16/daemon/unbound.c
+--- unbound-1.4.17.orig/daemon/unbound.c
++++ unbound-1.4.17/daemon/unbound.c
 @@ -266,8 +266,6 @@ checkrlimits(struct config_file* cfg)
  				"ports in config to remove this warning");
  			return;
@@ -50,9 +73,9 @@ Last-Update: <YYYY-MM-DD>
  	}
  #else	
  	(void)cfg;
---- unbound-1.4.16.orig/doc/unbound.conf.5.in
-+++ unbound-1.4.16/doc/unbound.conf.5.in
-@@ -904,7 +904,7 @@ section for options.  To setup the corre
+--- unbound-1.4.17.orig/doc/unbound.conf.5.in
++++ unbound-1.4.17/doc/unbound.conf.5.in
+@@ -916,7 +916,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable:     \fI<yes or no>
@@ -61,8 +84,8 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: <ip address>
---- unbound-1.4.16.orig/smallapp/unbound-control-setup.sh
-+++ unbound-1.4.16/smallapp/unbound-control-setup.sh
+--- unbound-1.4.17.orig/smallapp/unbound-control-setup.sh
++++ unbound-1.4.17/smallapp/unbound-control-setup.sh
 @@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -71,8 +94,8 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.4.16.orig/util/config_file.c
-+++ unbound-1.4.16/util/config_file.c
+--- unbound-1.4.17.orig/util/config_file.c
++++ unbound-1.4.17/util/config_file.c
 @@ -133,7 +133,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
@@ -90,4 +113,4 @@ Last-Update: <YYYY-MM-DD>
 +	cfg->remote_control_enable = 1;
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
- 	if(!(cfg->server_key_file = strdup(RUN_DIR"/unbound_server.key"))) 
+ 	cfg->minimal_responses = 0;
