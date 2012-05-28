@@ -5,18 +5,10 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.17-1) unstable; urgency=low
+ unbound (1.4.17-2) unstable; urgency=low
  .
-   * New upstream release; closes: #674434.
-   * Implement 'status' command in init script; closes: #666388.
-   * Fix build system bug that negated fully hardening the build;
-     closes: #658021. (Patch from Simon Ruderich.)
-   * Disable ECDSA support (for now) as this requires a newer ldns than is in
-     the archive.
+   * Build-depend on libldns-dev (>= 1.6.13~) for ECDSA support.
 Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/658021
-Bug-Debian: http://bugs.debian.org/666388
-Bug-Debian: http://bugs.debian.org/674434
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
