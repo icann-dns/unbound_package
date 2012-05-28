@@ -29,8 +29,7 @@ binary-arch: build
 		--with-pidfile=/var/run/unbound.pid \
 		--with-libevent \
 		--with-pythonmodule \
-		--with-pyunbound \
-		--disable-ecdsa
+		--with-pyunbound
 	$(MAKE) unbound
 	install -D -m 0755 unbound debian/unbound/usr/sbin/unbound
 
@@ -55,7 +54,6 @@ binary-arch: build
 		--without-libevent \
 		--without-pythonmodule \
 		--without-pyunbound \
-		--disable-ecdsa \
 		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
 
 	$(MAKE)
