@@ -1,3 +1,11 @@
+unbound (1.4.18-0ubuntu1) quantal; urgency=low
+
+  * New upstream release
+    - Remove acx_python.m4 changes from debian/patches/debian-changes since
+      they are incorporated upstream
+
+ -- Scott Kitterman <scott@kitterman.com>  Mon, 06 Aug 2012 14:01:03 -0400
+
 unbound (1.4.17-2) unstable; urgency=low
 
   * Build-depend on libldns-dev (>= 1.6.13~) for ECDSA support.
