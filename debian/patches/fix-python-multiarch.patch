@@ -1,0 +1,19 @@
+Description: Include python multiarch header path
+Author: Micah Gersten <micahg@ubuntu.com>
+
+--- unbound-1.4.19.orig/acx_python.m4
++++ unbound-1.4.19/acx_python.m4
+@@ -90,7 +90,12 @@ $ac_distutils_result])
+                 if test -n "${python_path}"; then
+                         python_path="-I$python_path"
+                 fi
+-                PYTHON_CPPFLAGS=$python_path
++                python_multiarch_path=`$PYTHON -c "import distutils.sysconfig; \
++                        print distutils.sysconfig.get_python_inc(plat_specific=1);"`
++                if test -n "${python_multiarch_path}"; then
++                        python_multiarch_path="-I$python_multiarch_path"
++                fi
++                PYTHON_CPPFLAGS="$python_path $python_multiarch_path"
+         fi
+         AC_MSG_RESULT([$PYTHON_CPPFLAGS])
+         AC_SUBST([PYTHON_CPPFLAGS])
