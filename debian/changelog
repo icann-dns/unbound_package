@@ -1,3 +1,9 @@
+unbound (1.4.6-1+squeeze3) stable; urgency=low
+
+  * Update IP address hints for D.ROOT-SERVERS.NET.
+
+ -- Robert S. Edmonds <edmonds@debian.org>  Mon, 11 Feb 2013 21:52:49 -0500
+
 unbound (1.4.6-1+squeeze2) squeeze-security; urgency=high
 
   * Apply patch from upstream to fix DNSSEC-related crashes
