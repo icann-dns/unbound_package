@@ -5,9 +5,9 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.17-2) unstable; urgency=low
+ unbound (1.4.17-3) testing; urgency=low
  .
-   * Build-depend on libldns-dev (>= 1.6.13~) for ECDSA support.
+   * Update IPv4 address hint for D.ROOT-SERVERS.NET.
 Author: Robert S. Edmonds <edmonds@debian.org>
 
 ---
@@ -54,6 +54,17 @@ Last-Update: <YYYY-MM-DD>
  
  AC_C_INLINE
  ACX_CHECK_FORMAT_ATTRIBUTE
+--- unbound-1.4.17.orig/iterator/iter_hints.c
++++ unbound-1.4.17/iterator/iter_hints.c
+@@ -129,7 +129,7 @@ compile_time_root_prime(int do_ip4, int
+ 	if(!ah(dp, "A.ROOT-SERVERS.NET.", "198.41.0.4"))	return 0;
+ 	if(!ah(dp, "B.ROOT-SERVERS.NET.", "192.228.79.201")) return 0;
+ 	if(!ah(dp, "C.ROOT-SERVERS.NET.", "192.33.4.12"))	return 0;
+-	if(!ah(dp, "D.ROOT-SERVERS.NET.", "128.8.10.90"))	return 0;
++	if(!ah(dp, "D.ROOT-SERVERS.NET.", "199.7.91.13"))	return 0;
+ 	if(!ah(dp, "E.ROOT-SERVERS.NET.", "192.203.230.10")) return 0;
+ 	if(!ah(dp, "F.ROOT-SERVERS.NET.", "192.5.5.241"))	return 0;
+ 	if(!ah(dp, "G.ROOT-SERVERS.NET.", "192.112.36.4"))	return 0;
 --- unbound-1.4.17.orig/daemon/unbound.c
 +++ unbound-1.4.17/daemon/unbound.c
 @@ -266,8 +266,6 @@ checkrlimits(struct config_file* cfg)
