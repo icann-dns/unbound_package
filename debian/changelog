@@ -1,3 +1,11 @@
+unbound (1.4.18-1~ubuntu12.04.1) precise-backports; urgency=low
+
+  * Source change backport to Precise (LP: #1158766)
+    - build with --disable-ecdsa
+    - do not depend on libldns-dev (>= 1.6.13~)
+
+ -- Michael Vogt <michael.vogt@ubuntu.com>  Tue, 26 Mar 2013 15:01:53 +0100
+
 unbound (1.4.18-1) unstable; urgency=low
 
   * New upstream release.
