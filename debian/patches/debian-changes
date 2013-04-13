@@ -5,10 +5,24 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.19-1) unstable; urgency=low
+ unbound (1.4.20-1) unstable; urgency=low
  .
    * New upstream release.
+     - Updates IPv4 address hint for D.ROOT-SERVERS.NET; closes: #697351.
+   * Correct exit code for "/etc/init.d/unbound status"; closes: #685052.
+     (Patch from micah anderson.)
+   * Finish dh_python2 conversion; closes: #697575.
+     (Patch from Micah Gersten.)
+   * Check for multiarch Python headers; closes: #697576.
+     (Patch from Micah Gersten.)
+   * Automatically set up the chroot directory if enabled; closes: #579622.
+     (Patch from Simon Deziel.)
 Author: Robert S. Edmonds <edmonds@debian.org>
+Bug-Debian: http://bugs.debian.org/579622
+Bug-Debian: http://bugs.debian.org/685052
+Bug-Debian: http://bugs.debian.org/697351
+Bug-Debian: http://bugs.debian.org/697575
+Bug-Debian: http://bugs.debian.org/697576
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -23,9 +37,25 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.4.19.orig/configure.ac
-+++ unbound-1.4.19/configure.ac
-@@ -237,7 +237,11 @@ case "$debug_enabled" in
+--- unbound-1.4.20.orig/acx_python.m4
++++ unbound-1.4.20/acx_python.m4
+@@ -90,7 +90,12 @@ $ac_distutils_result])
+                 if test -n "${python_path}"; then
+                         python_path="-I$python_path"
+                 fi
+-                PYTHON_CPPFLAGS=$python_path
++                python_multiarch_path=`$PYTHON -c "import distutils.sysconfig; \
++                        print distutils.sysconfig.get_python_inc(plat_specific=1);"`
++                if test -n "${python_multiarch_path}"; then
++                        python_multiarch_path="-I$python_multiarch_path"
++                fi
++                PYTHON_CPPFLAGS="$python_path $python_multiarch_path"
+         fi
+         AC_MSG_RESULT([$PYTHON_CPPFLAGS])
+         AC_SUBST([PYTHON_CPPFLAGS])
+--- unbound-1.4.20.orig/configure.ac
++++ unbound-1.4.20/configure.ac
+@@ -238,7 +238,11 @@ case "$debug_enabled" in
  		# nothing to do.
  		;;
  esac
@@ -38,9 +68,9 @@ Last-Update: <YYYY-MM-DD>
  
  AC_C_INLINE
  ACX_CHECK_FORMAT_ATTRIBUTE
---- unbound-1.4.19.orig/daemon/unbound.c
-+++ unbound-1.4.19/daemon/unbound.c
-@@ -275,8 +275,6 @@ checkrlimits(struct config_file* cfg)
+--- unbound-1.4.20.orig/daemon/unbound.c
++++ unbound-1.4.20/daemon/unbound.c
+@@ -276,8 +276,6 @@ checkrlimits(struct config_file* cfg)
  				"ports in config to remove this warning");
  			return;
  		}
@@ -49,8 +79,8 @@ Last-Update: <YYYY-MM-DD>
  	}
  #else	
  	(void)cfg;
---- unbound-1.4.19.orig/doc/unbound.conf.5.in
-+++ unbound-1.4.19/doc/unbound.conf.5.in
+--- unbound-1.4.20.orig/doc/unbound.conf.5.in
++++ unbound-1.4.20/doc/unbound.conf.5.in
 @@ -916,7 +916,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
@@ -60,8 +90,8 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: <ip address>
---- unbound-1.4.19.orig/smallapp/unbound-control-setup.sh
-+++ unbound-1.4.19/smallapp/unbound-control-setup.sh
+--- unbound-1.4.20.orig/smallapp/unbound-control-setup.sh
++++ unbound-1.4.20/smallapp/unbound-control-setup.sh
 @@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -70,8 +100,8 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.4.19.orig/util/config_file.c
-+++ unbound-1.4.19/util/config_file.c
+--- unbound-1.4.20.orig/util/config_file.c
++++ unbound-1.4.20/util/config_file.c
 @@ -137,7 +137,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
