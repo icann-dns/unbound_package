@@ -1,3 +1,10 @@
+unbound (1.4.21-1ubuntu1) trusty; urgency=medium
+
+  * Build with dh-autoreconf and manually update config.{sub,guess}, as
+    autoreconf only does it when the package uses automake.
+
+ -- William Grant <wgrant@ubuntu.com>  Tue, 31 Dec 2013 08:45:32 +0000
+
 unbound (1.4.21-1) unstable; urgency=low
 
   * New upstream release.
