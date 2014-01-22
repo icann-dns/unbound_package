@@ -1,3 +1,10 @@
+unbound (1.4.21-1ubuntu2) trusty; urgency=medium
+
+  * Fix potential loss of data if filesystem is full, take patch from upstream
+    svn revision 3044, written by Wouter Wijngaards (LP: #1271104)
+
+ -- Andreas Moog <andreas.moog@warperbbs.de>  Wed, 22 Jan 2014 15:29:30 +0100
+
 unbound (1.4.21-1ubuntu1) trusty; urgency=medium
 
   * Build with dh-autoreconf and manually update config.{sub,guess}, as
