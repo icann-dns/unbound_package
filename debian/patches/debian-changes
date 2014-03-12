@@ -5,21 +5,12 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.21-1) unstable; urgency=low
+ unbound (1.4.22-1) unstable; urgency=medium
  .
    * New upstream release.
-   * Don't compress the example config file in /usr/share/doc/unbound;
-     closes: #722708.
-   * Fully enable hardening options; closes: #709837.
-     (Patch from Simon Deziel.)
-   * Add support for .d style configuration in /etc/unbound/unbound.conf.d;
-     closes: #656549.
-   * Move auto-trust-anchor-file configuration for the root into the new
-     /etc/unbound/unbound.conf.d directory.
+   * Drop Build-Dependency on libldns-dev. Unbound no longer relies on
+     libldns.
 Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/656549
-Bug-Debian: http://bugs.debian.org/709837
-Bug-Debian: http://bugs.debian.org/722708
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -34,8 +25,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.4.21.orig/acx_python.m4
-+++ unbound-1.4.21/acx_python.m4
+--- unbound-1.4.22.orig/acx_python.m4
++++ unbound-1.4.22/acx_python.m4
 @@ -90,7 +90,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -50,9 +41,9 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.4.21.orig/daemon/unbound.c
-+++ unbound-1.4.21/daemon/unbound.c
-@@ -276,8 +276,6 @@ checkrlimits(struct config_file* cfg)
+--- unbound-1.4.22.orig/daemon/unbound.c
++++ unbound-1.4.22/daemon/unbound.c
+@@ -280,8 +280,6 @@ checkrlimits(struct config_file* cfg)
  				"ports in config to remove this warning");
  			return;
  		}
@@ -61,9 +52,9 @@ Last-Update: <YYYY-MM-DD>
  	}
  #else	
  	(void)cfg;
---- unbound-1.4.21.orig/doc/unbound.conf.5.in
-+++ unbound-1.4.21/doc/unbound.conf.5.in
-@@ -921,7 +921,7 @@ section for options.  To setup the corre
+--- unbound-1.4.22.orig/doc/unbound.conf.5.in
++++ unbound-1.4.22/doc/unbound.conf.5.in
+@@ -948,7 +948,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable:     \fI<yes or no>
@@ -72,8 +63,8 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: <ip address>
---- unbound-1.4.21.orig/smallapp/unbound-control-setup.sh
-+++ unbound-1.4.21/smallapp/unbound-control-setup.sh
+--- unbound-1.4.22.orig/smallapp/unbound-control-setup.sh
++++ unbound-1.4.22/smallapp/unbound-control-setup.sh
 @@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -82,9 +73,9 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.4.21.orig/util/config_file.c
-+++ unbound-1.4.21/util/config_file.c
-@@ -139,7 +139,7 @@ config_create(void)
+--- unbound-1.4.22.orig/util/config_file.c
++++ unbound-1.4.22/util/config_file.c
+@@ -144,7 +144,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
  #ifdef HAVE_CHROOT
@@ -93,7 +84,7 @@ Last-Update: <YYYY-MM-DD>
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -198,7 +198,7 @@ config_create(void)
+@@ -204,7 +204,7 @@ config_create(void)
  	cfg->local_zones_nodefault = NULL;
  	cfg->local_data = NULL;
  	cfg->python_script = NULL;
