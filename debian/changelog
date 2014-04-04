@@ -1,3 +1,13 @@
+unbound (1.4.22-1ubuntu2) trusty; urgency=medium
+
+  * debian/rules: Set to run unittests.
+  * debian/patches/debian-changes: Removed lingering changes from 1.4.22-1
+    upload.
+  * debian/patches/disable_sldns_str2wire_rr_buf_tests: Disable test files 3
+    and 5 (issue reported upstream #572).
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Fri, 04 Apr 2014 23:21:00 +0000
+
 unbound (1.4.22-1ubuntu1) trusty; urgency=low
 
   * Bring back dh-autoreconf stuff from upload 1.4.21-1ubuntu1.

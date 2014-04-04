@@ -1,0 +1,27 @@
+Description: Disable unit tests 3 and 5 of rr_test suite.
+Author: Jonathan Davies <jonathan.davies@canonical.com>
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: vendor
+Bug: https://www.nlnetlabs.nl/bugs-script/show_bug.cgi?id=572
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1302925
+Last-Update: <2014-04-05>
+
+--- unbound-1.4.22.orig/testcode/unitldns.c
++++ unbound-1.4.22/testcode/unitldns.c
+@@ -205,9 +205,9 @@ rr_tests(void)
+ {
+ 	rr_test_file("testdata/test_ldnsrr.1", "testdata/test_ldnsrr.c1");
+ 	rr_test_file("testdata/test_ldnsrr.2", "testdata/test_ldnsrr.c2");
+-	rr_test_file("testdata/test_ldnsrr.3", "testdata/test_ldnsrr.c3");
++	/*rr_test_file("testdata/test_ldnsrr.3", "testdata/test_ldnsrr.c3");*/
+ 	rr_test_file("testdata/test_ldnsrr.4", "testdata/test_ldnsrr.c4");
+-	rr_test_file("testdata/test_ldnsrr.5", "testdata/test_ldnsrr.c5");
++	/*rr_test_file("testdata/test_ldnsrr.5", "testdata/test_ldnsrr.c5");*/
+ }
+ 
+ void
