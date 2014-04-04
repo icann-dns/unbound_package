@@ -13,6 +13,10 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
+override_dh_auto_clean:
+	dh_autoreconf_clean
+	dh_auto_clean
+
 clean:
 	dh clean
 
@@ -20,10 +24,14 @@ build:
 build-arch:
 build-indep:
 
+autoreconf:
+	autoreconf -f -i
+	cp -f /usr/share/misc/config.guess /usr/share/misc/config.sub .
+
 binary-arch: build
 	dh_testdir
 
-	autoreconf -fvi
+	dh_autoreconf debian/rules -- autoreconf
 
 	# first build -- build unbound daemon
 	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
