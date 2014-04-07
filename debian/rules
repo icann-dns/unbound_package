@@ -44,7 +44,6 @@ binary-arch: build
 		--with-pyunbound \
 		$(CONFIGURE_ARGS)
 	$(MAKE) unbound
-	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
 	install -D -m 0755 unbound debian/unbound/usr/sbin/unbound
 
 	# XXX gross hack to prevent python module from linking against everything
@@ -71,9 +70,7 @@ binary-arch: build
 		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
 
 	$(MAKE)
-	# This should really be $(MAKE) tests.
-	$(MAKE) unittest
-	./unittest
+	$(MAKE) test
 
 	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
 

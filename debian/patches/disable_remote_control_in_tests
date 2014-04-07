@@ -1,0 +1,21 @@
+Description: Disable remote control in tests.
+ Debian has a patch which enables remote control by default, which breaks the
+ testbound test suite.
+ .
+ This patch disables this remote control setting in the tests.
+Author: Jonathan Davies <jonathan.davies@canonical.com>
+
+---
+Origin: vendor
+Last-Update: <2014-04-07>
+
+--- unbound-1.4.22.orig/testcode/testbound.c
++++ unbound-1.4.22/testcode/testbound.c
+@@ -193,6 +193,7 @@ setup_config(FILE* in, int* lineno, int*
+ 	fprintf(cfg, "		username: \"\"\n");
+ 	fprintf(cfg, "		pidfile: \"\"\n");
+ 	fprintf(cfg, "		val-log-level: 2\n");
++	fprintf(cfg, "remote-control:   control-enable: no\n");
+ 	while(fgets(line, MAX_LINE_LEN-1, in)) {
+ 		parse = line;
+ 		(*lineno)++;
