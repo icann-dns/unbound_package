@@ -1,3 +1,11 @@
+unbound (1.4.22-1ubuntu3) trusty; urgency=low
+
+  * debian/patches/disable_chroot_by_default: Readded disable-chroot-by-default
+    functionality (LP: #1303088).
+  * debian/patches/silence_open_files_limit_warning: Readded patch.
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Mon, 07 Apr 2014 13:02:09 +0000
+
 unbound (1.4.22-1ubuntu2) trusty; urgency=medium
 
   * debian/rules: Set to run unittests.

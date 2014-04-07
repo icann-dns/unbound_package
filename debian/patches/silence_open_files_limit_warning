@@ -1,0 +1,16 @@
+Description: Silence open file limit warning
+Author: Jonathan Davies <jonathan.davies@canonical.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1303088
+Last-Update: <2014-04-07>
+
+--- unbound-1.4.22.orig/daemon/unbound.c
++++ unbound-1.4.22/daemon/unbound.c
+@@ -280,8 +280,6 @@ checkrlimits(struct config_file* cfg)
+ 				"ports in config to remove this warning");
+ 			return;
+ 		}
+-		log_warn("increased limit(open files) from %u to %u",
+-			(unsigned)avail, (unsigned)total+10);
+ 	}
+ #else	
+ 	(void)cfg;
