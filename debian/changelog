@@ -1,3 +1,11 @@
+unbound (1.4.22-1ubuntu4) trusty; urgency=medium
+
+  * debian/rules: Enable full testsuite.
+  * debian/patches/disable_remote_control_in_tests: Disable remote control in
+    testbound suite so tests succeed.
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Mon, 07 Apr 2014 13:45:15 +0000
+
 unbound (1.4.22-1ubuntu3) trusty; urgency=low
 
   * debian/patches/disable_chroot_by_default: Readded disable-chroot-by-default
