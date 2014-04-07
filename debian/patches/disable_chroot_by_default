@@ -1,0 +1,60 @@
+Description: Disable chroot by default.
+Author: Robert S. Edmonds <edmonds@debian.org>
+
+--- unbound-1.4.21.orig/acx_python.m4
++++ unbound-1.4.21/acx_python.m4
+@@ -90,7 +90,12 @@ $ac_distutils_result])
+                 if test -n "${python_path}"; then
+                         python_path="-I$python_path"
+                 fi
+-                PYTHON_CPPFLAGS=$python_path
++                python_multiarch_path=`$PYTHON -c "import distutils.sysconfig; \
++                        print distutils.sysconfig.get_python_inc(plat_specific=1);"`
++                if test -n "${python_multiarch_path}"; then
++                        python_multiarch_path="-I$python_multiarch_path"
++                fi
++                PYTHON_CPPFLAGS="$python_path $python_multiarch_path"
+         fi
+         AC_MSG_RESULT([$PYTHON_CPPFLAGS])
+         AC_SUBST([PYTHON_CPPFLAGS])
+--- unbound-1.4.21.orig/doc/unbound.conf.5.in
++++ unbound-1.4.21/doc/unbound.conf.5.in
+@@ -921,7 +921,7 @@ section for options.  To setup the corre
+ \fIunbound\-control\-setup\fR(8) utility.
+ .TP 5
+ .B control\-enable:     \fI<yes or no>
+-The option is used to enable remote control, default is "no".
++The option is used to enable remote control, default is "yes".
+ If turned off, the server does not listen for control commands.
+ .TP 5
+ .B control\-interface: <ip address>
+--- unbound-1.4.21.orig/smallapp/unbound-control-setup.sh
++++ unbound-1.4.21/smallapp/unbound-control-setup.sh
+@@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
+ rm -f request.cfg
+ rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
+ 
+-echo "Setup success. Certificates created. Enable in unbound.conf file to use"
++echo "Setup success. Certificates created."
+ 
+ exit 0
+--- unbound-1.4.21.orig/util/config_file.c
++++ unbound-1.4.21/util/config_file.c
+@@ -139,7 +139,7 @@ config_create(void)
+ 	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
+ 	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
+ #ifdef HAVE_CHROOT
+-	if(!(cfg->chrootdir = strdup(CHROOT_DIR))) goto error_exit;
++	if(!(cfg->chrootdir = strdup(""))) goto error_exit;
+ #endif
+ 	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
+ 	if(!(cfg->logfile = strdup(""))) goto error_exit;
+@@ -198,7 +198,7 @@ config_create(void)
+ 	cfg->local_zones_nodefault = NULL;
+ 	cfg->local_data = NULL;
+ 	cfg->python_script = NULL;
+-	cfg->remote_control_enable = 0;
++	cfg->remote_control_enable = 1;
+ 	cfg->control_ifs = NULL;
+ 	cfg->control_port = UNBOUND_CONTROL_PORT;
+ 	cfg->minimal_responses = 0;
