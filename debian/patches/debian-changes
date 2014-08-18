@@ -5,12 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.22-1) unstable; urgency=medium
+ unbound (1.4.22-2) unstable; urgency=medium
  .
-   * New upstream release.
-   * Drop Build-Dependency on libldns-dev. Unbound no longer relies on
-     libldns.
+   * Drop unneeded Build-Dependency on doxygen.
+   * Drop unneeded Build-Dependency on automake. (Unbound does not use
+     automake.)
+   * Use dh_autotools-dev_updateconfig to update the config.{guess,sub} files
+     at build time; closes: #746313.
 Author: Robert S. Edmonds <edmonds@debian.org>
+Bug-Debian: http://bugs.debian.org/746313
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
