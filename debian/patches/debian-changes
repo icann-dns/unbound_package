@@ -5,15 +5,11 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.22-2) unstable; urgency=medium
+ unbound (1.5.0~rc1-1) experimental; urgency=medium
  .
-   * Drop unneeded Build-Dependency on doxygen.
-   * Drop unneeded Build-Dependency on automake. (Unbound does not use
-     automake.)
-   * Use dh_autotools-dev_updateconfig to update the config.{guess,sub} files
-     at build time; closes: #746313.
-Author: Robert S. Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/746313
+   * New upstream release.
+   * Upload to experimental.
+Author: Robert Edmonds <edmonds@debian.org>
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -28,9 +24,20 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.4.22.orig/acx_python.m4
-+++ unbound-1.4.22/acx_python.m4
-@@ -90,7 +90,12 @@ $ac_distutils_result])
+--- unbound-1.5.0~rc1.orig/Makefile.in
++++ unbound-1.5.0~rc1/Makefile.in
+@@ -397,7 +397,7 @@ libunbound/python/libunbound_wrap.c:	$(s
+ 
+ # Pyunbound python unbound wrapper
+ _unbound.la:	libunbound_wrap.lo libunbound.la
+-	$(LIBTOOL) --tag=CC --mode=link $(CC) $(RUNTIME_PATH) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -module -version-info @LIBUNBOUND_CURRENT@:@LIBUNBOUND_REVISION@:@LIBUNBOUND_AGE@ -no-undefined -o $@ libunbound_wrap.lo -rpath $(PYTHON_SITE_PKG) L. -L.libs -lunbound $(LIBS)
++	$(LIBTOOL) --tag=CC --mode=link $(CC) $(RUNTIME_PATH) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -module -avoid-version -no-undefined -shared -o $@ libunbound_wrap.lo -rpath $(PYTHON_SITE_PKG) L. -L.libs -lunbound
+ 
+ util/config_file.c:	util/configparser.h
+ util/configlexer.c:  $(srcdir)/util/configlexer.lex util/configparser.h
+--- unbound-1.5.0~rc1.orig/acx_python.m4
++++ unbound-1.5.0~rc1/acx_python.m4
+@@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
                  fi
@@ -44,20 +51,48 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.4.22.orig/daemon/unbound.c
-+++ unbound-1.4.22/daemon/unbound.c
-@@ -280,8 +280,6 @@ checkrlimits(struct config_file* cfg)
- 				"ports in config to remove this warning");
- 			return;
+--- unbound-1.5.0~rc1.orig/daemon/unbound.c
++++ unbound-1.5.0~rc1/daemon/unbound.c
+@@ -287,8 +287,6 @@ checkrlimits(struct config_file* cfg)
+ #ifdef HAVE_SETRLIMIT
  		}
+ #endif
 -		log_warn("increased limit(open files) from %u to %u",
 -			(unsigned)avail, (unsigned)total+10);
  	}
  #else	
  	(void)cfg;
---- unbound-1.4.22.orig/doc/unbound.conf.5.in
-+++ unbound-1.4.22/doc/unbound.conf.5.in
-@@ -948,7 +948,7 @@ section for options.  To setup the corre
+--- unbound-1.5.0~rc1.orig/doc/unbound-anchor.8.in
++++ unbound-1.5.0~rc1/doc/unbound-anchor.8.in
+@@ -24,14 +24,14 @@ Suggested usage:
+ .nf
+ 	# in the init scripts.
+ 	# provide or update the root anchor (if necessary)
+-	unbound-anchor -a "@UNBOUND_ROOTKEY_FILE@"
++	unbound-anchor \-a "@UNBOUND_ROOTKEY_FILE@"
+ 	# Please note usage of this root anchor is at your own risk
+ 	# and under the terms of our LICENSE (see source).
+ 	#
+ 	# start validating resolver
+ 	# the unbound.conf contains:
+ 	#   auto-trust-anchor-file: "@UNBOUND_ROOTKEY_FILE@"
+-	unbound -c unbound.conf
++	unbound \-c unbound.conf
+ .fi
+ .P
+ This tool provides builtin default contents for the root anchor and root
+@@ -138,7 +138,7 @@ tracking, or if an error occurred.
+ .P
+ You can check the exit value in this manner:
+ .nf
+-	unbound-anchor -a "root.key" || logger "Please check root.key"
++	unbound-anchor \-a "root.key" || logger "Please check root.key"
+ .fi
+ Or something more suitable for your operational environment.
+ .SH "TRUST"
+--- unbound-1.5.0~rc1.orig/doc/unbound.conf.5.in
++++ unbound-1.5.0~rc1/doc/unbound.conf.5.in
+@@ -959,7 +959,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable:     \fI<yes or no>
@@ -66,9 +101,9 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: <ip address>
---- unbound-1.4.22.orig/smallapp/unbound-control-setup.sh
-+++ unbound-1.4.22/smallapp/unbound-control-setup.sh
-@@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
+--- unbound-1.5.0~rc1.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.0~rc1/smallapp/unbound-control-setup.sh.in
+@@ -158,6 +158,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
  
@@ -76,9 +111,9 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.4.22.orig/util/config_file.c
-+++ unbound-1.4.22/util/config_file.c
-@@ -144,7 +144,7 @@ config_create(void)
+--- unbound-1.5.0~rc1.orig/util/config_file.c
++++ unbound-1.5.0~rc1/util/config_file.c
+@@ -132,7 +132,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
  #ifdef HAVE_CHROOT
@@ -87,9 +122,9 @@ Last-Update: <YYYY-MM-DD>
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -204,7 +204,7 @@ config_create(void)
- 	cfg->local_zones_nodefault = NULL;
+@@ -193,7 +193,7 @@ config_create(void)
  	cfg->local_data = NULL;
+ 	cfg->unblock_lan_zones = 0;
  	cfg->python_script = NULL;
 -	cfg->remote_control_enable = 0;
 +	cfg->remote_control_enable = 1;
