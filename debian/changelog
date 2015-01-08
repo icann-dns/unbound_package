@@ -1,3 +1,12 @@
+unbound (1.4.22-1ubuntu4.14.04.1) trusty-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large number of referrals
+    - debian/patches/CVE-2014-8602.patch: limit number of targets in
+      iterator/iterator.h, iterator/iterator.c.
+    - CVE-2014-8602
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Thu, 08 Jan 2015 10:37:56 -0500
+
 unbound (1.4.22-1ubuntu4) trusty; urgency=medium
 
   * debian/rules: Enable full testsuite.

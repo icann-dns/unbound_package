@@ -2,3 +2,4 @@ disable_chroot_by_default
 disable_sldns_str2wire_rr_buf_tests
 silence_open_files_limit_warning
 disable_remote_control_in_tests
+CVE-2014-8602.patch
