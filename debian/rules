@@ -32,13 +32,14 @@ binary-arch: build
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--disable-rpath \
-		--with-pidfile=/var/run/unbound.pid \
+		--with-pidfile=/run/unbound.pid \
 		--with-libevent \
 		--with-pythonmodule \
 		--with-pyunbound \
 		$(CONFIGURE_ARGS)
-	$(MAKE) unbound
+	$(MAKE) unbound unbound-checkconf
 	install -D -m 0755 unbound debian/unbound/usr/sbin/unbound
+	install -D -m 0755 unbound-checkconf debian/unbound/usr/sbin/unbound-checkconf
 
 	# XXX gross hack to prevent python module from linking against everything
 	rm -f _unbound.la

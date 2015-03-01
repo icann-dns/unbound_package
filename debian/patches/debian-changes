@@ -5,12 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.1-1) experimental; urgency=medium
+ unbound (1.5.2-1) experimental; urgency=medium
  .
    * New upstream release.
-     - Fix CVE-2014-8602: denial of service by making resolver chase
-       endless series of delegations.
+   * Migrate pidfile from /var/run to /run; closes: #773247.
+   * Fix unbound-checkconf to recognize "python" in module-config;
+     closes: #777193.
 Author: Robert Edmonds <edmonds@debian.org>
+Bug-Debian: http://bugs.debian.org/773247
+Bug-Debian: http://bugs.debian.org/777193
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -25,8 +28,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.5.1.orig/acx_python.m4
-+++ unbound-1.5.1/acx_python.m4
+--- unbound-1.5.2.orig/acx_python.m4
++++ unbound-1.5.2/acx_python.m4
 @@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -41,20 +44,20 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.5.1.orig/doc/unbound.conf.5.in
-+++ unbound-1.5.1/doc/unbound.conf.5.in
-@@ -959,7 +959,7 @@ section for options.  To setup the corre
+--- unbound-1.5.2.orig/doc/unbound.conf.5.in
++++ unbound-1.5.2/doc/unbound.conf.5.in
+@@ -971,7 +971,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
- .B control\-enable:     \fI<yes or no>
+ .B control\-enable: \fI<yes or no>
 -The option is used to enable remote control, default is "no".
 +The option is used to enable remote control, default is "yes".
  If turned off, the server does not listen for control commands.
  .TP 5
- .B control\-interface: <ip address>
---- unbound-1.5.1.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.5.1/smallapp/unbound-control-setup.sh.in
-@@ -158,6 +158,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
+ .B control\-interface: \fI<ip address or path>
+--- unbound-1.5.2.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.2/smallapp/unbound-control-setup.sh.in
+@@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
  
@@ -62,18 +65,18 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.5.1.orig/util/config_file.c
-+++ unbound-1.5.1/util/config_file.c
-@@ -132,7 +132,7 @@ config_create(void)
- 	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
- 	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
+--- unbound-1.5.2.orig/util/config_file.c
++++ unbound-1.5.2/util/config_file.c
+@@ -139,7 +139,7 @@ config_create(void)
+ 	cfg->uid = (uid_t)-1;
+ 	cfg->gid = (gid_t)-1;
  #ifdef HAVE_CHROOT
 -	if(!(cfg->chrootdir = strdup(CHROOT_DIR))) goto error_exit;
 +	if(!(cfg->chrootdir = strdup(""))) goto error_exit;
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -193,7 +193,7 @@ config_create(void)
+@@ -200,7 +200,7 @@ config_create(void)
  	cfg->local_data = NULL;
  	cfg->unblock_lan_zones = 0;
  	cfg->python_script = NULL;
@@ -81,4 +84,4 @@ Last-Update: <YYYY-MM-DD>
 +	cfg->remote_control_enable = 1;
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
- 	cfg->minimal_responses = 0;
+ 	cfg->remote_control_use_cert = 1;
