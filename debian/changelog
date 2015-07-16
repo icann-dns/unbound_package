@@ -1,3 +1,13 @@
+unbound (1.4.22-1ubuntu4.14.04.2) trusty; urgency=medium
+
+  * Make some lookups on a dual stacked (IPv4 and IPv6) host work.
+    - debian/patches/increase-max_sent_count: Increase MAX_SENT_COUNT to 32,
+      backported from Unbound 1.5.0 (LP: #1472510).
+    - Can be verified with:
+      # unbound-host -f /var/lib/unbound/root.key a.root-servers.net
+
+ -- Patrik Lundin <patrik.lundin@su.se>  Thu, 16 Jul 2015 12:45:58 +0200
+
 unbound (1.4.22-1ubuntu4.14.04.1) trusty-security; urgency=medium
 
   * SECURITY UPDATE: denial of service via large number of referrals
