@@ -47,7 +47,7 @@
 #include "testcode/fake_event.h"
 #include "daemon/remote.h"
 #include "util/config_file.h"
-#include "ldns/keyraw.h"
+#include "sldns/keyraw.h"
 #include <ctype.h>
 
 /** signal that this is a testbound compile */
@@ -284,7 +284,6 @@ main(int argc, char* argv[])
 		case 's':
 			free(pass_argv[1]);
 			testbound_selftest();
-			printf("selftest successful\n");
 			exit(0);
 		case '2':
 #if (defined(HAVE_EVP_SHA256) || defined(HAVE_NSS)) && defined(USE_SHA2)
