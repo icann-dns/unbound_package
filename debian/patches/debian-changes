@@ -5,20 +5,13 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.6-1) unstable; urgency=medium
+ unbound (1.5.7-1) unstable; urgency=medium
  .
-   * [0d5117d5] Imported Upstream version 1.5.4
-   * [8327e145] Imported Upstream version 1.5.5
-   * [eb2adc8c] Imported Upstream version 1.5.6
-     - Closes: #796934, #803042.
-   * [5a973651] debian/control: Update Maintainer, Uploaders for pkg-dns
-   * [543459fa] debian/control: Update Vcs-Browser, Vcs-Git
-   * [b69e513f] debian/: Run "wrap-and-sort -sbt"
-   * [730f3622] debian/gbp.conf: Add [dch] section
-   * [6b383656] debian/: Enable dnstap support
+   * [3cf7971b] debian/control: Vcs-Browser should point to cgit
+     (Closes: #804437)
+   * [66955294] Imported Upstream version 1.5.7
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/796934
-Bug-Debian: https://bugs.debian.org/803042
+Bug-Debian: https://bugs.debian.org/804437
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -33,8 +26,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.5.6.orig/acx_python.m4
-+++ unbound-1.5.6/acx_python.m4
+--- unbound-1.5.7.orig/acx_python.m4
++++ unbound-1.5.7/acx_python.m4
 @@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -49,9 +42,9 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.5.6.orig/doc/unbound.conf.5.in
-+++ unbound-1.5.6/doc/unbound.conf.5.in
-@@ -1060,7 +1060,7 @@ section for options.  To setup the corre
+--- unbound-1.5.7.orig/doc/unbound.conf.5.in
++++ unbound-1.5.7/doc/unbound.conf.5.in
+@@ -1069,7 +1069,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable: \fI<yes or no>
@@ -60,9 +53,9 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
---- unbound-1.5.6.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.5.6/smallapp/unbound-control-setup.sh.in
-@@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
+--- unbound-1.5.7.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.7/smallapp/unbound-control-setup.sh.in
+@@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
  
@@ -70,8 +63,8 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.5.6.orig/util/config_file.c
-+++ unbound-1.5.6/util/config_file.c
+--- unbound-1.5.7.orig/util/config_file.c
++++ unbound-1.5.7/util/config_file.c
 @@ -146,7 +146,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
