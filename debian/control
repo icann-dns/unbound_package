@@ -1,7 +1,8 @@
 Source: unbound
 Section: net
 Priority: optional
-Maintainer: Debian DNS Packaging <pkg-dns-devel@lists.alioth.debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Debian DNS Packaging <pkg-dns-devel@lists.alioth.debian.org>
 Uploaders: Robert Edmonds <edmonds@debian.org>
 Build-Depends:
  autoconf,
@@ -13,12 +14,8 @@ Build-Depends:
  flex,
  libevent-dev,
  libexpat1-dev,
- libfstrm-dev,
- libprotobuf-c-dev,
  libssl-dev,
  libtool,
- pkg-config,
- protobuf-c-compiler,
  python-all-dev (>= 2.6.6-3~),
  swig,
 Standards-Version: 3.9.6
