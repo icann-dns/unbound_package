@@ -5,12 +5,12 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.22-3) unstable; urgency=medium
+ unbound (1.4.22-3+deb8u1) jessie; urgency=medium
  .
-   * Fix CVE-2014-8602: denial of service by making resolver chase endless
-     series of delegations; closes: #772622.
+   * iterator/iter_hints.c: Update hints for H.ROOT-SERVERS.NET
+     (Closes: #815370)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: http://bugs.debian.org/772622
+Bug-Debian: https://bugs.debian.org/815370
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -19,7 +19,7 @@ are templates for supplementary fields that you might want to add:
 
 Origin: <vendor|upstream|other>, <url of original patch>
 Bug: <url in upstream bugtracker>
-Bug-Debian: http://bugs.debian.org/<bugnumber>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
@@ -63,6 +63,26 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: <ip address>
+--- unbound-1.4.22.orig/iterator/iter_hints.c
++++ unbound-1.4.22/iterator/iter_hints.c
+@@ -135,7 +135,7 @@ compile_time_root_prime(int do_ip4, int
+ 	if(!ah(dp, "E.ROOT-SERVERS.NET.", "192.203.230.10")) goto failed;
+ 	if(!ah(dp, "F.ROOT-SERVERS.NET.", "192.5.5.241"))	goto failed;
+ 	if(!ah(dp, "G.ROOT-SERVERS.NET.", "192.112.36.4"))	goto failed;
+-	if(!ah(dp, "H.ROOT-SERVERS.NET.", "128.63.2.53"))	goto failed;
++	if(!ah(dp, "H.ROOT-SERVERS.NET.", "198.97.190.53"))	goto failed;
+ 	if(!ah(dp, "I.ROOT-SERVERS.NET.", "192.36.148.17"))	goto failed;
+ 	if(!ah(dp, "J.ROOT-SERVERS.NET.", "192.58.128.30"))	goto failed;
+ 	if(!ah(dp, "K.ROOT-SERVERS.NET.", "193.0.14.129"))	goto failed;
+@@ -146,7 +146,7 @@ compile_time_root_prime(int do_ip4, int
+ 	if(!ah(dp, "A.ROOT-SERVERS.NET.", "2001:503:ba3e::2:30")) goto failed;
+ 	if(!ah(dp, "D.ROOT-SERVERS.NET.", "2001:500:2d::d")) goto failed;
+ 	if(!ah(dp, "F.ROOT-SERVERS.NET.", "2001:500:2f::f")) goto failed;
+-	if(!ah(dp, "H.ROOT-SERVERS.NET.", "2001:500:1::803f:235")) goto failed;
++	if(!ah(dp, "H.ROOT-SERVERS.NET.", "2001:500:1::53")) goto failed;
+ 	if(!ah(dp, "I.ROOT-SERVERS.NET.", "2001:7fe::53")) goto failed;
+ 	if(!ah(dp, "J.ROOT-SERVERS.NET.", "2001:503:c27::2:30")) goto failed;
+ 	if(!ah(dp, "K.ROOT-SERVERS.NET.", "2001:7fd::1")) goto failed;
 --- unbound-1.4.22.orig/iterator/iterator.c
 +++ unbound-1.4.22/iterator/iterator.c
 @@ -120,6 +120,7 @@ iter_new(struct module_qstate* qstate, i
