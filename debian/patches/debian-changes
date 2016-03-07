@@ -5,44 +5,14 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.7-2) unstable; urgency=medium
+ unbound (1.5.8-1) unstable; urgency=medium
  .
-   * debian/control: Add dh-python to Build-Depends
-   * debian/: Install contrib/update-anchor.sh, contrib/unbound_munin_
-     (Closes: #573329)
-   * Makefile.in: Pass PYTHON_CPPFLAGS to swig instead of CPPFLAGS (Closes:
-     #809055)
-   * debian/: Run "wrap-and-sort -sabt"
-   * debian/resolvconf: No longer use RESOLVCONF_FORWARDERS from
-     /etc/default/unbound
-   * debian/unbound.postinst: Remove unbound-anchor invocation
-   * debian/package-helper: Add helper script for init scripts and
-     resolvconf
-   * debian/unbound.init: Rewrite to use package-helper script
-   * debian/unbound.default: Remove
-   * debian/unbound.maintscript: Remove conffile /etc/default/unbound
-   * debian/resolvconf-package: Add resolvconf packaging-event hook script
-     (Closes: #777228)
-   * debian/control: unbound: Depend on dns-root-data, for root trust
-     anchor updates (Closes: #760461)
-   * debian/rules: Disable the resolvconf update.d hook by default
-   * debian/gbp.conf: Remove [dch] id-length
-   * debian/NEWS.Debian: Add NEWS entry for 1.5.7-2
-   * debian/unbound.postinst: Always chown /var/lib/unbound (Closes:
-     #763901)
-   * debian/package-helper: Invoke unbound-anchor as user/group unbound
-   * debian/: unbound.doc -> unbound.docs; Actually install upstream docs
-   * debian/unbound.docs: Install doc/README.DNS64
-   * debian/unbound.docs: Install debian/NEWS.Debian
-   * debian/package-helper: Clean old chroot files (Closes: #790392) (Patch
-     from Simon Deziel)
+   * Imported Upstream version 1.5.8
+   * debian/libunbound2.symbols: Add new symbol 'ub_ctx_set_stub'
+   * debian/unbound.postinst: Clean up permissions on the resolvconf
+     forwarder hook on upgrades (Closes: #816425)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/573329
-Bug-Debian: https://bugs.debian.org/760461
-Bug-Debian: https://bugs.debian.org/763901
-Bug-Debian: https://bugs.debian.org/777228
-Bug-Debian: https://bugs.debian.org/790392
-Bug-Debian: https://bugs.debian.org/809055
+Bug-Debian: https://bugs.debian.org/816425
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -57,34 +27,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.5.7.orig/Makefile.in
-+++ unbound-1.5.7/Makefile.in
-@@ -54,6 +54,7 @@ LEX=@LEX@
- STRIP=@STRIP@
- CC=@CC@
- CPPFLAGS=-I. @CPPFLAGS@
-+PYTHON_CPPFLAGS=-I. @PYTHON_CPPFLAGS@
- CFLAGS=@CFLAGS@
- LDFLAGS=@LDFLAGS@
- LIBS=@LIBS@
-@@ -389,13 +390,13 @@ pythonmod.lo pythonmod.o: $(srcdir)/pyth
- 
- pythonmod/interface.h:	$(srcdir)/pythonmod/interface.i config.h
- 	@-if test ! -d pythonmod; then $(INSTALL) -d pythonmod; fi
--	$(SWIG) $(CPPFLAGS) -o $@ -python $(srcdir)/pythonmod/interface.i
-+	$(SWIG) $(PYTHON_CPPFLAGS) -o $@ -python $(srcdir)/pythonmod/interface.i
- 
- libunbound_wrap.lo libunbound_wrap.o: libunbound/python/libunbound_wrap.c \
- 	unbound.h
- libunbound/python/libunbound_wrap.c:	$(srcdir)/libunbound/python/libunbound.i unbound.h
- 	@-if test ! -d libunbound/python; then $(INSTALL) -d libunbound/python; fi
--	$(SWIG) -python -o $@ $(CPPFLAGS) -DPY_MAJOR_VERSION=$(PY_MAJOR_VERSION) $(srcdir)/libunbound/python/libunbound.i
-+	$(SWIG) -python -o $@ $(PYTHON_CPPFLAGS) -DPY_MAJOR_VERSION=$(PY_MAJOR_VERSION) $(srcdir)/libunbound/python/libunbound.i
- 
- # Pyunbound python unbound wrapper
- _unbound.la:	libunbound_wrap.lo libunbound.la
---- unbound-1.5.7.orig/acx_python.m4
-+++ unbound-1.5.7/acx_python.m4
+--- unbound-1.5.8.orig/acx_python.m4
++++ unbound-1.5.8/acx_python.m4
 @@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -99,9 +43,9 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.5.7.orig/doc/unbound.conf.5.in
-+++ unbound-1.5.7/doc/unbound.conf.5.in
-@@ -1069,7 +1069,7 @@ section for options.  To setup the corre
+--- unbound-1.5.8.orig/doc/unbound.conf.5.in
++++ unbound-1.5.8/doc/unbound.conf.5.in
+@@ -1099,7 +1099,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable: \fI<yes or no>
@@ -110,8 +54,8 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
---- unbound-1.5.7.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.5.7/smallapp/unbound-control-setup.sh.in
+--- unbound-1.5.8.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.8/smallapp/unbound-control-setup.sh.in
 @@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -120,9 +64,9 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.5.7.orig/util/config_file.c
-+++ unbound-1.5.7/util/config_file.c
-@@ -146,7 +146,7 @@ config_create(void)
+--- unbound-1.5.8.orig/util/config_file.c
++++ unbound-1.5.8/util/config_file.c
+@@ -148,7 +148,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
  #ifdef HAVE_CHROOT
@@ -131,9 +75,9 @@ Last-Update: <YYYY-MM-DD>
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -211,7 +211,7 @@ config_create(void)
- 	cfg->local_data = NULL;
+@@ -214,7 +214,7 @@ config_create(void)
  	cfg->unblock_lan_zones = 0;
+ 	cfg->insecure_lan_zones = 0;
  	cfg->python_script = NULL;
 -	cfg->remote_control_enable = 0;
 +	cfg->remote_control_enable = 1;
