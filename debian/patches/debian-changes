@@ -83,3 +83,21 @@ Last-Update: <YYYY-MM-DD>
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
  	cfg->remote_control_use_cert = 1;
+--- unbound-1.5.7.orig/Makefile.in
++++ unbound-1.5.7/Makefile.in
+@@ -389,13 +389,13 @@ pythonmod.lo pythonmod.o: $(srcdir)/pyth
+ 
+ pythonmod/interface.h:	$(srcdir)/pythonmod/interface.i config.h
+ 	@-if test ! -d pythonmod; then $(INSTALL) -d pythonmod; fi
+-	$(SWIG) $(CPPFLAGS) -o $@ -python $(srcdir)/pythonmod/interface.i
++	$(SWIG) $(filter-out -Wdate-time, $(CPPFLAGS)) -o $@ -python $(srcdir)/pythonmod/interface.i
+ 
+ libunbound_wrap.lo libunbound_wrap.o: libunbound/python/libunbound_wrap.c \
+ 	unbound.h
+ libunbound/python/libunbound_wrap.c:	$(srcdir)/libunbound/python/libunbound.i unbound.h
+ 	@-if test ! -d libunbound/python; then $(INSTALL) -d libunbound/python; fi
+-	$(SWIG) -python -o $@ $(CPPFLAGS) -DPY_MAJOR_VERSION=$(PY_MAJOR_VERSION) $(srcdir)/libunbound/python/libunbound.i
++	$(SWIG) -python -o $@ $(filter-out -Wdate-time, $(CPPFLAGS)) -DPY_MAJOR_VERSION=$(PY_MAJOR_VERSION) $(srcdir)/libunbound/python/libunbound.i
+ 
+ # Pyunbound python unbound wrapper
+ _unbound.la:	libunbound_wrap.lo libunbound.la
