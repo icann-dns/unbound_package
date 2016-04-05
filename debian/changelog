@@ -1,3 +1,9 @@
+unbound (1.5.7-1ubuntu2) xenial; urgency=medium
+
+  * Fix build failure with swig -Wdate-time.
+
+ -- Matthias Klose <doko@ubuntu.com>  Tue, 05 Apr 2016 18:55:22 +0200
+
 unbound (1.5.7-1ubuntu1) xenial; urgency=medium
 
   * Merge from Debian:
