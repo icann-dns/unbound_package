@@ -5,14 +5,16 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.8-1) unstable; urgency=medium
+ unbound (1.5.9-1) unstable; urgency=medium
  .
-   * Imported Upstream version 1.5.8
-   * debian/libunbound2.symbols: Add new symbol 'ub_ctx_set_stub'
-   * debian/unbound.postinst: Clean up permissions on the resolvconf
-     forwarder hook on upgrades (Closes: #816425)
+   * Imported Upstream version 1.5.9
+     - Updated L-Root IPv6 address (Closes: #818292)
+   * debian/unbound.init: Add "pidfile" magic comment (Closes: #807132)
+   * debian/libunbound2.symbols: Add new symbol 'ub_ctx_create_ub_event'
+   * Enable DNS query name minimisation by default
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/816425
+Bug-Debian: https://bugs.debian.org/807132
+Bug-Debian: https://bugs.debian.org/818292
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -27,8 +29,8 @@ Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
 Last-Update: <YYYY-MM-DD>
 
---- unbound-1.5.8.orig/acx_python.m4
-+++ unbound-1.5.8/acx_python.m4
+--- unbound-1.5.9.orig/acx_python.m4
++++ unbound-1.5.9/acx_python.m4
 @@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -43,9 +45,9 @@ Last-Update: <YYYY-MM-DD>
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.5.8.orig/doc/unbound.conf.5.in
-+++ unbound-1.5.8/doc/unbound.conf.5.in
-@@ -1099,7 +1099,7 @@ section for options.  To setup the corre
+--- unbound-1.5.9.orig/doc/unbound.conf.5.in
++++ unbound-1.5.9/doc/unbound.conf.5.in
+@@ -1116,7 +1116,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable: \fI<yes or no>
@@ -54,8 +56,8 @@ Last-Update: <YYYY-MM-DD>
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
---- unbound-1.5.8.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.5.8/smallapp/unbound-control-setup.sh.in
+--- unbound-1.5.9.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.9/smallapp/unbound-control-setup.sh.in
 @@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -64,8 +66,8 @@ Last-Update: <YYYY-MM-DD>
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.5.8.orig/util/config_file.c
-+++ unbound-1.5.8/util/config_file.c
+--- unbound-1.5.9.orig/util/config_file.c
++++ unbound-1.5.9/util/config_file.c
 @@ -148,7 +148,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
@@ -75,7 +77,7 @@ Last-Update: <YYYY-MM-DD>
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -214,7 +214,7 @@ config_create(void)
+@@ -215,7 +215,7 @@ config_create(void)
  	cfg->unblock_lan_zones = 0;
  	cfg->insecure_lan_zones = 0;
  	cfg->python_script = NULL;
