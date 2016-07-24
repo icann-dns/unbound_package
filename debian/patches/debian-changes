@@ -5,16 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.9-1) unstable; urgency=medium
+ unbound (1.5.9-2) unstable; urgency=low
  .
-   * Imported Upstream version 1.5.9
-     - Updated L-Root IPv6 address (Closes: #818292)
-   * debian/unbound.init: Add "pidfile" magic comment (Closes: #807132)
-   * debian/libunbound2.symbols: Add new symbol 'ub_ctx_create_ub_event'
-   * Enable DNS query name minimisation by default
+   * debian/unbound.init: Call start-stop-daemon with --retry for 'stop'
+     action (based on patch from Julien Cristau)
+   * debian/: Add unbound.service, unbound-resolvconf.service
+     (Closes: #826241) (Thanks to Michael Biebl)
+   * debian/rules: Configure with --with-rootkey-file=/var/lib/unbound/root.key
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/807132
-Bug-Debian: https://bugs.debian.org/818292
+Bug-Debian: https://bugs.debian.org/826241
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -27,7 +26,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: <YYYY-MM-DD>
+Last-Update: 2016-07-25
 
 --- unbound-1.5.9.orig/acx_python.m4
 +++ unbound-1.5.9/acx_python.m4
