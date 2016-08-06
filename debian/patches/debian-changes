@@ -5,15 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.9-2) unstable; urgency=low
+ unbound (1.5.9-3) unstable; urgency=medium
  .
-   * debian/unbound.init: Call start-stop-daemon with --retry for 'stop'
-     action (based on patch from Julien Cristau)
-   * debian/: Add unbound.service, unbound-resolvconf.service
-     (Closes: #826241) (Thanks to Michael Biebl)
-   * debian/rules: Configure with --with-rootkey-file=/var/lib/unbound/root.key
+   [ Nicolas Braud-Santoni ]
+   * debian/: Ship AppArmor profile (Closes: #518002)
+   * debian/control: Use HTTPS for Vcs-Git link
+   * debian/unbound.service: Add documentation to the systemd unit file
+   * debian/control: Bump Standards-Version to 3.9.8 (no changes)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/826241
+Bug-Debian: https://bugs.debian.org/518002
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -26,7 +26,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-07-25
+Last-Update: 2016-08-06
 
 --- unbound-1.5.9.orig/acx_python.m4
 +++ unbound-1.5.9/acx_python.m4

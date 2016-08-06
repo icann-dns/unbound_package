@@ -9,6 +9,7 @@ Build-Depends:
  autotools-dev,
  bison,
  debhelper (>= 9~),
+ dh-apparmor,
  dh-autoreconf,
  dh-python,
  dh-systemd,
@@ -24,10 +25,10 @@ Build-Depends:
  protobuf-c-compiler,
  python-all-dev (>= 2.6.6-3~),
  swig,
-Standards-Version: 3.9.6
+Standards-Version: 3.9.8
 Homepage: https://www.unbound.net/
 Vcs-Browser: https://anonscm.debian.org/cgit/pkg-dns/unbound.git
-Vcs-Git: git://anonscm.debian.org/pkg-dns/unbound.git
+Vcs-Git: https://anonscm.debian.org/git/pkg-dns/unbound.git
 
 Package: libunbound-dev
 Section: libdevel
@@ -82,6 +83,7 @@ Depends:
  ${shlibs:Depends},
 Enhances:
  munin-node,
+Suggests: apparmor
 Description: validating, recursive, caching DNS resolver
  Unbound is a recursive-only caching DNS server which can perform DNSSEC
  validation of results. It implements only a minimal amount of authoritative
