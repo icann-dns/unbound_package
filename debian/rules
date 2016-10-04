@@ -28,7 +28,9 @@ binary-arch: build
 	dh_autotools-dev_updateconfig
 
 	# first build -- build unbound daemon
-	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
+	PYTHON_VERSION="$(shell py3versions -vd)" \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+		./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--disable-rpath \
@@ -36,40 +38,68 @@ binary-arch: build
 		--with-rootkey-file=/var/lib/unbound/root.key \
 		--with-libevent \
 		--with-pythonmodule \
-		--with-pyunbound \
 		--enable-dnstap \
 		--with-dnstap-socket-path=/run/dnstap.sock \
 		$(CONFIGURE_ARGS)
-	$(MAKE) unbound unbound-checkconf
-	install -D -m 0755 unbound debian/unbound/usr/sbin/unbound
-	install -D -m 0755 unbound-checkconf debian/unbound/usr/sbin/unbound-checkconf
+	$(MAKE)
+	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
+	$(MAKE) clean
 
-	# XXX gross hack to prevent python module from linking against everything
-	rm -f _unbound.la
-	sed -i -e 's/^dependency_libs=.*/dependency_libs=''/' libunbound.la
-	make _unbound.la LIBS=""
+	# second build -- build libunbound only, against nettle
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+		./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--disable-rpath \
+		--with-libunbound-only \
+		--with-nettle \
+		--with-rootkey-file=/var/lib/unbound/root.key \
+		--without-libevent \
+		--without-pythonmodule \
+		--without-pyunbound \
+		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+		$(CONFIGURE_ARGS)
+	$(MAKE)
+	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp-lib"
+	install -D -m 0644 contrib/libunbound.pc \
+		$(CURDIR)/debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)/pkgconfig/libunbound.pc
+	$(MAKE) clean
+
+	# third build - pyunbound for Python 2
+	PYTHON_VERSION="$(shell pyversions -vd)" \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+		./configure \
+		--prefix=/usr \
+		--disable-rpath \
+		--with-pythonmodule \
+		--with-pyunbound \
+		$(CONFIGURE_ARGS)
+	$(MAKE) _unbound.la
 	install -D -m 0644 .libs/_unbound.so \
 		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages/_unbound.so
 	install -m 0644 \
 		pythonmod/unboundmodule.py \
 		libunbound/python/unbound.py \
 		debian/python-unbound/usr/lib/$(shell pyversions -d)/dist-packages
-
 	$(MAKE) clean
 
-	# second build -- build libunbound and utilities, without extra dependencies
-	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
+	# fourth build - pyunbound for Python 3
+	PYTHON_VERSION="$(shell py3versions -vd)" \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+		./configure \
 		--prefix=/usr \
-		--sysconfdir=/etc \
 		--disable-rpath \
-		--with-rootkey-file=/var/lib/unbound/root.key \
-		--without-libevent \
-		--without-pythonmodule \
-		--without-pyunbound \
-		--libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
-
-	$(MAKE)
-	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
+		--with-pythonmodule \
+		--with-pyunbound \
+		$(CONFIGURE_ARGS)
+	$(MAKE) _unbound.la
+	install -D -m 0644 .libs/_unbound.so \
+		debian/python3-unbound/usr/lib/$(shell py3versions -d)/dist-packages/_unbound.so
+	install -m 0644 \
+		pythonmod/unboundmodule.py \
+		libunbound/python/unbound.py \
+		debian/python3-unbound/usr/lib/$(shell py3versions -d)/dist-packages
+	$(MAKE) clean
 
 	dh_installdirs
 
@@ -88,13 +118,13 @@ binary-arch: build
 
 	mkdir -p debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)
 	mv \
-		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.a \
-		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.so \
+		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.a \
+		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.so \
 		debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)
 
 	mkdir -p debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)
 	mv \
-		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/*.so.* \
+		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/*.so.* \
 		debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)
 	chmod 0644 debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)/*
 
@@ -103,6 +133,7 @@ binary-arch: build
 	dh_installdocs
 	dh_installman
 	dh_python2 --no-guessing-versions
+	dh_python3
 	dh_strip
 	dh_compress -Xusr/share/doc/unbound/examples/unbound.conf
 

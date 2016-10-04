@@ -5,15 +5,18 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.9-3) unstable; urgency=medium
+ unbound (1.5.10-1) unstable; urgency=medium
  .
-   [ Nicolas Braud-Santoni ]
-   * debian/: Ship AppArmor profile (Closes: #518002)
-   * debian/control: Use HTTPS for Vcs-Git link
-   * debian/unbound.service: Add documentation to the systemd unit file
-   * debian/control: Bump Standards-Version to 3.9.8 (no changes)
+   * New upstream version 1.5.10
+     - Fixes FTBFS with OpenSSL 1.1.0 (Closes: #828584)
+   * debian/: Build libunbound against nettle (Closes: #828699)
+   * debian/: Support Python 3 (Closes: #835972)
+   * debian/rules: Install libunbound.pc into the libunbound-dev package
+   * debian/copyright: Update
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/518002
+Bug-Debian: https://bugs.debian.org/828584
+Bug-Debian: https://bugs.debian.org/828699
+Bug-Debian: https://bugs.debian.org/835972
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -26,17 +29,17 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-08-06
+Last-Update: 2016-10-04
 
---- unbound-1.5.9.orig/acx_python.m4
-+++ unbound-1.5.9/acx_python.m4
+--- unbound-1.5.10.orig/acx_python.m4
++++ unbound-1.5.10/acx_python.m4
 @@ -43,7 +43,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
                  fi
 -                PYTHON_CPPFLAGS=$python_path
 +                python_multiarch_path=`$PYTHON -c "import distutils.sysconfig; \
-+                        print distutils.sysconfig.get_python_inc(plat_specific=1);"`
++                        print(distutils.sysconfig.get_python_inc(plat_specific=1));"`
 +                if test -n "${python_multiarch_path}"; then
 +                        python_multiarch_path="-I$python_multiarch_path"
 +                fi
@@ -44,9 +47,9 @@ Last-Update: 2016-08-06
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.5.9.orig/doc/unbound.conf.5.in
-+++ unbound-1.5.9/doc/unbound.conf.5.in
-@@ -1116,7 +1116,7 @@ section for options.  To setup the corre
+--- unbound-1.5.10.orig/doc/unbound.conf.5.in
++++ unbound-1.5.10/doc/unbound.conf.5.in
+@@ -1182,7 +1182,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable: \fI<yes or no>
@@ -55,8 +58,8 @@ Last-Update: 2016-08-06
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
---- unbound-1.5.9.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.5.9/smallapp/unbound-control-setup.sh.in
+--- unbound-1.5.10.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.5.10/smallapp/unbound-control-setup.sh.in
 @@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -65,8 +68,8 @@ Last-Update: 2016-08-06
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.5.9.orig/util/config_file.c
-+++ unbound-1.5.9/util/config_file.c
+--- unbound-1.5.10.orig/util/config_file.c
++++ unbound-1.5.10/util/config_file.c
 @@ -148,7 +148,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
@@ -76,7 +79,7 @@ Last-Update: 2016-08-06
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -215,7 +215,7 @@ config_create(void)
+@@ -216,7 +216,7 @@ config_create(void)
  	cfg->unblock_lan_zones = 0;
  	cfg->insecure_lan_zones = 0;
  	cfg->python_script = NULL;

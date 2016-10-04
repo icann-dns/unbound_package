@@ -44,7 +44,7 @@ $ac_distutils_result])
                         python_path="-I$python_path"
                 fi
                 python_multiarch_path=`$PYTHON -c "import distutils.sysconfig; \
-                        print distutils.sysconfig.get_python_inc(plat_specific=1);"`
+                        print(distutils.sysconfig.get_python_inc(plat_specific=1));"`
                 if test -n "${python_multiarch_path}"; then
                         python_multiarch_path="-I$python_multiarch_path"
                 fi
@@ -59,7 +59,7 @@ $ac_distutils_result])
         AC_MSG_CHECKING([for Python library path])
         if test -z "$PYTHON_LDFLAGS"; then
                 PYTHON_LDFLAGS=`$PYTHON -c "from distutils.sysconfig import *; \
-                        print(get_config_var('BLDLIBRARY'));"`
+                        print('-L'+get_config_var('LIBDIR')+' -L'+get_config_var('LIBDEST')+' '+get_config_var('BLDLIBRARY'));"`
         fi
         AC_MSG_RESULT([$PYTHON_LDFLAGS])
         AC_SUBST([PYTHON_LDFLAGS])
