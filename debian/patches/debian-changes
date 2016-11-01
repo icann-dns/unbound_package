@@ -5,18 +5,12 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.10-1) unstable; urgency=medium
+ unbound (1.5.10-2) unstable; urgency=medium
  .
-   * New upstream version 1.5.10
-     - Fixes FTBFS with OpenSSL 1.1.0 (Closes: #828584)
-   * debian/: Build libunbound against nettle (Closes: #828699)
-   * debian/: Support Python 3 (Closes: #835972)
-   * debian/rules: Install libunbound.pc into the libunbound-dev package
-   * debian/copyright: Update
+   * debian/unbound.install: Install usr/sbin/unbound-checkconf
+     (Closes: #842797)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/828584
-Bug-Debian: https://bugs.debian.org/828699
-Bug-Debian: https://bugs.debian.org/835972
+Bug-Debian: https://bugs.debian.org/842797
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -29,7 +23,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-10-04
+Last-Update: 2016-11-01
 
 --- unbound-1.5.10.orig/acx_python.m4
 +++ unbound-1.5.10/acx_python.m4
