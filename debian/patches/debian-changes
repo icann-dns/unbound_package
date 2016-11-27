@@ -5,12 +5,14 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.5.10-2) unstable; urgency=medium
+ unbound (1.5.10-3) unstable; urgency=medium
  .
-   * debian/unbound.install: Install usr/sbin/unbound-checkconf
-     (Closes: #842797)
+   [ Helmut Grohne ]
+   * Fix FTCBFS: (Closes: #845941)
+     + Convert python Build-Depends to cross-friendly ones.
+     + Let dh_auto_configure pass --host to ./configure.
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/842797
+Bug-Debian: https://bugs.debian.org/845941
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -23,7 +25,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-11-01
+Last-Update: 2016-11-27
 
 --- unbound-1.5.10.orig/acx_python.m4
 +++ unbound-1.5.10/acx_python.m4
