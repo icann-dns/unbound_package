@@ -5,15 +5,12 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.6.0-1) unstable; urgency=medium
- .
-   [ Robert Edmonds ]
-   * New upstream version 1.6.0
+ unbound (1.6.0-2) unstable; urgency=high
  .
    [ Helmut Grohne ]
-   * Add pkg.unbound.libonly build profile. (Closes: #847130)
+   * Only use fake_dsa when HAVE_SSL is defined (Closes: #848339)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/847130
+Bug-Debian: https://bugs.debian.org/848339
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -26,7 +23,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-12-15
+Last-Update: 2016-12-18
 
 --- unbound-1.6.0.orig/acx_python.m4
 +++ unbound-1.6.0/acx_python.m4
@@ -85,3 +82,25 @@ Last-Update: 2016-12-15
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
  	cfg->remote_control_use_cert = 1;
+--- unbound-1.6.0.orig/util/configparser.y
++++ unbound-1.6.0/util/configparser.y
+@@ -1201,9 +1201,16 @@ server_fake_dsa: VAR_FAKE_DSA STRING_ARG
+ 		OUTYY(("P(server_fake_dsa:%s)\n", $2));
+ 		if(strcmp($2, "yes") != 0 && strcmp($2, "no") != 0)
+ 			yyerror("expected yes or no.");
+-		else fake_dsa = (strcmp($2, "yes")==0);
+-		if(fake_dsa)
+-			log_warn("test option fake_dsa is enabled");
++		else {
++			int fake_dsa_val = strcmp($2, "yes")==0;
++			if(fake_dsa_val)
++#ifdef HAVE_SSL
++				log_warn("test option fake_dsa is enabled");
++			fake_dsa = fake_dsa_val;
++#else
++				log_warn("test option fake_dsa is ignored");
++#endif
++		}
+ 		free($2);
+ 	}
+ 	;
