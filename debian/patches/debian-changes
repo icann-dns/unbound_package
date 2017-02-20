@@ -5,12 +5,12 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.6.0-2) unstable; urgency=high
+ unbound (1.6.0-3) unstable; urgency=medium
  .
-   [ Helmut Grohne ]
-   * Only use fake_dsa when HAVE_SSL is defined (Closes: #848339)
+   * Cherry-pick upstream commit svn r4000, "Include root trust anchor id
+     20326 in unbound-anchor". (Closes: #855484)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/848339
+Bug-Debian: https://bugs.debian.org/855484
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -23,7 +23,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-12-18
+Last-Update: 2017-02-20
 
 --- unbound-1.6.0.orig/acx_python.m4
 +++ unbound-1.6.0/acx_python.m4
@@ -52,6 +52,20 @@ Last-Update: 2016-12-18
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
+--- unbound-1.6.0.orig/smallapp/unbound-anchor.c
++++ unbound-1.6.0/smallapp/unbound-anchor.c
+@@ -241,7 +241,10 @@ static const char*
+ get_builtin_ds(void)
+ {
+ 	return
+-". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n";
++/* anchor 19036 is from 2010 */
++/* anchor 20326 is from 2017 */
++". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n"
++". IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n";
+ }
+ 
+ /** print hex data */
 --- unbound-1.6.0.orig/smallapp/unbound-control-setup.sh.in
 +++ unbound-1.6.0/smallapp/unbound-control-setup.sh.in
 @@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
