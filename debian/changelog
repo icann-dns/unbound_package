@@ -1,9 +1,26 @@
+unbound (1.6.0-3ubuntu1) artful; urgency=medium
+
+  * Merge with Debian unstable (LP: #1688362). Remaining changes:
+    - Revert dnstap support (dependencies not in main)
+
+ -- Nishanth Aravamudan <nish.aravamudan@canonical.com>  Thu, 04 May 2017 11:29:15 -0700
+
 unbound (1.6.0-3) unstable; urgency=medium
 
   * Cherry-pick upstream commit svn r4000, "Include root trust anchor id
     20326 in unbound-anchor". (Closes: #855484)
 
  -- Robert Edmonds <edmonds@debian.org>  Sun, 19 Feb 2017 20:04:34 -0500
+
+unbound (1.6.0-2ubuntu1) zesty; urgency=medium
+
+  * Merge from Debian (LP: #1655793). Remaining changes:
+    - Revert dnstap support (dependencies not in main)
+  * Drop (partially):
+    - Revert dnstap support (dependencies not in main)
+    [ Archive reorg in 16.04 allows for b-d to be in universe ]
+
+ -- Nishanth Aravamudan <nish.aravamudan@canonical.com>  Wed, 11 Jan 2017 16:17:43 -0800
 
 unbound (1.6.0-2) unstable; urgency=high
 
@@ -21,6 +38,13 @@ unbound (1.6.0-1) unstable; urgency=medium
   * Add pkg.unbound.libonly build profile. (Closes: #847130)
 
  -- Robert Edmonds <edmonds@debian.org>  Thu, 15 Dec 2016 15:26:15 -0500
+
+unbound (1.5.10-3ubuntu1) zesty; urgency=medium
+
+  * Merge from Debian (LP: #1647291). Remaining changes:
+    - Revert dnstap support (dependencies not in main)
+
+ -- Nishanth Aravamudan <nish.aravamudan@canonical.com>  Mon, 05 Dec 2016 09:53:58 +0100
 
 unbound (1.5.10-3) unstable; urgency=medium
 
@@ -79,6 +103,16 @@ unbound (1.5.9-1) unstable; urgency=medium
 
  -- Robert Edmonds <edmonds@debian.org>  Fri, 10 Jun 2016 23:01:15 -0400
 
+unbound (1.5.8-1ubuntu1) xenial; urgency=medium
+
+  * Merge from Debian (LP: #1556308):
+    - Revert dnstap support (dependencies not in main)
+  * Drop:
+    - Fix build failure with swig -Wdate-time.
+      [ Fixed in Debian 1.5.7-2 ]
+
+ -- Nishanth Aravamudan <nish.aravamudan@canonical.com>  Mon, 11 Apr 2016 09:44:52 -0700
+
 unbound (1.5.8-1) unstable; urgency=medium
 
   * Imported Upstream version 1.5.8
@@ -121,6 +155,20 @@ unbound (1.5.7-2) unstable; urgency=medium
     from Simon Deziel)
 
  -- Robert Edmonds <edmonds@debian.org>  Sun, 21 Feb 2016 16:22:23 -0500
+
+unbound (1.5.7-1ubuntu2) xenial; urgency=medium
+
+  * Fix build failure with swig -Wdate-time.
+
+ -- Matthias Klose <doko@ubuntu.com>  Tue, 05 Apr 2016 18:55:22 +0200
+
+unbound (1.5.7-1ubuntu1) xenial; urgency=medium
+
+  * Merge from Debian:
+    - Drop all existing delta
+    - Revert dnstap support (dependencies not in main)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 07 Jan 2016 12:23:09 -0500
 
 unbound (1.5.7-1) unstable; urgency=medium
 
@@ -183,6 +231,57 @@ unbound (1.4.22-2) unstable; urgency=medium
     at build time; closes: #746313.
 
  -- Robert S. Edmonds <edmonds@debian.org>  Mon, 18 Aug 2014 16:20:28 -0400
+
+unbound (1.4.22-1ubuntu6) wily; urgency=medium
+
+  * Make some lookups on a dual stacked (IPv4 and IPv6) host work.
+    - debian/patches/increase-max_sent_count: Increase MAX_SENT_COUNT to 32,
+      backported from Unbound 1.5.0 (LP: #1472510).
+    - Can be verified with:
+      # unbound-host -f /var/lib/unbound/root.key a.root-servers.net
+
+ -- Patrik Lundin <patrik.lundin@su.se>  Thu, 16 Jul 2015 09:04:58 +0200
+
+unbound (1.4.22-1ubuntu5) vivid; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large number of referrals
+    - debian/patches/CVE-2014-8602.patch: limit number of targets in
+      iterator/iterator.h, iterator/iterator.c.
+    - CVE-2014-8602
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Thu, 08 Jan 2015 10:06:14 -0500
+
+unbound (1.4.22-1ubuntu4) trusty; urgency=medium
+
+  * debian/rules: Enable full testsuite.
+  * debian/patches/disable_remote_control_in_tests: Disable remote control in
+    testbound suite so tests succeed.
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Mon, 07 Apr 2014 13:45:15 +0000
+
+unbound (1.4.22-1ubuntu3) trusty; urgency=low
+
+  * debian/patches/disable_chroot_by_default: Readded disable-chroot-by-default
+    functionality (LP: #1303088).
+  * debian/patches/silence_open_files_limit_warning: Readded patch.
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Mon, 07 Apr 2014 13:02:09 +0000
+
+unbound (1.4.22-1ubuntu2) trusty; urgency=medium
+
+  * debian/rules: Set to run unittests.
+  * debian/patches/debian-changes: Removed lingering changes from 1.4.22-1
+    upload.
+  * debian/patches/disable_sldns_str2wire_rr_buf_tests: Disable test files 3
+    and 5 (issue reported upstream #572).
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Fri, 04 Apr 2014 23:21:00 +0000
+
+unbound (1.4.22-1ubuntu1) trusty; urgency=low
+
+  * Bring back dh-autoreconf stuff from upload 1.4.21-1ubuntu1.
+
+ -- Jonathan Davies <jonathan.davies@canonical.com>  Fri, 04 Apr 2014 19:37:52 +0000
 
 unbound (1.4.22-1) unstable; urgency=medium
 
@@ -520,4 +619,5 @@ unbound (1.0.0-1) unstable; urgency=low
   * Initial release; closes: #482277.
 
  -- Robert S. Edmonds <edmonds@debian.org>  Wed, 21 May 2008 14:13:28 -0400
+
 
