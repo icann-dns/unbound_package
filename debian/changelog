@@ -1,3 +1,9 @@
+unbound (1.6.0-3ubuntu2) artful; urgency=medium
+
+  * No change rebuild to add Python 3.6 support.
+
+ -- Michael Hudson-Doyle <michael.hudson@ubuntu.com>  Tue, 16 May 2017 15:59:53 +1200
+
 unbound (1.6.0-3ubuntu1) artful; urgency=medium
 
   * Merge with Debian unstable (LP: #1688362). Remaining changes:
