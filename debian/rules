@@ -7,6 +7,10 @@ ifneq ($(DEB_HOST_ARCH), amd64)
 CONFIGURE_ARGS = --disable-flto
 endif
 
+ifneq ($(DEB_HOST_ARCH_OS), linux)
+CONFIGURE_ARGS = --with-libbsd
+endif
+
 LIBRARY = libunbound2
 DOPACKAGES = $(shell dh_listpackages)
 
@@ -39,6 +43,7 @@ ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
 		--with-libevent \
 		--with-pythonmodule \
 		--enable-dnstap \
+		--enable-systemd \
 		--with-dnstap-socket-path=/run/dnstap.sock \
 		--libdir=/usr/lib \
 		$(CONFIGURE_ARGS)
@@ -57,6 +62,7 @@ endif
 		--without-libevent \
 		--without-pythonmodule \
 		--without-pyunbound \
+		--enable-event-api \
 		$(CONFIGURE_ARGS)
 	$(MAKE)
 	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp-lib"
