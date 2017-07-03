@@ -15,21 +15,23 @@ Build-Depends:
  dh-systemd <!pkg.unbound.libonly>,
  dpkg-dev (>= 1.16.1~),
  flex,
+ libbsd-dev (>= 0.8.1~) [!linux-any],
  libevent-dev,
  libexpat1-dev,
  libfstrm-dev <!pkg.unbound.libonly>,
  libprotobuf-c-dev <!pkg.unbound.libonly>,
  libssl-dev <!pkg.unbound.libonly>,
+ libsystemd-dev <!pkg.unbound.libonly>,
  libtool,
  nettle-dev,
  pkg-config,
  protobuf-c-compiler <!pkg.unbound.libonly>,
- python-all-dev:any (>= 2.6.6-3~) <!pkg.unbound.libonly>,
- libpython-all-dev (>= 2.6.6-3~) <!pkg.unbound.libonly>,
- python3-all-dev:any <!pkg.unbound.libonly>,
- libpython3-all-dev <!pkg.unbound.libonly>,
+ python-dev:any (>= 2.6.6-3~) <!pkg.unbound.libonly>,
+ libpython-dev (>= 2.6.6-3~) <!pkg.unbound.libonly>,
+ python3-dev:any <!pkg.unbound.libonly>,
+ libpython3-dev <!pkg.unbound.libonly>,
  swig <!pkg.unbound.libonly>,
-Standards-Version: 3.9.8
+Standards-Version: 4.0.0
 Homepage: https://www.unbound.net/
 Vcs-Browser: https://anonscm.debian.org/cgit/pkg-dns/unbound.git
 Vcs-Git: https://anonscm.debian.org/git/pkg-dns/unbound.git
@@ -97,6 +99,7 @@ Architecture: any
 Depends:
  adduser,
  dns-root-data,
+ lsb-base (>= 3.0-6),
  openssl,
  unbound-anchor,
  ${misc:Depends},
