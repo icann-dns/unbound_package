@@ -5,12 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.6.0-3) unstable; urgency=medium
+ unbound (1.6.0-3+deb9u1) stretch; urgency=high
  .
-   * Cherry-pick upstream commit svn r4000, "Include root trust anchor id
-     20326 in unbound-anchor". (Closes: #855484)
+   * Cherry-pick upstream commit svn r4301, "Fix install of trust anchor
+     when two anchors are present, makes both valid.  Checks hash of DS but
+     not signature of new key.  This fixes installs between sep11 and oct11
+     2017."
+   * debian/control: unbound: Add versioned dependency on dns-root-data (>=
+     2017072601~) for KSK-2017 in RFC 5011 state VALID.
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/855484
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -23,7 +26,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2017-02-20
+Last-Update: 2017-08-27
 
 --- unbound-1.6.0.orig/acx_python.m4
 +++ unbound-1.6.0/acx_python.m4
@@ -118,3 +121,25 @@ Last-Update: 2017-02-20
  		free($2);
  	}
  	;
+--- unbound-1.6.0.orig/validator/autotrust.c
++++ unbound-1.6.0/validator/autotrust.c
+@@ -1571,6 +1571,11 @@ key_matches_a_ds(struct module_env* env,
+ 			verbose(VERB_ALGO, "DS match attempt failed");
+ 			continue;
+ 		}
++		/* match of hash is sufficient for bootstrap of trust point */
++		(void)reason;
++		(void)ve;
++		return 1;
++		/* no need to check RRSIG, DS hash already matched with source
+ 		if(dnskey_verify_rrset(env, ve, dnskey_rrset, 
+ 			dnskey_rrset, key_idx, &reason) == sec_status_secure) {
+ 			return 1;
+@@ -1578,6 +1583,7 @@ key_matches_a_ds(struct module_env* env,
+ 			verbose(VERB_ALGO, "DS match failed because the key "
+ 				"does not verify the keyset: %s", reason);
+ 		}
++		*/
+ 	}
+ 	return 0;
+ }
