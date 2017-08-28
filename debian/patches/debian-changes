@@ -5,13 +5,15 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.4.22-3+deb8u2) jessie; urgency=medium
+ unbound (1.4.22-3+deb8u3) jessie; urgency=high
  .
-   * debian/unbound.init: Add "pidfile" magic comment (Closes: #807132)
-   * debian/unbound.init: Call start-stop-daemon with --retry for 'stop'
-     action (patch from Julien Cristau)
+   * Cherry-pick upstream commit svn r4301, "Fix install of trust anchor
+     when two anchors are present, makes both valid.  Checks hash of DS but
+     not signature of new key.  This fixes installs between sep11 and oct11
+     2017."
+   * Cherry-pick upstream commit svn r4000, "Include root trust anchor id
+     20326 in unbound-anchor".
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/807132
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -24,7 +26,7 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2016-07-04
+Last-Update: 2017-08-28
 
 --- unbound-1.4.22.orig/acx_python.m4
 +++ unbound-1.4.22/acx_python.m4
@@ -229,6 +231,20 @@ Last-Update: 2016-07-04
  
  	/**
  	 * The query must store NS records from referrals as parentside RRs
+--- unbound-1.4.22.orig/smallapp/unbound-anchor.c
++++ unbound-1.4.22/smallapp/unbound-anchor.c
+@@ -239,7 +239,10 @@ static const char*
+ get_builtin_ds(void)
+ {
+ 	return
+-". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n";
++/* anchor 19036 is from 2010 */
++/* anchor 20326 is from 2017 */
++". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n"
++". IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n";
+ }
+ 
+ /** print hex data */
 --- unbound-1.4.22.orig/smallapp/unbound-control-setup.sh
 +++ unbound-1.4.22/smallapp/unbound-control-setup.sh
 @@ -157,6 +157,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
@@ -259,3 +275,25 @@ Last-Update: 2016-07-04
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
  	cfg->minimal_responses = 0;
+--- unbound-1.4.22.orig/validator/autotrust.c
++++ unbound-1.4.22/validator/autotrust.c
+@@ -1557,6 +1557,11 @@ key_matches_a_ds(struct module_env* env,
+ 			verbose(VERB_ALGO, "DS match attempt failed");
+ 			continue;
+ 		}
++		/* match of hash is sufficient for bootstrap of trust point */
++		(void)reason;
++		(void)ve;
++		return 1;
++		/* no need to check RRSIG, DS hash already matched with source
+ 		if(dnskey_verify_rrset(env, ve, dnskey_rrset, 
+ 			dnskey_rrset, key_idx, &reason) == sec_status_secure) {
+ 			return 1;
+@@ -1564,6 +1569,7 @@ key_matches_a_ds(struct module_env* env,
+ 			verbose(VERB_ALGO, "DS match failed because the key "
+ 				"does not verify the keyset: %s", reason);
+ 		}
++		*/
+ 	}
+ 	return 0;
+ }
