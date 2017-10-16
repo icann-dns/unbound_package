@@ -1,3 +1,10 @@
+unbound (1.6.5-1ubuntu0.1) artful-security; urgency=medium
+
+  * apparmor: permit unbound to notify readiness to systemd
+   (Closes: #867186, LP: #1723900)
+
+ -- Simon Deziel <simon@sdeziel.info>  Mon, 16 Oct 2017 13:11:12 +0000
+
 unbound (1.6.5-1) unstable; urgency=high
 
   [ Robert Edmonds ]
