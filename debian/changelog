@@ -1,3 +1,9 @@
+unbound (1.6.7-1build1) bionic; urgency=high
+
+  * No change rebuild against openssl1.1.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Mon, 05 Feb 2018 23:29:28 +0000
+
 unbound (1.6.7-1) unstable; urgency=medium
 
   * New upstream version 1.6.7
