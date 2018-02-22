@@ -36,6 +36,7 @@
 
   /usr/sbin/unbound mr,
 
+  /{,var/}run/systemd/notify w,
   /{,var/}run/{unbound/,}unbound.pid rw,
 
   # Unix control socket
