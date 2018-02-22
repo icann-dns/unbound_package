@@ -1,3 +1,10 @@
+unbound (1.6.7-1ubuntu1) bionic; urgency=medium
+
+  * debian/apparmor: update to allow writing to /run/systemd/notify
+    (Closes: #867186, LP: #1723900)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 22 Feb 2018 19:35:23 +0000
+
 unbound (1.6.7-1build1) bionic; urgency=high
 
   * No change rebuild against openssl1.1.
