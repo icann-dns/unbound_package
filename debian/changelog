@@ -1,3 +1,11 @@
+unbound (1.6.7-1ubuntu2) bionic; urgency=medium
+
+  * debian/apparmor-profile: add capabilities to chown/chmod Unix
+    control socket and allow reading /var/lib/sss/mc/initgroups
+    (Closes: #891705, LP: #1749931)
+
+ -- Simon Deziel <simon@sdeziel.info>  Tue, 27 Feb 2018 21:31:49 -0500
+
 unbound (1.6.7-1ubuntu1) bionic; urgency=medium
 
   * debian/apparmor: update to allow writing to /run/systemd/notify
