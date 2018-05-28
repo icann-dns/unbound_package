@@ -1,3 +1,12 @@
+unbound (1.6.5-1ubuntu0.2) artful-security; urgency=medium
+
+  * SECURITY UPDATE: vulnerability in the processing of wildcard
+    synthesized NSEC records (LP: #1773720)
+    - debian/patches/CVE-2017-15105.patch
+    - CVE-2017-15105
+
+ -- Simon Deziel <simon@sdeziel.info>  Mon, 28 May 2018 02:38:19 +0000
+
 unbound (1.6.5-1ubuntu0.1) artful-security; urgency=medium
 
   * apparmor: permit unbound to notify readiness to systemd
