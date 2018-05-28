@@ -1,3 +1,14 @@
+unbound (1.5.8-1ubuntu1.1) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: vulnerability in the processing of wildcard
+    synthesized NSEC records (LP: #1773720)
+    - debian/patches/CVE-2017-15105.patch
+    - CVE-2017-15105
+  * Fix install of trust anchor when two anchors are present
+    - debian/patches/unbound-r4302.patch
+
+ -- Simon Deziel <simon@sdeziel.info>  Mon, 28 May 2018 02:38:19 +0000
+
 unbound (1.5.8-1ubuntu1) xenial; urgency=medium
 
   * Merge from Debian (LP: #1556308):
