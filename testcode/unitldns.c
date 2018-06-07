@@ -205,9 +205,9 @@ rr_tests(void)
 {
 	rr_test_file("testdata/test_ldnsrr.1", "testdata/test_ldnsrr.c1");
 	rr_test_file("testdata/test_ldnsrr.2", "testdata/test_ldnsrr.c2");
-	rr_test_file("testdata/test_ldnsrr.3", "testdata/test_ldnsrr.c3");
+	/*rr_test_file("testdata/test_ldnsrr.3", "testdata/test_ldnsrr.c3");*/
 	rr_test_file("testdata/test_ldnsrr.4", "testdata/test_ldnsrr.c4");
-	rr_test_file("testdata/test_ldnsrr.5", "testdata/test_ldnsrr.c5");
+	/*rr_test_file("testdata/test_ldnsrr.5", "testdata/test_ldnsrr.c5");*/
 }
 
 void
