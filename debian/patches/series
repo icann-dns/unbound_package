@@ -4,3 +4,5 @@ silence_open_files_limit_warning
 disable_remote_control_in_tests
 CVE-2014-8602.patch
 increase-max_sent_count
+unbound-r4302.patch
+CVE-2017-15105.patch
