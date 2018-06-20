@@ -662,7 +662,10 @@ daemon_fork(struct daemon* daemon)
 	log_info("start of service (%s).", PACKAGE_STRING);
 	worker_work(daemon->workers[0]);
 #ifdef HAVE_SYSTEMD
-	sd_notify(0, "STOPPING=1");
+	if (daemon->workers[0]->need_to_exit)
+		sd_notify(0, "STOPPING=1");
+	else
+		sd_notify(0, "RELOADING=1");
 #endif
 	log_info("service stopped (%s).", PACKAGE_STRING);
 
@@ -704,6 +707,7 @@ daemon_cleanup(struct daemon* daemon)
 	free(daemon->workers);
 	daemon->workers = NULL;
 	daemon->num = 0;
+	alloc_clear_special(&daemon->superalloc);
 #ifdef USE_DNSTAP
 	dt_delete(daemon->dtenv);
 	daemon->dtenv = NULL;

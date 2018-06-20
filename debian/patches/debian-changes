@@ -5,25 +5,17 @@ Description: <short summary of the patch>
  information below has been extracted from the changelog. Adjust it or drop
  it.
  .
- unbound (1.7.1-1) unstable; urgency=medium
+ unbound (1.7.2-1) unstable; urgency=medium
  .
    [ Robert Edmonds ]
-   * debian/control: Update Vcs-* links to use salsa.debian.org URLs
-   * New upstream version 1.7.1
+   * New upstream version 1.7.2
+   * debian/control: Update Maintainer field (Closes: #899758)
  .
-   [ Simon Deziel ]
-   * debian/apparmor-profile: Add capabilities to chown/chmod Unix control
-     socket (Closes: #891705)
-   * debian/apparmor-profile: Allow reading /var/lib/sss/mc/initgroups
-   * debian/apparmor-profile: Permit unbound to notify readiness to systemd
-     (Closes: #867186)
-   * debian/apparmor-profile: Let unbound r/w anywhere under
-     /var/lib/unbound (Closes: #882731)
-   * debian/apparmor-profile: Use attach_disconnected
+   [ Vincent Bernat ]
+   * daemon/daemon.c: Fix reload hangs with systemd (Closes: #892914)
 Author: Robert Edmonds <edmonds@debian.org>
-Bug-Debian: https://bugs.debian.org/867186
-Bug-Debian: https://bugs.debian.org/882731
-Bug-Debian: https://bugs.debian.org/891705
+Bug-Debian: https://bugs.debian.org/892914
+Bug-Debian: https://bugs.debian.org/899758
 
 ---
 The information above should follow the Patch Tagging Guidelines, please
@@ -36,10 +28,10 @@ Bug-Debian: https://bugs.debian.org/<bugnumber>
 Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
 Forwarded: <no|not-needed|url proving that it has been forwarded>
 Reviewed-By: <name and email of someone who approved the patch>
-Last-Update: 2018-05-23
+Last-Update: 2018-06-20
 
---- unbound-1.7.1.orig/acx_python.m4
-+++ unbound-1.7.1/acx_python.m4
+--- unbound-1.7.2.orig/acx_python.m4
++++ unbound-1.7.2/acx_python.m4
 @@ -42,7 +42,12 @@ $ac_distutils_result])
                  if test -n "${python_path}"; then
                          python_path="-I$python_path"
@@ -54,9 +46,9 @@ Last-Update: 2018-05-23
          fi
          AC_MSG_RESULT([$PYTHON_CPPFLAGS])
          AC_SUBST([PYTHON_CPPFLAGS])
---- unbound-1.7.1.orig/configure.ac
-+++ unbound-1.7.1/configure.ac
-@@ -751,6 +751,19 @@ AC_INCLUDES_DEFAULT
+--- unbound-1.7.2.orig/configure.ac
++++ unbound-1.7.2/configure.ac
+@@ -752,6 +752,19 @@ AC_INCLUDES_DEFAULT
  fi
  AC_SUBST(SSLLIB)
  
@@ -76,7 +68,7 @@ Last-Update: 2018-05-23
  
  AC_ARG_ENABLE(sha1, AC_HELP_STRING([--disable-sha1], [Disable SHA1 RRSIG support, does not disable nsec3 support]))
  case "$enable_sha1" in
-@@ -1716,6 +1729,11 @@ struct tm;
+@@ -1719,6 +1732,11 @@ struct tm;
  char *strptime(const char *s, const char *format, struct tm *tm);
  #endif
  
@@ -88,19 +80,33 @@ Last-Update: 2018-05-23
  #ifdef HAVE_LIBRESSL
  #  if !HAVE_DECL_STRLCPY
  size_t strlcpy(char *dst, const char *src, size_t siz);
---- unbound-1.7.1.orig/contrib/libunbound.pc.in
-+++ unbound-1.7.1/contrib/libunbound.pc.in
+--- unbound-1.7.2.orig/contrib/libunbound.pc.in
++++ unbound-1.7.2/contrib/libunbound.pc.in
 @@ -8,6 +8,7 @@ Description: Library with validating, re
  URL: http://www.unbound.net
  Version: @PACKAGE_VERSION@
- Requires: libcrypto libssl @PC_LIBEVENT_DEPENDENCY@ @PC_PY_DEPENDENCY@
+ Requires: @PC_LIBEVENT_DEPENDENCY@ @PC_PY_DEPENDENCY@
 +Requires.private: @PC_LIBBSD_DEPENDENCY@
- Libs: -L${libdir} -lunbound
+ Libs: -L${libdir} -lunbound -lssl -lcrypto
  Libs.private: @SSLLIB@ @LIBS@
  Cflags: -I${includedir} 
---- unbound-1.7.1.orig/doc/unbound.conf.5.in
-+++ unbound-1.7.1/doc/unbound.conf.5.in
-@@ -1341,7 +1341,7 @@ section for options.  To setup the corre
+--- unbound-1.7.2.orig/daemon/daemon.c
++++ unbound-1.7.2/daemon/daemon.c
+@@ -662,7 +662,10 @@ daemon_fork(struct daemon* daemon)
+ 	log_info("start of service (%s).", PACKAGE_STRING);
+ 	worker_work(daemon->workers[0]);
+ #ifdef HAVE_SYSTEMD
+-	sd_notify(0, "STOPPING=1");
++	if (daemon->workers[0]->need_to_exit)
++		sd_notify(0, "STOPPING=1");
++	else
++		sd_notify(0, "RELOADING=1");
+ #endif
+ 	log_info("service stopped (%s).", PACKAGE_STRING);
+ 
+--- unbound-1.7.2.orig/doc/unbound.conf.5.in
++++ unbound-1.7.2/doc/unbound.conf.5.in
+@@ -1359,7 +1359,7 @@ section for options.  To setup the corre
  \fIunbound\-control\-setup\fR(8) utility.
  .TP 5
  .B control\-enable: \fI<yes or no>
@@ -109,8 +115,8 @@ Last-Update: 2018-05-23
  If turned off, the server does not listen for control commands.
  .TP 5
  .B control\-interface: \fI<ip address or path>
---- unbound-1.7.1.orig/smallapp/unbound-control-setup.sh.in
-+++ unbound-1.7.1/smallapp/unbound-control-setup.sh.in
+--- unbound-1.7.2.orig/smallapp/unbound-control-setup.sh.in
++++ unbound-1.7.2/smallapp/unbound-control-setup.sh.in
 @@ -155,6 +155,6 @@ chmod o-rw $SVR_BASE.pem $SVR_BASE.key $
  rm -f request.cfg
  rm -f $CTL_BASE"_trust.pem" $SVR_BASE"_trust.pem" $SVR_BASE"_trust.srl"
@@ -119,9 +125,9 @@ Last-Update: 2018-05-23
 +echo "Setup success. Certificates created."
  
  exit 0
---- unbound-1.7.1.orig/util/config_file.c
-+++ unbound-1.7.1/util/config_file.c
-@@ -155,7 +155,7 @@ config_create(void)
+--- unbound-1.7.2.orig/util/config_file.c
++++ unbound-1.7.2/util/config_file.c
+@@ -156,7 +156,7 @@ config_create(void)
  	init_outgoing_availports(cfg->outgoing_avail_ports, 65536);
  	if(!(cfg->username = strdup(UB_USERNAME))) goto error_exit;
  #ifdef HAVE_CHROOT
@@ -130,7 +136,7 @@ Last-Update: 2018-05-23
  #endif
  	if(!(cfg->directory = strdup(RUN_DIR))) goto error_exit;
  	if(!(cfg->logfile = strdup(""))) goto error_exit;
-@@ -242,7 +242,7 @@ config_create(void)
+@@ -243,7 +243,7 @@ config_create(void)
  	cfg->unblock_lan_zones = 0;
  	cfg->insecure_lan_zones = 0;
  	cfg->python_script = NULL;
@@ -139,8 +145,8 @@ Last-Update: 2018-05-23
  	cfg->control_ifs = NULL;
  	cfg->control_port = UNBOUND_CONTROL_PORT;
  	cfg->remote_control_use_cert = 1;
---- unbound-1.7.1.orig/util/random.c
-+++ unbound-1.7.1/util/random.c
+--- unbound-1.7.2.orig/util/random.c
++++ unbound-1.7.2/util/random.c
 @@ -78,7 +78,7 @@
   */
  #define MAX_VALUE 0x7fffffff
