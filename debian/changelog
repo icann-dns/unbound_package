@@ -1,3 +1,10 @@
+unbound (1.6.7-1ubuntu2.2) bionic; urgency=medium
+
+  * d/p/lp-1788622-fix-systemd-reload.patch: Fix hang due to all worker threads
+    stopping on reload (LP: #1788622)
+
+ -- Christian Ehrhardt <christian.ehrhardt@canonical.com>  Mon, 27 Aug 2018 14:12:29 +0200
+
 unbound (1.6.7-1ubuntu2.1) bionic-security; urgency=medium
 
   * SECURITY UPDATE: vulnerability in the processing of wildcard
