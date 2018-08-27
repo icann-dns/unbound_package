@@ -1,0 +1,37 @@
+From 5106ad7a2c8460d5bb9cb619d360dfe1f259eac2 Mon Sep 17 00:00:00 2001
+From: Wouter Wijngaards <wouter@nlnetlabs.nl>
+Date: Thu, 21 Jun 2018 07:11:12 +0000
+Subject: [PATCH] - #4108: systemd reload hang fix.
+
+git-svn-id: file:///svn/unbound/trunk@4747 be551aaa-1e26-0410-a405-d3ace91eadb9
+
+Backport Note: This isn't released by upstream yet but on upstream
+master. Debian picked the fix a while ago, due to that it is in Cosmic
+already.
+
+Author: Christian Ehrhardt <christian.ehrhardt@canonical.com>
+Original-Author: Wouter Wijngaards <wouter@nlnetlabs.nl>
+Origin: backport, https://github.com/NLnetLabs/unbound/commit/5106ad7a2c8460d5bb9cb619d360dfe1f259eac2
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1788622
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=892914
+Last-Update: 2018-08-27
+
+---
+ daemon/daemon.c | 5 ++++-
+ doc/Changelog   | 3 +++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- a/daemon/daemon.c
++++ b/daemon/daemon.c
+@@ -650,7 +650,10 @@ daemon_fork(struct daemon* daemon)
+ 	log_info("start of service (%s).", PACKAGE_STRING);
+ 	worker_work(daemon->workers[0]);
+ #ifdef HAVE_SYSTEMD
+-	sd_notify(0, "STOPPING=1");
++	if (daemon->workers[0]->need_to_exit)
++		sd_notify(0, "STOPPING=1");
++	else
++		sd_notify(0, "RELOADING=1");
+ #endif
+ 	log_info("service stopped (%s).", PACKAGE_STRING);
+ 
