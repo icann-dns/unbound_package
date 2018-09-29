@@ -1,3 +1,9 @@
+unbound (1.7.3-1build1) cosmic; urgency=high
+
+  * No change rebuild against openssl 1.1.1 with TLS 1.3 support.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Sat, 29 Sep 2018 01:37:00 +0100
+
 unbound (1.7.3-1) unstable; urgency=medium
 
   * New upstream version 1.7.3

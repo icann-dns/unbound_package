@@ -1,7 +1,8 @@
 Source: unbound
 Section: net
 Priority: optional
-Maintainer: unbound packagers <unbound@packages.debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: unbound packagers <unbound@packages.debian.org>
 Uploaders:
  Robert Edmonds <edmonds@debian.org>,
 Build-Depends:
