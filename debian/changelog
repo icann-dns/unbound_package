@@ -1,3 +1,13 @@
+unbound (1.9.0-2ubuntu0.1) disco-security; urgency=medium
+
+  * SECURITY UPDATE: Denial of service
+    - debian/patches/CVE-2019-16866.diff: sets edns to zero
+      to avoid access to an uninitialized memory in
+      util/data/msgparse.c.
+    - CVE-2019-16866
+
+ -- Leonidas S. Barbosa <leo.barbosa@canonical.com>  Mon, 07 Oct 2019 14:49:35 -0300
+
 unbound (1.9.0-2) unstable; urgency=medium
 
   [ Simon Deziel ]
