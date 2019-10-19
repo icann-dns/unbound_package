@@ -1,3 +1,9 @@
+unbound (1.9.0-2ubuntu2) focal; urgency=medium
+
+  * No-change rebuild for libevent soname changes.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 19 Oct 2019 19:58:53 +0000
+
 unbound (1.9.0-2ubuntu1) eoan; urgency=medium
 
   * SECURITY UPDATE: Denial of service
