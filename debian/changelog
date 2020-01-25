@@ -1,3 +1,9 @@
+unbound (1.9.4-2ubuntu1) focal; urgency=medium
+
+  * Build-depend on python-all-dev.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 25 Jan 2020 11:43:33 +0100
+
 unbound (1.9.4-2build1) focal; urgency=medium
 
   * No-change rebuild to build with python3.8.
