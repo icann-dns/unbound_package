@@ -1,3 +1,9 @@
+unbound (1.9.4-2build1) focal; urgency=medium
+
+  * No-change rebuild to build with python3.8.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 25 Jan 2020 04:41:11 +0000
+
 unbound (1.9.4-2) unstable; urgency=medium
 
   * Cherry-pick upstream commit ec021e0d, "fix build with nettle-3.5"
