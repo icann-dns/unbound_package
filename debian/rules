@@ -19,7 +19,6 @@ DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/default.mk
 
 clean:
-	dh_autotools-dev_restoreconfig
 	dh_autoreconf_clean
 	dh clean
 
@@ -30,7 +29,6 @@ build-indep:
 binary-arch: build
 	dh_testdir
 	dh_autoreconf
-	dh_autotools-dev_updateconfig
 
 ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
 	# first build -- build unbound daemon
@@ -113,6 +111,10 @@ endif
 	dh_installdirs
 
 ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
+	mkdir -p debian/unbound/etc/apparmor.d
+	cp debian/apparmor-profile debian/unbound/etc/apparmor.d/usr.sbin.unbound
+	dh_apparmor --profile-name=usr.sbin.unbound -punbound
+
 	dh_systemd_enable -p unbound
 	dh_systemd_enable -p unbound --name=unbound-resolvconf
 	dh_systemd_start -p unbound unbound.service
@@ -151,12 +153,6 @@ ifneq (,$(filter python3-unbound,$(DOPACKAGES)))
 endif
 	dh_strip
 	dh_compress -Xusr/share/doc/unbound/examples/unbound.conf
-
-ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
-	mkdir -p debian/unbound/etc/apparmor.d
-	cp debian/apparmor-profile debian/unbound/etc/apparmor.d/usr.sbin.unbound
-	dh_apparmor --profile-name=usr.sbin.unbound -punbound
-endif
 
 	dh_fixperms
 	dh_makeshlibs
