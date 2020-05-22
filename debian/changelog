@@ -1,3 +1,16 @@
+unbound (1.9.4-2ubuntu1.1) focal-security; urgency=medium
+
+  * SECURITY UPDATE: amplification attack and denial of service
+    - debian/patches/CVE-2020-1226x.patch: fix iterator logic in
+      iterator/iter_delegpt.c, iterator/iter_delegpt.h,
+      iterator/iter_scrub.c, iterator/iter_utils.c, iterator/iterator.c,
+      iterator/iterator.h, services/cache/dns.c, util/data/dname.c,
+      util/data/msgparse.c.
+    - CVE-2020-12263
+    - CVE-2020-12264
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Fri, 22 May 2020 08:51:12 -0400
+
 unbound (1.9.4-2ubuntu1) focal; urgency=medium
 
   * Build-depend on python-all-dev.
