@@ -1,0 +1,5 @@
+  * Invoke dh_installinit with --restart-after-upgrade; closes: #563033.
+  * New upstream release.
+  * Document copyright status of util/configparser.c, util/configparser.h;
+    closes: #552066.
+  * Enable libev support; closes: #552424.
