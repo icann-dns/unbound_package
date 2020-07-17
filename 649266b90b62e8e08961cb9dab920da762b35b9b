@@ -1,0 +1,13 @@
+  [ Scott Kitterman ]
+  * SECURITY UPDATE:
+  * References: CVE 2011-4528, 2011-4869 (LP: #907983)
+  * Add debian/patches/CVE-2011-4528 to fix DoS with DNSSEC
+    - Patch from Debian security update
+  [ Marc Deslauriers ]
+  * SECURITY UPDATE: denial of service via crafted query
+    - debian/patches/CVE-2009-4008.patch: add checks to util/data/dname.c.
+    - CVE-2009-4008
+  * SECURITY UPDATE: denial of service via improperly aligned structures
+    - debian/patches/CVE-2010-0969.patch: properly calculate sizes in
+      util/net_help.c.
+    - CVE-2010-0969
