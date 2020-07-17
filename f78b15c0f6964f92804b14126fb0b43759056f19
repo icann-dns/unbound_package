@@ -1,0 +1,4 @@
+  * Lintian clean; closes: #485438.
+  * Don't chroot by default; note manual syslog configuration in
+    README.Debian; closes: #486303.
+  * Update to policy 3.8.0.0.
