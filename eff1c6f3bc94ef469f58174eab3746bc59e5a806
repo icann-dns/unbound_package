@@ -1,0 +1,2 @@
+  * debian/apparmor: update to allow writing to /run/systemd/notify
+    (Closes: #867186, LP: #1723900)
