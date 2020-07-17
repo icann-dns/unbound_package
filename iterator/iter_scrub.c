@@ -101,8 +101,6 @@ has_additional(uint16_t t)
 		case LDNS_RR_TYPE_NAPTR:
 			/* TODO: NAPTR not supported, glue stripped off */
 			return 0;
-		default:
-			return 0;
 	}
 	return 0;
 }
