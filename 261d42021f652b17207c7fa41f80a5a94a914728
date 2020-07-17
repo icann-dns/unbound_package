@@ -1,0 +1,10 @@
+  [ Robert Edmonds ]
+  * New upstream version 1.6.5
+    - Fix install of trust anchor when two anchors are present, makes both
+      valid. Checks hash of DS but not signature of new key. This fixes
+      installs between sep11 and oct11 2017.
+  * debian/rules: Enable EDNS Client Subnet in daemon
+  [ Simon Deziel ]
+  * debian/unbound.service: Set PIDFile= (Closes: #867192)
+  [ Antony Antony ]
+  * debian/rules: Enable libevent for libunbound2 API (Closes: #871675)
