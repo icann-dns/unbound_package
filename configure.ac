@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.4.10, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.4.11, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=2
-LIBUNBOUND_REVISION=10
+LIBUNBOUND_REVISION=11
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -35,6 +35,7 @@ LIBUNBOUND_AGE=0
 # 1.4.8 had 2:8:0
 # 1.4.9 had 2:9:0
 # 1.4.10 had 2:10:0
+# 1.4.11 had 2:11:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -224,6 +225,7 @@ case "$debug_enabled" in
 		# nothing to do.
 		;;
 esac
+ACX_CHECK_FLTO
 
 AC_C_INLINE
 ACX_CHECK_FORMAT_ATTRIBUTE
@@ -695,6 +697,17 @@ AC_REPLACE_FUNCS(memmove)
 AC_REPLACE_FUNCS(gmtime_r)
 AC_REPLACE_FUNCS(ctime_r)
 
+AC_ARG_ENABLE(allsymbols, AC_HELP_STRING([--enable-allsymbols], [export all symbols from libunbound and link binaries to it, smaller install size but libunbound export table is polluted by internal symbols]))
+case "$enable_allsymbols" in
+	no)
+	EXPORT_ALL_SYMBOLS=no
+	;;
+	yes)
+	EXPORT_ALL_SYMBOLS=yes
+	;;
+esac
+AC_SUBST(EXPORT_ALL_SYMBOLS)
+
 # check this after all other compilation checks, since the linking of the lib
 # may break checks after this.
 use_ldns_builtin="no"
@@ -721,6 +734,7 @@ AC_ARG_WITH(ldns-builtin, AC_HELP_STRING([--with-ldns-builtin],
 if test "$use_ldns_builtin" = "no"; then
 	AC_CHECK_LIB(ldns, ldns_buffer_copy)
 	AC_CHECK_FUNC(ldns_key_buf2rsa_raw)
+	AC_CHECK_FUNC(ldns_get_random)
 	AC_CHECK_FUNC(ldns_b32_ntop_extended_hex)
 	if test x$use_gost = xyes; then
 	    AC_CHECK_FUNC(ldns_key_EVP_load_gost_id)
@@ -751,6 +765,7 @@ if test "$use_ldns_builtin" = "no"; then
 ])
 	if test $ac_cv_lib_ldns_ldns_buffer_copy = yes \
 	    -a $ac_cv_func_ldns_key_buf2rsa_raw = yes \
+	    -a $ac_cv_func_ldns_get_random = yes \
 	    -a $ac_cv_header_ldns_ldns_h = yes \
 	    -a $ac_cv_func_ldns_b32_ntop_extended_hex = yes \
 	    -a $ac_cv_func_ldns_key_EVP_load_gost_id = yes; then
@@ -916,6 +931,12 @@ void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 
 /** default port for DNS traffic. */
 #define UNBOUND_DNS_PORT 53
+/** default port for unbound control traffic, registered port with IANA,
+    ub-dns-control  8953/tcp    unbound dns nameserver control */
+#define UNBOUND_CONTROL_PORT 8953
+/** the version of unbound-control that this software implements */
+#define UNBOUND_CONTROL_VERSION 1
+
 ])
 
 AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8])

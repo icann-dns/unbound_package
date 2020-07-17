@@ -89,6 +89,7 @@ config_create(void)
 	cfg->do_tcp = 1;
 	cfg->use_syslog = 1;
 	cfg->log_time_ascii = 0;
+	cfg->log_queries = 0;
 #ifndef USE_WINSOCK
 #  ifdef USE_MINI_EVENT
 	/* select max 1024 sockets */
@@ -177,6 +178,7 @@ config_create(void)
 	cfg->val_log_level = 0;
 	cfg->val_log_squelch = 0;
 	cfg->val_permissive_mode = 0;
+	cfg->ignore_cd = 0;
 	cfg->add_holddown = 30*24*3600;
 	cfg->del_holddown = 30*24*3600;
 	cfg->keep_missing = 366*24*3600; /* one year plus a little leeway */
@@ -189,7 +191,7 @@ config_create(void)
 	cfg->python_script = NULL;
 	cfg->remote_control_enable = 0;
 	cfg->control_ifs = NULL;
-	cfg->control_port = 953;
+	cfg->control_port = UNBOUND_CONTROL_PORT;
 	if(!(cfg->server_key_file = strdup(RUN_DIR"/unbound_server.key"))) 
 		goto error_exit;
 	if(!(cfg->server_cert_file = strdup(RUN_DIR"/unbound_server.pem"))) 
@@ -381,7 +383,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_YNO("val-clean-additional:", val_clean_additional)
 	else S_NUMBER_OR_ZERO("val-log-level:", val_log_level)
 	else S_YNO("val-log-squelch:", val_log_squelch)
+	else S_YNO("log-queries:", log_queries)
 	else S_YNO("val-permissive-mode:", val_permissive_mode)
+	else S_YNO("ignore-cd-flag:", ignore_cd)
 	else S_STR("val-nsec3-keysize-iterations:", val_nsec3_key_iterations)
 	else S_UNSIGNED_OR_ZERO("add-holddown:", add_holddown)
 	else S_UNSIGNED_OR_ZERO("del-holddown:", del_holddown)
@@ -578,6 +582,7 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_STR(opt, "username", username)
 	else O_STR(opt, "directory", directory)
 	else O_STR(opt, "logfile", logfile)
+	else O_YNO(opt, "log-queries", log_queries)
 	else O_STR(opt, "pidfile", pidfile)
 	else O_YNO(opt, "hide-identity", hide_identity)
 	else O_YNO(opt, "hide-version", hide_version)
@@ -599,6 +604,7 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_YNO(opt, "val-clean-additional", val_clean_additional)
 	else O_DEC(opt, "val-log-level", val_log_level)
 	else O_YNO(opt, "val-permissive-mode", val_permissive_mode)
+	else O_YNO(opt, "ignore-cd-flag", ignore_cd)
 	else O_STR(opt, "val-nsec3-keysize-iterations",val_nsec3_key_iterations)
 	else O_UNS(opt, "add-holddown", add_holddown)
 	else O_UNS(opt, "del-holddown", del_holddown)
