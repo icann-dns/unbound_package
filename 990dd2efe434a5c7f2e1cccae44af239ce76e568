@@ -1,0 +1,4 @@
+  * Cherry-pick upstream commit svn r4441, "patch for CVE-2017-15105:
+    vulnerability in the processing of wildcard synthesized NSEC records."
+  * Cherry-pick upstream commit svn r4528, "Added tests with wildcard
+    expanded NSEC records (CVE-2017-15105 test)".
