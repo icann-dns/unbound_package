@@ -159,7 +159,11 @@
      VAR_SSL_UPSTREAM = 377,
      VAR_SSL_SERVICE_KEY = 378,
      VAR_SSL_SERVICE_PEM = 379,
-     VAR_SSL_PORT = 380
+     VAR_SSL_PORT = 380,
+     VAR_FORWARD_FIRST = 381,
+     VAR_STUB_FIRST = 382,
+     VAR_MINIMAL_RESPONSES = 383,
+     VAR_RRSET_ROUNDROBIN = 384
    };
 #endif
 /* Tokens.  */
@@ -286,6 +290,10 @@
 #define VAR_SSL_SERVICE_KEY 378
 #define VAR_SSL_SERVICE_PEM 379
 #define VAR_SSL_PORT 380
+#define VAR_FORWARD_FIRST 381
+#define VAR_STUB_FIRST 382
+#define VAR_MINIMAL_RESPONSES 383
+#define VAR_RRSET_ROUNDROBIN 384
 
 
 
@@ -302,7 +310,7 @@ typedef union YYSTYPE
 
 
 /* Line 2068 of yacc.c  */
-#line 306 "util/configparser.h"
+#line 314 "util/configparser.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
