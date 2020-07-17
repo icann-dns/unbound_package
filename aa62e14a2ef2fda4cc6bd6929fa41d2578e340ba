@@ -1,0 +1,5 @@
+  * SECURITY UPDATE: Denial of service
+    - debian/patches/CVE-2019-16866.diff: sets edns to zero
+      to avoid access to an uninitialized memory in
+      util/data/msgparse.c.
+    - CVE-2019-16866
