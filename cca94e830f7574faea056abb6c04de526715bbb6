@@ -1,0 +1,3 @@
+  * New upstream release.
+  * Drop Build-Dependency on libldns-dev. Unbound no longer relies on
+    libldns.
