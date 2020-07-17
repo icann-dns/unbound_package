@@ -1,3 +1,20 @@
+11 March 2010: Wouter
+	- another memory allocation option: --enable-alloc-nonregional.
+	  exposes the regional allocations to other memory purifiers.
+	- fix for memory alignment in struct sock_list allocation.
+	- Fix for MacPorts ldns without ssl default, unbound checks if ldns
+	  has dnssec functionality and uses the builtin if not.
+	- Fix daemonize on Solaris 10, it did not detach from terminal.
+
+10 March 2010: Wouter
+	- --enable-alloc-lite works with test set.
+	- portability in the testset: printf format conversions, prototypes.
+
+9 March 2010: Wouter
+	- tag 1.4.2 created.
+	- trunk is 1.4.3 in development.
+	- --enable-alloc-lite debug option.
+
 8 March 2010: Wouter
 	- iana portlist updated.
 
