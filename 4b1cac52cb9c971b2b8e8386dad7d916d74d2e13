@@ -1,0 +1,3 @@
+  * Source change backport to Precise (LP: #1158766)
+    - build with --disable-ecdsa
+    - do not depend on libldns-dev (>= 1.6.13~)
