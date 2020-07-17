@@ -1,0 +1,3 @@
+  * Merge from debian unstable, remaining changes (LP: #310779):
+    - Add --install to the libtoolize call in debian/rules so that all the
+      necessary files get installed.
