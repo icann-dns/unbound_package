@@ -1,0 +1,4 @@
+  * Add missing build-dep on libevent-dev and adjust debian/rules to build
+    with libevent support (LP: #459041)
+    - The default of only 16 outbound ports is clearly insufficient given
+      current DNS spoofing risks
