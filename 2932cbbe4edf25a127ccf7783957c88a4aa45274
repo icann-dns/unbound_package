@@ -1,0 +1,2 @@
+  * Merge from Debian (LP: #1647291). Remaining changes:
+    - Revert dnstap support (dependencies not in main)
