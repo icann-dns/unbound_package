@@ -1,0 +1,2 @@
+  * Fix potential loss of data if filesystem is full, take patch from upstream
+    svn revision 3044, written by Wouter Wijngaards (LP: #1271104)
