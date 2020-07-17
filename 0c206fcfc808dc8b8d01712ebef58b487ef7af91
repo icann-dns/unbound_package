@@ -1,0 +1,7 @@
+  * Merge from debian unstable, remaining changes (LP: #458226):
+    - Version build-dep on libldns-dev to (>=1.4.0)
+    - Added util/configparser.h, util/configparser.c information to
+      debian/copyright
+  * Dropped Ubuntu specific changes for running in a chroot as more trouble
+    than they are worth
+    - Also solves LP: #445414
