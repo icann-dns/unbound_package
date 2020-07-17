@@ -1,0 +1,2 @@
+  * Build-depend on libldns-dev (>= 1.6.9-2~) for GOST support.
+  * Configure without --disable-gost.
