@@ -1,0 +1,4 @@
+  [ Robert Edmonds ]
+  * New upstream version 1.6.0
+  [ Helmut Grohne ]
+  * Add pkg.unbound.libonly build profile. (Closes: #847130)
