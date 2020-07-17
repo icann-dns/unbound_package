@@ -1,0 +1,5 @@
+  * Merge from Debian (LP: #1655793). Remaining changes:
+    - Revert dnstap support (dependencies not in main)
+  * Drop (partially):
+    - Revert dnstap support (dependencies not in main)
+    [ Archive reorg in 16.04 allows for b-d to be in universe ]
