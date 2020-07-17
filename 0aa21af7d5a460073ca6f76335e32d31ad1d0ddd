@@ -1,0 +1,4 @@
+  * New upstream release.
+  * Migrate pidfile from /var/run to /run; closes: #773247.
+  * Fix unbound-checkconf to recognize "python" in module-config;
+    closes: #777193.
