@@ -1,0 +1,3 @@
+  * New upstream release
+    - Remove acx_python.m4 changes from debian/patches/debian-changes since
+      they are incorporated upstream
