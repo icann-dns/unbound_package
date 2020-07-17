@@ -1,0 +1,2 @@
+  [ Helmut Grohne ]
+  * Only use fake_dsa when HAVE_SSL is defined (Closes: #848339)
