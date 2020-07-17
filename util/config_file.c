@@ -155,6 +155,7 @@ config_create()
 	cfg->val_sig_skew_min = 3600; /* at least daylight savings trouble */
 	cfg->val_sig_skew_max = 86400; /* at most timezone settings trouble */
 	cfg->val_clean_additional = 1;
+	cfg->val_log_level = 0;
 	cfg->val_permissive_mode = 0;
 	cfg->key_cache_size = 4 * 1024 * 1024;
 	cfg->key_cache_slabs = 4;
@@ -375,6 +376,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "val-clean-additional:") == 0) {
 		IS_YES_OR_NO;
 		cfg->val_clean_additional = (strcmp(val, "yes") == 0);
+	} else if(strcmp(opt, "val-log-level:") == 0) {
+		IS_NUMBER_OR_ZERO;
+		cfg->val_log_level = atoi(val);
 	} else if(strcmp(opt, "val-permissive-mode:") == 0) {
 		IS_YES_OR_NO;
 		cfg->val_permissive_mode = (strcmp(val, "yes") == 0);
@@ -1034,12 +1038,14 @@ char* cfg_ptr_reverse(char* str)
 	 * IPv6: (h.){32}.ip6.arpa.  */
 
 	if(addr_is_ip6(&addr, addrlen)) {
-		void* ad = &((struct sockaddr_in6*)&addr)->sin6_addr;
+		uint8_t ad[16];
 		const char* hex = "0123456789abcdef";
 		char *p = buf;
 		int i;
+		memmove(ad, &((struct sockaddr_in6*)&addr)->sin6_addr, 
+			sizeof(ad));
 		for(i=15; i>=0; i--) {
-			uint8_t b = ((uint8_t*)ad)[i];
+			uint8_t b = ad[i];
 			*p++ = hex[ (b&0x0f) ];
 			*p++ = '.';
 			*p++ = hex[ (b&0xf0) >> 4 ];
@@ -1047,10 +1053,12 @@ char* cfg_ptr_reverse(char* str)
 		}
 		snprintf(buf+16*4, sizeof(buf)-16*4, "ip6.arpa. ");
 	} else {
-		struct in_addr* ad = &((struct sockaddr_in*)&addr)->sin_addr;
+		uint8_t ad[4];
+		memmove(ad, &((struct sockaddr_in*)&addr)->sin_addr, 
+			sizeof(ad));
 		snprintf(buf, sizeof(buf), "%u.%u.%u.%u.in-addr.arpa. ",
-		(unsigned)((uint8_t*)ad)[3], (unsigned)((uint8_t*)ad)[2],
-		(unsigned)((uint8_t*)ad)[1], (unsigned)((uint8_t*)ad)[0]);
+			(unsigned)ad[3], (unsigned)ad[2],
+			(unsigned)ad[1], (unsigned)ad[0]);
 	}
 
 	/* printed the reverse address, now the between goop and name on end */

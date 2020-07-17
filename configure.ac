@@ -6,10 +6,10 @@ sinclude(acx_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 
-AC_INIT(unbound, 1.3.2, unbound-bugs@nlnetlabs.nl, unbound)
+AC_INIT(unbound, 1.3.3, unbound-bugs@nlnetlabs.nl, unbound)
 
 LIBUNBOUND_CURRENT=1
-LIBUNBOUND_REVISION=2
+LIBUNBOUND_REVISION=3
 LIBUNBOUND_AGE=0
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
@@ -21,6 +21,7 @@ LIBUNBOUND_AGE=0
 # 1.3.0 had 1:0:0   # ub_cancel and -export-symbols.
 # 1.3.1 had 1:1:0
 # 1.3.2 had 1:2:0
+# 1.3.3 had 1:3:0
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -58,7 +59,10 @@ esac
 
 # are we on MinGW?
 if uname -s 2>&1 | grep MINGW32 >/dev/null; then on_mingw="yes"
-else on_mingw="no"; fi
+else 
+	if echo $target | grep mingw32 >/dev/null; then on_mingw="yes"
+	else on_mingw="no"; fi
+fi
 
 #
 # Determine configuration file
@@ -180,6 +184,7 @@ fi
 AC_PROG_LEX
 AC_PROG_YACC
 AC_CHECK_PROG(doxygen, doxygen, doxygen)
+AC_CHECK_TOOL(STRIP, strip)
 ACX_LIBTOOL_C_ONLY
 
 # Checks for header files.
@@ -442,6 +447,10 @@ if test x_$enable_static_exe = x_yes; then
 	staticexe="-static"
 	if test "$on_mingw" = yes; then
 		staticexe="-all-static"
+		# for static crosscompile, include gdi32 and zlib here.
+		if test "`uname`" = "Linux"; then
+			LIBS="$LIBS -lgdi32 -lz"
+		fi
 	fi
 fi
 
@@ -462,7 +471,7 @@ AC_ARG_ENABLE(alloc-checks, AC_HELP_STRING([--enable-alloc-checks],
 if test x_$enable_alloc_checks = x_yes; then
 	AC_DEFINE(UNBOUND_ALLOC_STATS, 1, [use statistics for allocs and frees, for debug use])
 else
-	AC_FUNC_MALLOC
+	ACX_FUNC_MALLOC([unbound])
 fi
 
 AC_FUNC_CHOWN
@@ -476,6 +485,7 @@ if test "$USE_WINSOCK" = 1; then
 	AC_DEFINE(UB_ON_WINDOWS, 1, [Use win32 resources and API])
 	UB_ON_WINDOWS=yes
 	AC_SUBST(UB_ON_WINDOWS)
+	AC_CHECK_TOOL(WINDRES, windres)
 fi
 if test $ac_cv_func_getaddrinfo = no; then
 	AC_LIBOBJ([fake-rfc2553])
@@ -634,7 +644,6 @@ dnl includes
 AHX_CONFIG_FORMAT_ATTRIBUTE
 AHX_CONFIG_UNUSED_ATTRIBUTE
 AHX_CONFIG_FSEEKO
-AHX_CONFIG_RAND_MAX
 AHX_CONFIG_MAXHOSTNAMELEN
 AHX_CONFIG_SNPRINTF(unbound)
 AHX_CONFIG_INET_PTON(unbound)

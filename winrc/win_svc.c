@@ -127,11 +127,12 @@ static void
 reportev(const char* str)
 {
 	char b[256];
+	char e[256];
 	HANDLE* s;
 	LPCTSTR msg = b;
 	/* print quickly to keep GetLastError value */
-	snprintf(b, sizeof(b), "%s: %s (%d)", SERVICE_NAME, 
-		str, (int)GetLastError());
+	wsvc_err2str(e, sizeof(e), str, GetLastError());
+	snprintf(b, sizeof(b), "%s: %s", SERVICE_NAME, e);
 	s = RegisterEventSource(NULL, SERVICE_NAME);
 	if(!s) return;
 	ReportEvent(s, /* event log */
@@ -181,7 +182,7 @@ lookup_reg_str(const char* key, const char* name)
 	if(type == REG_SZ || type == REG_MULTI_SZ || type == REG_EXPAND_SZ) {
 		buf[sizeof(buf)-1] = 0;
 		buf[sizeof(buf)-2] = 0; /* for multi_sz */
-		result = strdup(buf);
+		result = strdup((char*)buf);
 		if(!result) reportev("out of memory");
 	}
 	return result;
@@ -221,9 +222,11 @@ lookup_reg_int(const char* key, const char* name)
 	if(type == REG_SZ || type == REG_MULTI_SZ || type == REG_EXPAND_SZ) {
 		buf[sizeof(buf)-1] = 0;
 		buf[sizeof(buf)-2] = 0; /* for multi_sz */
-		result = atoi(buf);
+		result = atoi((char*)buf);
 	} else if(type == REG_DWORD) {
-		result = *(DWORD*)buf;
+		DWORD r;
+		memmove(&r, buf, sizeof(r));
+		result = r;
 	} 
 	return result;
 }
