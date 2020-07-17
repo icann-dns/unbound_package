@@ -1,0 +1,6 @@
+  [ Robert Edmonds ]
+  * New upstream version 1.10.0
+  * Drop debian/patches/0002-Allow-use-of-libbsd-functions-with-configure-
+    option-.patch (applied upstream)
+  [ Stuart Prescott ]
+  * Drop Python 2 module package (Closes: #938752)
