@@ -1,0 +1,2 @@
+  * Build with dh-autoreconf and manually update config.{sub,guess}, as
+    autoreconf only does it when the package uses automake.
