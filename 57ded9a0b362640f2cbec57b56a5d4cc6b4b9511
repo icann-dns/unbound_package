@@ -1,0 +1,2 @@
+  * Build-depend on {lib,}python{,3}-dev, not {lib,}python{,3}-all-dev,
+    since there is no support for multiple versions in the packaging.
