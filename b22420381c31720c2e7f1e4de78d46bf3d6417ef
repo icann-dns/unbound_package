@@ -1,0 +1,3 @@
+  * New upstream version 1.6.6
+  * debian/control: Drop obsolete build-depends on dh-systemd
+  * debian/control: Bump Standards-Version to 4.1.1 (no changes)
