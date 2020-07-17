@@ -1,0 +1,8 @@
+  * SECURITY UPDATE: amplification attack and denial of service
+    - debian/patches/CVE-2020-1226x.patch: fix iterator logic in
+      iterator/iter_delegpt.c, iterator/iter_delegpt.h,
+      iterator/iter_scrub.c, iterator/iter_utils.c, iterator/iterator.c,
+      iterator/iterator.h, services/cache/dns.c, util/data/dname.c,
+      util/data/msgparse.c.
+    - CVE-2020-12263
+    - CVE-2020-12264
