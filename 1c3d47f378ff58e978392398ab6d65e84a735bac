@@ -1,0 +1,6 @@
+  * New upstream release;
+    + stricter filtering of DNS messages to combat cache poisoning
+  * unbound tries too hard to chroot(); ship a default config that doesn't
+    fail to start on new installs; closes: #492243.
+  * New upstream release.
+  * Drop 'return' from init script; closes: #488650.
