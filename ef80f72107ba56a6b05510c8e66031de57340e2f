@@ -1,0 +1,5 @@
+  * Drop unneeded Build-Dependency on doxygen.
+  * Drop unneeded Build-Dependency on automake. (Unbound does not use
+    automake.)
+  * Use dh_autotools-dev_updateconfig to update the config.{guess,sub} files
+    at build time; closes: #746313.
