@@ -1,0 +1,2 @@
+  * debian/unbound.maintscript: Remove obsolete conffile
+    /etc/unbound/unbound.conf.d/qname-minimisation.conf (Closes: #950406)
