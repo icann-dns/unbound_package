@@ -1,0 +1,4 @@
+  * Merge from debian unstable, remaining changes:
+    - Version build-dep on libldns-dev to (>=1.4.0)
+    - Added util/configparser.h, util/configparser.c information to
+      debian/copyright
