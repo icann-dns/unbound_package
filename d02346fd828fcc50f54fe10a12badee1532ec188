@@ -1,0 +1,5 @@
+  * New upstream release.
+  * New upstream release; closes: #533613.
+  * Move pid file to /var/run; closes: #533611.
+  * Use "unbound-checkconf -o pidfile" in init script to determine pid file
+    location (thanks Michael Tokarev).
