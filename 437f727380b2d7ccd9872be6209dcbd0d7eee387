@@ -1,0 +1,2 @@
+  * New upstream release.
+  * Drop .la file from libunbound-dev; closes: #541640.
