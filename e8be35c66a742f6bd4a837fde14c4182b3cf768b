@@ -1,0 +1,12 @@
+  [ Robert Edmonds ]
+  * debian/control: Update Vcs-* links to use salsa.debian.org URLs
+  * New upstream version 1.7.1
+  [ Simon Deziel ]
+  * debian/apparmor-profile: Add capabilities to chown/chmod Unix control
+    socket (Closes: #891705)
+  * debian/apparmor-profile: Allow reading /var/lib/sss/mc/initgroups
+  * debian/apparmor-profile: Permit unbound to notify readiness to systemd
+    (Closes: #867186)
+  * debian/apparmor-profile: Let unbound r/w anywhere under
+    /var/lib/unbound (Closes: #882731)
+  * debian/apparmor-profile: Use attach_disconnected
