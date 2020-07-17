@@ -1,0 +1,5 @@
+  * New upstream version 1.8.0
+  * debian/: libunbound2.symbols → libunbound8.symbols
+  * debian/rules: libunbound2 → libunbound8
+  * debian/control: libunbound2 → libunbound8
+  * daemon/daemon.c: Fix systemd service manager state change notification
