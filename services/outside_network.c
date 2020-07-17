@@ -56,7 +56,9 @@
 #ifdef HAVE_SYS_TYPES_H
 #  include <sys/types.h>
 #endif
+#ifdef HAVE_NETDB_H
 #include <netdb.h>
+#endif
 #include <fcntl.h>
 
 /** number of times to retry making a random ID that is unique. */
@@ -142,14 +144,28 @@ outnet_tcp_take_into_use(struct waiting_tcp* w, uint8_t* pkt, size_t pkt_len)
 #endif
 		s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if(s == -1) {
+#ifndef USE_WINSOCK
 		log_err("outgoing tcp: socket: %s", strerror(errno));
+#else
+		log_err("outgoing tcp: socket: %s", 
+			wsa_strerror(WSAGetLastError()));
+#endif
 		log_addr(0, "failed address", &w->addr, w->addrlen);
 		return 0;
 	}
 	fd_set_nonblock(s);
 	if(connect(s, (struct sockaddr*)&w->addr, w->addrlen) == -1) {
+#ifndef USE_WINSOCK
+#ifdef EINPROGRESS
 		if(errno != EINPROGRESS) {
+#else
+		if(1) {
+#endif
 			log_err("outgoing tcp: connect: %s", strerror(errno));
+#else /* USE_WINSOCK */
+		if(WSAGetLastError() != WSAEINPROGRESS &&
+			WSAGetLastError() != WSAEWOULDBLOCK) {
+#endif
 			log_addr(0, "failed address", &w->addr, w->addrlen);
 			close(s);
 			return 0;
@@ -652,6 +668,23 @@ pending_delete(struct outside_network* outnet, struct pending* p)
 {
 	if(!p)
 		return;
+	if(outnet && outnet->udp_wait_first &&
+                (p->next_waiting || p == outnet->udp_wait_last) ) {
+                /* delete from waiting list, if it is in the waiting list */
+                struct pending* prev = NULL, *x = outnet->udp_wait_first;
+                while(x && x != p) {
+                        prev = x;
+                        x = x->next_waiting;
+                }
+                if(x) {
+                        log_assert(x == p);
+                        if(prev)
+                                prev->next_waiting = p->next_waiting;
+                        else    outnet->udp_wait_first = p->next_waiting;
+                        if(outnet->udp_wait_last == p)
+                                outnet->udp_wait_last = prev;
+                }
+        }
 	if(outnet) {
 		(void)rbtree_delete(outnet->pending, p->node.key);
 	}
@@ -674,17 +707,17 @@ static int
 udp_sockport(struct sockaddr_storage* addr, socklen_t addrlen, int port, 
 	int* inuse)
 {
-	int fd;
+	int fd, noproto;
 	if(addr_is_ip6(addr, addrlen)) {
 		struct sockaddr_in6* sa = (struct sockaddr_in6*)addr;
 		sa->sin6_port = (in_port_t)htons((uint16_t)port);
 		fd = create_udp_sock(AF_INET6, SOCK_DGRAM, 
-			(struct sockaddr*)addr, addrlen, 1, inuse);
+			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto);
 	} else {
 		struct sockaddr_in* sa = (struct sockaddr_in*)addr;
 		sa->sin_port = (in_port_t)htons((uint16_t)port);
 		fd = create_udp_sock(AF_INET, SOCK_DGRAM, 
-			(struct sockaddr*)addr, addrlen, 1, inuse);
+			(struct sockaddr*)addr, addrlen, 1, inuse, &noproto);
 	}
 	return fd;
 }
@@ -1051,7 +1084,8 @@ serviced_delete(struct serviced_query* sq)
 		if(sq->status == serviced_query_UDP_EDNS ||
 			sq->status == serviced_query_UDP) {
 			struct pending* p = (struct pending*)sq->pending;
-			portcomm_loweruse(sq->outnet, p->pc);
+			if(p->pc)
+				portcomm_loweruse(sq->outnet, p->pc);
 			pending_delete(sq->outnet, p);
 			outnet_send_wait_udp(sq->outnet);
 		} else {

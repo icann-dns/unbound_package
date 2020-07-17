@@ -76,15 +76,24 @@ static RETSIGTYPE record_sigh(int sig)
 	switch(sig)
 	{
 		case SIGTERM:
+#ifdef SIGQUIT
 		case SIGQUIT:
+#endif
+#ifdef SIGBREAK
+		case SIGBREAK:
+#endif
 		case SIGINT:
 			sig_record_quit++;
 			break;
+#ifdef SIGHUP
 		case SIGHUP:
 			sig_record_reload++;
 			break;
+#endif
+#ifdef SIGPIPE
 		case SIGPIPE:
 			break;
+#endif
 		default:
 			log_err("ignoring signal %d", sig);
 	}
@@ -98,10 +107,20 @@ static void
 signal_handling_record()
 {
 	if( signal(SIGTERM, record_sigh) == SIG_ERR ||
+#ifdef SIGQUIT
 		signal(SIGQUIT, record_sigh) == SIG_ERR ||
-		signal(SIGINT, record_sigh) == SIG_ERR ||
+#endif
+#ifdef SIGBREAK
+		signal(SIGBREAK, record_sigh) == SIG_ERR ||
+#endif
+#ifdef SIGHUP
 		signal(SIGHUP, record_sigh) == SIG_ERR ||
-		signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+#endif
+#ifdef SIGPIPE
+		signal(SIGPIPE, SIG_IGN) == SIG_ERR ||
+#endif
+		signal(SIGINT, record_sigh) == SIG_ERR
+		)
 		log_err("install sighandler: %s", strerror(errno));
 }
 
@@ -112,8 +131,10 @@ signal_handling_record()
 static void
 signal_handling_playback(struct worker* wrk)
 {
+#ifdef SIGHUP
 	if(sig_record_reload)
 		worker_sighandler(SIGHUP, wrk);
+#endif
 	if(sig_record_quit)
 		worker_sighandler(SIGTERM, wrk);
 	sig_record_quit = 0;
@@ -125,11 +146,26 @@ daemon_init()
 {
 	struct daemon* daemon = (struct daemon*)calloc(1, 
 		sizeof(struct daemon));
+#ifdef USE_WINSOCK
+	int r;
+	WSADATA wsa_data;
+#endif
 	if(!daemon)
 		return NULL;
+#ifdef USE_WINSOCK
+	r = WSAStartup(MAKEWORD(2,2), &wsa_data);
+	if(r != 0) {
+		fatal_exit("could not init winsock. WSAStartup: %s",
+			wsa_strerror(r));
+	}
+#endif /* USE_WINSOCK */
 	signal_handling_record();
 	checklock_start();
 	ERR_load_crypto_strings();
+#ifdef HAVE_TZSET
+	/* init timezone info while we are not chrooted yet */
+	tzset();
+#endif
 	daemon->need_to_exit = 0;
 	modstack_init(&daemon->mods);
 	if(!(daemon->env = (struct module_env*)calloc(1, 
@@ -278,7 +314,7 @@ thread_start(void* arg)
 	struct worker* worker = (struct worker*)arg;
 	log_thread_set(&worker->thread_num);
 	ub_thread_blocksigs();
-#if !defined(HAVE_PTHREAD) && !defined(HAVE_SOLARIS_THREADS)
+#ifdef THREADS_DISABLED
 	/* close pipe ends used by main */
 	close(worker->cmd_send_fd);
 	worker->cmd_send_fd = -1;
@@ -305,7 +341,7 @@ daemon_start_others(struct daemon* daemon)
 	for(i=1; i<daemon->num; i++) {
 		ub_thread_create(&daemon->workers[i]->thr_id,
 			thread_start, daemon->workers[i]);
-#if !defined(HAVE_PTHREAD) && !defined(HAVE_SOLARIS_THREADS)
+#ifdef THREADS_DISABLED
 		/* close pipe end of child */
 		close(daemon->workers[i]->cmd_recv_fd);
 		daemon->workers[i]->cmd_recv_fd = -1;
@@ -433,4 +469,10 @@ daemon_delete(struct daemon* daemon)
 	ERR_free_strings();
 	RAND_cleanup();
 	checklock_stop();
+#ifdef USE_WINSOCK
+	if(WSACleanup() != 0) {
+		log_err("Could not WSACleanup: %s", 
+			wsa_strerror(WSAGetLastError()));
+	}
+#endif
 }

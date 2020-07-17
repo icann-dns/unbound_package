@@ -52,16 +52,22 @@
 #include "util/module.h"
 #include <signal.h>
 #include <fcntl.h>
+#ifdef HAVE_PWD_H
 #include <pwd.h>
+#endif
 
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
 
 #ifdef USE_MINI_EVENT
-#include "util/mini_event.h"
+#  ifdef USE_WINSOCK
+#    include "util/winsock_event.h"
+#  else
+#    include "util/mini_event.h"
+#  endif
 #else
-#include <event.h>
+#  include <event.h>
 #endif
 
 /** global debug value to keep track of heap memory allocation */
@@ -88,6 +94,7 @@ static void usage()
 static void
 checkrlimits(struct config_file* cfg)
 {
+#ifdef HAVE_GETRLIMIT
 	int list = ((cfg->do_ip4?1:0) + (cfg->do_ip6?1:0)) * 
 		((cfg->do_udp?1:0) + (cfg->do_tcp?1 + 
 			(int)cfg->incoming_num_tcp:0));
@@ -134,6 +141,24 @@ checkrlimits(struct config_file* cfg)
 		log_warn("increased limit(open files) from %u to %u",
 			(unsigned)avail, (unsigned)total+10);
 	}
+	if(total > 1024 && 
+		strncmp(event_get_version(), "mini-event", 10) == 0) {
+		log_err("too many file descriptors requested. The builtin"
+			"mini-event cannot handle more than 1024. Config "
+			"for less fds or compile with libevent");
+		fatal_exit("configuration needs too many file descriptors");
+	}
+	if(perthread > 64 && 
+		strncmp(event_get_version(), "winsock-event", 13) == 0) {
+		log_err("too many file descriptors requested. The winsock"
+			" event handler cannot handle more than 64 per "
+			" thread. Config for less fds or compile with "
+			" libevent");
+		fatal_exit("configuration needs too many file descriptors");
+	}
+#else	
+	(void)cfg;
+#endif /* HAVE_GETRLIMIT */
 }
 
 /** set verbosity, check rlimits, cache settings */
@@ -166,6 +191,7 @@ apply_settings(struct daemon* daemon, struct config_file* cfg,
 	checkrlimits(cfg);
 }
 
+#ifdef HAVE_KILL
 /** Read existing pid from pidfile. 
  * @param file: file name of pid file.
  * @return: the pid from the file or -1 if none.
@@ -253,11 +279,13 @@ checkoldpid(struct config_file* cfg)
 				(unsigned)old);
 	}
 }
+#endif /* HAVE_KILL */
 
 /** detach from command line */
 static void
 detach(struct config_file* cfg)
 {
+#ifdef HAVE_WORKING_FORK
 	int fd;
 	/* Take off... */
 	switch (fork()) {
@@ -271,8 +299,10 @@ detach(struct config_file* cfg)
 			exit(0);
 	}
 	/* detach */
+#ifdef HAVE_SETSID
 	if(setsid() == -1)
 		fatal_exit("setsid() failed: %s", strerror(errno));
+#endif
 	if ((fd = open("/dev/null", O_RDWR, 0)) != -1) {
 		(void)dup2(fd, STDIN_FILENO);
 		(void)dup2(fd, STDOUT_FILENO);
@@ -280,6 +310,9 @@ detach(struct config_file* cfg)
 		if (fd > 2)
 			(void)close(fd);
 	}
+#else
+	(void)cfg;
+#endif /* HAVE_WORKING_FORK */
 }
 
 /** daemonize, drop user priviliges and chroot if needed */
@@ -287,6 +320,7 @@ static void
 do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	char** cfgfile)
 {
+#ifdef HAVE_GETPWNAM
 	uid_t uid;
 	gid_t gid;
 	/* initialize, but not to 0 (root) */
@@ -303,6 +337,8 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		gid = pwd->pw_gid;
 		endpwent();
 	}
+#endif
+#ifdef HAVE_CHROOT
 	if(cfg->chrootdir && cfg->chrootdir[0]) {
 		if(chdir(cfg->chrootdir)) {
 			fatal_exit("unable to chdir to chroot %s: %s",
@@ -317,6 +353,9 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 			strlen(cfg->chrootdir)) == 0) 
 			(*cfgfile) += strlen(cfg->chrootdir);
 	}
+#else
+	(void)cfgfile;
+#endif
 	if(cfg->directory && cfg->directory[0]) {
 		char* dir = cfg->directory;
 		if(cfg->chrootdir && cfg->chrootdir[0] &&
@@ -331,6 +370,7 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 			verbose(VERB_QUERY, "chdir to %s", dir);
 		}
 	}
+#ifdef HAVE_GETPWNAM
 	if(cfg->username && cfg->username[0]) {
 		if(setgid(gid) != 0)
 			fatal_exit("unable to set group id of %s: %s", 
@@ -341,16 +381,20 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		verbose(VERB_QUERY, "drop user privileges, run as %s", 
 			cfg->username);
 	}
+#endif
+#ifdef HAVE_KILL
 	/* check old pid file before forking */
 	if(cfg->pidfile && cfg->pidfile[0]) {
 		checkoldpid(cfg);
 	}
+#endif
 
 	/* init logfile just before fork */
 	log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
 	if(!debug_mode && cfg->do_daemonize) {
 		detach(cfg);
 	}
+#ifdef HAVE_KILL
 	if(cfg->pidfile && cfg->pidfile[0]) {
 		char* pf = cfg->pidfile;
 		if(cfg->chrootdir && cfg->chrootdir[0] &&
@@ -360,6 +404,9 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		if(!(daemon->pidfile = strdup(pf)))
 			log_err("pidf: malloc failed");
 	}
+#else
+	(void)daemon;
+#endif
 }
 
 /**
@@ -434,8 +481,10 @@ main(int argc, char* argv[])
 	int cmdline_verbose = 0;
 	int debug_mode = 0;
 
+#ifdef HAVE_SBRK
 	/* take debug snapshot of heap */
 	unbound_start_brk = sbrk(0);
+#endif
 
 	log_init(NULL, 0, NULL);
 	/* parse the options */
