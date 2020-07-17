@@ -71,7 +71,7 @@ store_rrsets(struct module_env* env, struct reply_info* rep, uint32_t now)
 
 void 
 dns_cache_store_msg(struct module_env* env, struct query_info* qinfo,
-	hashvalue_t hash, struct reply_info* rep)
+	hashvalue_t hash, struct reply_info* rep, uint32_t leeway)
 {
 	struct msgreply_entry* e;
 	uint32_t ttl = rep->ttl;
@@ -84,7 +84,7 @@ dns_cache_store_msg(struct module_env* env, struct query_info* qinfo,
 	}
 	reply_info_sortref(rep);
 	reply_info_set_ttls(rep, *env->now);
-	store_rrsets(env, rep, *env->now);
+	store_rrsets(env, rep, *env->now+leeway);
 	if(ttl == 0) {
 		/* we do not store the message, but we did store the RRs,
 		 * which could be useful for delegation information */
@@ -248,8 +248,6 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 	struct ub_packed_rrset_key* akey;
 	uint32_t now = *env->now;
 	for(ns = dp->nslist; ns; ns = ns->next) {
-		if(ns->resolved)
-			continue;
 		akey = rrset_cache_lookup(env->rrset_cache, ns->name, 
 			ns->namelen, LDNS_RR_TYPE_A, qclass, 0, now, 0);
 		if(akey) {
@@ -474,6 +472,9 @@ tomsg(struct module_env* env, struct msgreply_entry* e, struct reply_info* r,
 	msg->rep->flags = r->flags;
 	msg->rep->qdcount = r->qdcount;
 	msg->rep->ttl = r->ttl - now;
+	if(r->prefetch_ttl - now > 0)
+		msg->rep->prefetch_ttl = r->prefetch_ttl - now;
+	else	msg->rep->prefetch_ttl = PREFETCH_TTL_CALC(r->prefetch_ttl);
 	msg->rep->security = r->security;
 	msg->rep->an_numrrsets = r->an_numrrsets;
 	msg->rep->ns_numrrsets = r->ns_numrrsets;
@@ -524,6 +525,7 @@ rrset_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
         msg->rep->authoritative = 0; /* reply stored in cache can't be authoritative */
 	msg->rep->qdcount = 1;
 	msg->rep->ttl = d->ttl - now;
+	msg->rep->prefetch_ttl = PREFETCH_TTL_CALC(msg->rep->ttl);
 	msg->rep->security = sec_status_unchecked;
 	msg->rep->an_numrrsets = 1;
 	msg->rep->ns_numrrsets = 0;
@@ -559,6 +561,7 @@ synth_dname_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
         msg->rep->authoritative = 0; /* reply stored in cache can't be authoritative */
 	msg->rep->qdcount = 1;
 	msg->rep->ttl = d->ttl - now;
+	msg->rep->prefetch_ttl = PREFETCH_TTL_CALC(msg->rep->ttl);
 	msg->rep->security = sec_status_unchecked;
 	msg->rep->an_numrrsets = 1;
 	msg->rep->ns_numrrsets = 0;
@@ -616,6 +619,7 @@ synth_dname_msg(struct ub_packed_rrset_key* rrset, struct regional* region,
 	packed_rrset_ptr_fixup(newd);
 	newd->rr_ttl[0] = newd->ttl;
 	msg->rep->ttl = newd->ttl;
+	msg->rep->prefetch_ttl = PREFETCH_TTL_CALC(newd->ttl);
 	ldns_write_uint16(newd->rr_data[0], newlen);
 	memmove(newd->rr_data[0] + sizeof(uint16_t), newname, newlen);
 	msg->rep->an_numrrsets ++;
@@ -694,7 +698,10 @@ dns_cache_lookup(struct module_env* env,
 		struct packed_rrset_data *d = (struct packed_rrset_data*)
 			rrset->entry.data;
 		if(d->trust != rrset_trust_add_noAA && 
-			d->trust != rrset_trust_add_AA) {
+			d->trust != rrset_trust_add_AA && 
+			(qtype == LDNS_RR_TYPE_DS || 
+				(d->trust != rrset_trust_auth_noAA 
+				&& d->trust != rrset_trust_auth_AA) )) {
 			struct dns_msg* msg = rrset_msg(rrset, region, now, &k);
 			if(msg) {
 				lock_rw_unlock(&rrset->entry.lock);
@@ -708,7 +715,7 @@ dns_cache_lookup(struct module_env* env,
 
 int 
 dns_cache_store(struct module_env* env, struct query_info* msgqinf,
-        struct reply_info* msgrep, int is_referral)
+        struct reply_info* msgrep, int is_referral, uint32_t leeway)
 {
 	struct reply_info* rep = NULL;
 	/* alloc, malloc properly (not in region, like msg is) */
@@ -717,6 +724,7 @@ dns_cache_store(struct module_env* env, struct query_info* msgqinf,
 		return 0;
 	/* ttl must be relative ;i.e. 0..86400 not  time(0)+86400. 
 	 * the env->now is added to message and RRsets in this routine. */
+	/* the leeway is used to invalidate other rrsets earlier */
 
 	if(is_referral) {
 		/* store rrsets */
@@ -729,7 +737,7 @@ dns_cache_store(struct module_env* env, struct query_info* msgqinf,
 			ref.id = rep->rrsets[i]->id;
 			/*ignore ret: it was in the cache, ref updated */
 			(void)rrset_cache_update(env->rrset_cache, &ref, 
-				env->alloc, *env->now);
+				env->alloc, *env->now + leeway);
 		}
 		free(rep);
 		return 1;
@@ -750,7 +758,7 @@ dns_cache_store(struct module_env* env, struct query_info* msgqinf,
 		rep->flags |= (BIT_RA | BIT_QR);
 		rep->flags &= ~(BIT_AA | BIT_CD);
 		h = query_info_hash(&qinf);
-		dns_cache_store_msg(env, &qinf, h, rep);
+		dns_cache_store_msg(env, &qinf, h, rep, leeway);
 		/* qname is used inside query_info_entrysetup, and set to 
 		 * NULL. If it has not been used, free it. free(0) is safe. */
 		free(qinf.qname);

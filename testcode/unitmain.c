@@ -54,6 +54,7 @@ alloc_test() {
 	struct alloc_cache major, minor1, minor2;
 	int i;
 
+	unit_show_feature("alloc_special_obtain");
 	alloc_init(&major, NULL, 0);
 	alloc_init(&minor1, &major, 0);
 	alloc_init(&minor2, &major, 1);
@@ -125,6 +126,7 @@ net_test()
 		"\377\377\377\377",
 		"\377\377\377\377",
 	};
+	unit_show_func("util/net_help.c", "str_is_ip6");
 	unit_assert( str_is_ip6("::") );
 	unit_assert( str_is_ip6("::1") );
 	unit_assert( str_is_ip6("2001:7b8:206:1:240:f4ff:fe37:8810") );
@@ -133,6 +135,7 @@ net_test()
 	unit_assert( !str_is_ip6("213.154.224.12") );
 	unit_assert( !str_is_ip6("213.154.224.255") );
 	unit_assert( !str_is_ip6("255.255.255.0") );
+	unit_show_func("util/net_help.c", "is_pow2");
 	unit_assert( is_pow2(0) );
 	unit_assert( is_pow2(1) );
 	unit_assert( is_pow2(2) );
@@ -155,6 +158,7 @@ net_test()
 	unit_assert( !is_pow2(259) );
 
 	/* test addr_mask */
+	unit_show_func("util/net_help.c", "addr_mask");
 	if(1) {
 		struct sockaddr_in a4;
 		struct sockaddr_in6 a6;
@@ -183,6 +187,7 @@ net_test()
 	}
 
 	/* test addr_in_common */
+	unit_show_func("util/net_help.c", "addr_in_common");
 	if(1) {
 		struct sockaddr_in a4, b4;
 		struct sockaddr_in6 a6, b6;
@@ -238,7 +243,29 @@ net_test()
 				(struct sockaddr_storage*)&b6, i, l6) == i);
 		}
 	}
+	/* test sockaddr_cmp_addr */
+	unit_show_func("util/net_help.c", "sockaddr_cmp_addr");
+	if(1) {
+		struct sockaddr_storage a, b;
+		socklen_t alen = (socklen_t)sizeof(a);
+		socklen_t blen = (socklen_t)sizeof(b);
+		unit_assert(ipstrtoaddr("127.0.0.0", 53, &a, &alen));
+		unit_assert(ipstrtoaddr("127.255.255.255", 53, &b, &blen));
+		unit_assert(sockaddr_cmp_addr(&a, alen, &b, blen) < 0);
+		unit_assert(sockaddr_cmp_addr(&b, blen, &a, alen) > 0);
+		unit_assert(sockaddr_cmp_addr(&a, alen, &a, alen) == 0);
+		unit_assert(sockaddr_cmp_addr(&b, blen, &b, blen) == 0);
+		unit_assert(ipstrtoaddr("192.168.121.5", 53, &a, &alen));
+		unit_assert(sockaddr_cmp_addr(&a, alen, &b, blen) > 0);
+		unit_assert(sockaddr_cmp_addr(&b, blen, &a, alen) < 0);
+		unit_assert(sockaddr_cmp_addr(&a, alen, &a, alen) == 0);
+		unit_assert(ipstrtoaddr("2001:3578:ffeb::99", 53, &b, &blen));
+		unit_assert(sockaddr_cmp_addr(&b, blen, &b, blen) == 0);
+		unit_assert(sockaddr_cmp_addr(&a, alen, &b, blen) < 0);
+		unit_assert(sockaddr_cmp_addr(&b, blen, &a, alen) > 0);
+	}
 	/* test addr_is_ip4mapped */
+	unit_show_func("util/net_help.c", "addr_is_ip4mapped");
 	if(1) {
 		struct sockaddr_storage a;
 		socklen_t l = (socklen_t)sizeof(a);
@@ -269,6 +296,7 @@ static void
 config_memsize_test() 
 {
 	size_t v = 0;
+	unit_show_func("util/config_file.c", "cfg_parse_memsize");
 	if(0) {
 		/* these emit errors */
 		unit_assert( cfg_parse_memsize("", &v) == 0);
@@ -309,6 +337,7 @@ rtt_test()
 	int init = 376;
 	int i;
 	struct rtt_info r;
+	unit_show_func("util/rtt.c", "rtt_timeout");
 	rtt_init(&r);
 	/* initial value sensible */
 	unit_assert( rtt_timeout(&r) == init );
@@ -346,6 +375,7 @@ infra_test()
 	int init = 376;
 	int dlame, rlame, alame, olame;
 
+	unit_show_feature("infra cache");
 	unit_assert(ipstrtoaddr("127.0.0.1", 53, &one, &onelen));
 
 	slab = infra_create(cfg);
@@ -403,6 +433,7 @@ rnd_test()
 	struct ub_randstate* r;
 	int num = 100, i;
 	long int a[100];
+	unit_show_feature("ub_random");
 	unit_assert( (r = ub_initstate((unsigned)time(NULL), NULL)) );
 	for(i=0; i<num; i++) {
 		a[i] = ub_random(r);
@@ -414,6 +445,16 @@ rnd_test()
 				a[i] != a[i-5] || a[i] != a[i-6]);
 	}
 	ub_randfree(r);
+}
+
+void unit_show_func(const char* file, const char* func)
+{
+	printf("test %s:%s\n", file, func);
+}
+
+void unit_show_feature(const char* feature)
+{
+	printf("test %s functions\n", feature);
 }
 
 /**
@@ -445,8 +486,8 @@ main(int argc, char* argv[])
 	net_test();
 	config_memsize_test();
 	dname_test();
-	anchors_test();
 	rtt_test();
+	anchors_test();
 	alloc_test();
 	lruhash_test();
 	slabhash_test();

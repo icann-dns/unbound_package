@@ -1,4 +1,4 @@
-.TH "unbound-control" "8" "Dec 17, 2009" "NLnet Labs" "unbound 1.4.1"
+.TH "unbound-control" "8" "Mar  9, 2010" "NLnet Labs" "unbound 1.4.2"
 .\"
 .\" unbound-control.8 -- unbound remote control manual
 .\"
@@ -56,6 +56,11 @@ Reload the server. This flushes the cache and reads the config file fresh.
 Change verbosity value for logging. Same values as \fBverbosity\fR keyword in
 \fIunbound.conf\fR(5).  This new setting lasts until the server is issued
 a reload (taken from config file again), or the next verbosity control command.
+.TP
+.B log_reopen
+Reopen the logfile, close and open it.  Useful for logrotation to make the
+daemon release the file it is logging to.  If you are using syslog it will
+attempt to close and open the syslog (which may not work if chrooted).
 .TP
 .B stats
 Print statistics. Resets the internal counters to zero, this can be 
@@ -137,7 +142,33 @@ Show what is worked on.  Prints all queries that the server is currently
 working on.  Prints the time that users have been waiting.  For internal
 requests, no time is printed.  And then prints out the module status.
 .TP
-.B forward [off | addr ... ]
+.B set_option \fIopt: val
+Set the option to the given value without a reload.  The cache is therefore
+not flushed.  The option must end with a ':' and whitespace must be between the
+option and the value.  Some values may not have an effect if set this way,
+the new values are not written to the config file, not all options are supported.
+.TP
+.B get_option \fIopt
+Get the value of the option.  Give the option name without a trailing ':'.
+The value is printed.  If the value is "", nothing is printed and the
+connection closes.  On error 'error ...' is printed (it gives a syntax
+error on unknown option).  For some options a list of values, one on
+each line, is printed.  Not all options are supported.
+.TP
+.B list_stubs
+List the stub zones in use.  These are printed one by one to the output.
+This includes the root hints in use.
+.TP
+.B list_forwards
+List the forward zones in use.  These are printed zone by zone to the output.
+.TP
+.B list_local_zones
+List the local zones in use.  These are printed one per line with zone type.
+.TP
+.B list_local_data
+List the local data RRs in use.  The resource records are printed.
+.TP
+.B forward \fR[\fIoff\fR | \fIaddr ...\fR ]
 Setup forwarding mode.  Configures if the server should ask other upstream
 nameservers, should go to the internet root nameservers itself, or show 
 the current config.  You could pass the nameservers after a DHCP update.
@@ -186,6 +217,13 @@ number of queries that were successfully answered using a cache lookup
 .I threadX.num.cachemiss
 number of queries that needed recursive processing
 .TP
+.I threadX.num.prefetch
+number of cache prefetches performed.  This number is included in
+cachehits, as the original query had the unprefetched answer from cache,
+and resulted in recursive processing, taking a slot in the requestlist.
+Not part of the recursivereplies (or the histogram thereof) or cachemiss,
+as a cache response was sent.
+.TP
 .I threadX.num.recursivereplies
 The number of replies sent to queries that needed recursive processing. Could be smaller than threadX.num.cachemiss if due to timeouts no replies were sent for some queries.
 .TP
@@ -225,6 +263,9 @@ summed over threads.
 summed over threads.
 .TP
 .I total.num.cachemiss
+summed over threads.
+.TP
+.I total.num.prefetch
 summed over threads.
 .TP
 .I total.num.recursivereplies

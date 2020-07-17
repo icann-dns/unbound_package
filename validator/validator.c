@@ -1340,6 +1340,14 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 		return 1;
 	} else if(key_entry_isbad(vq->key_entry)) {
 		/* key is bad, chain is bad, reply is bogus */
+		errinf_dname(qstate, "key for validation", vq->key_entry->name);
+		errinf(qstate, "is marked as invalid");
+		if(key_entry_get_reason(vq->key_entry)) {
+			errinf(qstate, "because of a previous");
+			errinf(qstate, key_entry_get_reason(vq->key_entry));
+		}
+		/* no retries, stop bothering the authority until timeout */
+		vq->restart_count = VAL_MAX_RESTART_COUNT;
 		vq->chase_reply->security = sec_status_bogus;
 		vq->state = VAL_FINISHED_STATE;
 		return 1;
@@ -1535,6 +1543,7 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 		vq->chase_reply->security = sec_status_insecure;
 		val_mark_insecure(vq->chase_reply, vq->key_entry->name, 
 			qstate->env->rrset_cache, qstate->env);
+		key_cache_insert(ve->kcache, vq->key_entry, qstate);
 		return 1;
 	}
 
@@ -1544,6 +1553,8 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 			LDNS_RR_TYPE_DNSKEY, vq->key_entry->key_class);
 		vq->chase_reply->security = sec_status_bogus;
 		errinf(qstate, "while building chain of trust");
+		if(vq->restart_count >= VAL_MAX_RESTART_COUNT)
+			key_cache_insert(ve->kcache, vq->key_entry, qstate);
 		return 1;
 	}
 
@@ -1916,6 +1927,8 @@ processFinished(struct module_qstate* qstate, struct val_qstate* vq,
 		}
 
 		vq->orig_msg->rep->ttl = ve->bogus_ttl;
+		vq->orig_msg->rep->prefetch_ttl = 
+			PREFETCH_TTL_CALC(vq->orig_msg->rep->ttl);
 		if(qstate->env->cfg->val_log_level >= 1 &&
 			!qstate->env->cfg->val_log_squelch) {
 			if(qstate->env->cfg->val_log_level < 2)
@@ -1923,7 +1936,7 @@ processFinished(struct module_qstate* qstate, struct val_qstate* vq,
 					&qstate->qinfo);
 			else {
 				char* err = errinf_to_str(qstate);
-				if(err) log_info(err);
+				if(err) log_info("%s", err);
 				free(err);
 			}
 		}
@@ -1935,13 +1948,14 @@ processFinished(struct module_qstate* qstate, struct val_qstate* vq,
 	/* store results in cache */
 	if(qstate->query_flags&BIT_RD) {
 		if(!dns_cache_store(qstate->env, &vq->orig_msg->qinfo, 
-			vq->orig_msg->rep, 0)) {
+			vq->orig_msg->rep, 0, qstate->prefetch_leeway)) {
 			log_err("out of memory caching validator results");
 		}
 	} else {
 		/* for a referral, store the verified RRsets */
+		/* and this does not get prefetched, so no leeway */
 		if(!dns_cache_store(qstate->env, &vq->orig_msg->qinfo, 
-			vq->orig_msg->rep, 1)) {
+			vq->orig_msg->rep, 1, 0)) {
 			log_err("out of memory caching validator results");
 		}
 	}
@@ -2211,7 +2225,8 @@ primeResponseToKE(struct ub_packed_rrset_key* dnskey_rrset,
 		if(qstate->env->cfg->harden_dnssec_stripped) {
 			errinf(qstate, "no DNSKEY rrset");
 			kkey = key_entry_create_bad(qstate->region, ta->name,
-				ta->namelen, ta->dclass);
+				ta->namelen, ta->dclass, BOGUS_KEY_TTL,
+				*qstate->env->now);
 		} else 	kkey = key_entry_create_null(qstate->region, ta->name,
 				ta->namelen, ta->dclass, NULL_KEY_TTL,
 				*qstate->env->now);
@@ -2261,7 +2276,8 @@ primeResponseToKE(struct ub_packed_rrset_key* dnskey_rrset,
 		if(qstate->env->cfg->harden_dnssec_stripped) {
 			errinf(qstate, reason);
 			kkey = key_entry_create_bad(qstate->region, ta->name,
-				ta->namelen, ta->dclass);
+				ta->namelen, ta->dclass, BOGUS_KEY_TTL,
+				*qstate->env->now);
 		} else 	kkey = key_entry_create_null(qstate->region, ta->name,
 				ta->namelen, ta->dclass, NULL_KEY_TTL,
 				*qstate->env->now);
@@ -2451,7 +2467,8 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 	}
 return_bogus:
 	*ke = key_entry_create_bad(qstate->region, qinfo->qname,
-		qinfo->qname_len, qinfo->qclass);
+		qinfo->qname_len, qinfo->qclass, 
+		BOGUS_KEY_TTL, *qstate->env->now);
 	return (*ke) != NULL;
 }
 
@@ -2568,7 +2585,8 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 			return;
 		}
 		vq->key_entry = key_entry_create_bad(qstate->region, 
-			qinfo->qname, qinfo->qname_len, qinfo->qclass);
+			qinfo->qname, qinfo->qname_len, qinfo->qclass,
+			BOGUS_KEY_TTL, *qstate->env->now);
 		if(!vq->key_entry) {
 			log_err("alloc failure in missing dnskey response");
 			/* key_entry is NULL for failure in Validate */
@@ -2619,7 +2637,7 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 	qstate->errinf = NULL;
 
 	/* The DNSKEY validated, so cache it as a trusted key rrset. */
-	key_cache_insert(ve->kcache, vq->key_entry);
+	key_cache_insert(ve->kcache, vq->key_entry, qstate);
 
 	/* If good, we stay in the FINDKEY state. */
 	log_query_info(VERB_DETAIL, "validated DNSKEY", qinfo);
@@ -2685,7 +2703,7 @@ process_prime_response(struct module_qstate* qstate, struct val_qstate* vq,
 		errinf_origin(qstate, origin);
 		errinf_dname(qstate, "for trust anchor", ta->name);
 		/* store the freshly primed entry in the cache */
-		key_cache_insert(ve->kcache, vq->key_entry);
+		key_cache_insert(ve->kcache, vq->key_entry, qstate);
 	}
 
 	/* If the result of the prime is a null key, skip the FINDKEY state.*/
