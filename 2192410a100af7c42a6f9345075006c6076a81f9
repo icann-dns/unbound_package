@@ -1,0 +1,2 @@
+  [ Simon Deziel ]
+  * Disable chroot'ing (Closes: #921538)
