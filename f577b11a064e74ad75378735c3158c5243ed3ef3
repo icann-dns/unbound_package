@@ -1,0 +1,5 @@
+  [ Robert Edmonds ]
+  * New upstream version 1.7.2
+  * debian/control: Update Maintainer field (Closes: #899758)
+  [ Vincent Bernat ]
+  * daemon/daemon.c: Fix reload hangs with systemd (Closes: #892914)
