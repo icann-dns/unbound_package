@@ -1,0 +1,2 @@
+  * New upstream release.
+  * Add dependency on openssl to the unbound binary package; closes: #585808.
