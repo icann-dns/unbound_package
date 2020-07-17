@@ -1,0 +1,3 @@
+  * New upstream release; closes: #611527.
+  * Add /etc/insserv.conf.d/unbound file declaring unbound to be a name
+    daemon; closes: #596488, #600118.
