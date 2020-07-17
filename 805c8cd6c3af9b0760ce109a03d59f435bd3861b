@@ -1,0 +1,2 @@
+  * Add --install to the libtoolize call in debian/rules so that all the
+    necessary files get installed. Fixes build error.
