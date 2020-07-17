@@ -1,0 +1,6 @@
+  * Merge from debian unstable.  Remaining changes:
+    - Fix build to work with default python other than python2.6
+      - Generalize install rule in debian/python-unbound.install
+      - Use pyversions -d to determine where to install .so files instead of
+        hard coding python2.6
+      - Remove hard coded XB-Python-Version: 2.6 from debian/control
