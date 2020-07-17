@@ -802,7 +802,8 @@ print_dp_details(SSL* ssl, struct worker* worker, struct delegpt* dp)
 {
 	char buf[257];
 	struct delegpt_addr* a;
-	int lame, dlame, rlame, rtt, edns_vs, to, lost;
+	int lame, dlame, rlame, rto, edns_vs, to, delay, entry_ttl;
+	struct rtt_info ri;
 	uint8_t edns_lame_known;
 	for(a = dp->target_list; a; a = a->next_target) {
 		addr_to_str(&a->addr, a->addrlen, buf, sizeof(buf));
@@ -813,30 +814,48 @@ print_dp_details(SSL* ssl, struct worker* worker, struct delegpt* dp)
 				return;
 		}
 		/* lookup in infra cache */
+		entry_ttl = infra_get_host_rto(worker->env.infra_cache,
+			&a->addr, a->addrlen, &ri, &delay, *worker->env.now);
+		if(entry_ttl == -2 && ri.rto >= USEFUL_SERVER_TOP_TIMEOUT) {
+			if(!ssl_printf(ssl, "expired, rto %d msec.\n", ri.rto))
+				return;
+			continue;
+		}
+		if(entry_ttl == -1 || entry_ttl == -2) {
+			if(!ssl_printf(ssl, "not in infra cache.\n"))
+				return;
+			continue; /* skip stuff not in infra cache */
+		}
+
 		/* uses type_A because most often looked up, but other
 		 * lameness won't be reported then */
 		if(!infra_get_lame_rtt(worker->env.infra_cache, 
 			&a->addr, a->addrlen, dp->name, dp->namelen,
-			LDNS_RR_TYPE_A, &lame, &dlame, &rlame, &rtt, &lost,
+			LDNS_RR_TYPE_A, &lame, &dlame, &rlame, &rto,
 			*worker->env.now)) {
 			if(!ssl_printf(ssl, "not in infra cache.\n"))
 				return;
 			continue; /* skip stuff not in infra cache */
 		}
-		if(!ssl_printf(ssl, "%s%s%s%srtt %d msec, %d lost. ",
+		if(!ssl_printf(ssl, "%s%s%s%srto %d msec, ttl %d, ping %d "
+			"var %d rtt %d",
 			lame?"LAME ":"", dlame?"NoDNSSEC ":"",
 			a->lame?"AddrWasParentSide ":"",
-			rlame?"NoAuthButRecursive ":"", rtt, lost))
+			rlame?"NoAuthButRecursive ":"", rto, entry_ttl,
+			ri.srtt, ri.rttvar, rtt_notimeout(&ri)))
 			return;
+		if(delay)
+			if(!ssl_printf(ssl, ", probedelay %d", delay))
+				return;
 		if(infra_host(worker->env.infra_cache, &a->addr, a->addrlen,
 			*worker->env.now, &edns_vs, &edns_lame_known, &to)) {
 			if(edns_vs == -1) {
-				if(!ssl_printf(ssl, "noEDNS%s.",
-					edns_lame_known?" probed":""))
+				if(!ssl_printf(ssl, ", noEDNS%s.",
+					edns_lame_known?" probed":" assumed"))
 					return;
 			} else {
-				if(!ssl_printf(ssl, "EDNS %d%s.",
-					edns_vs, edns_lame_known?" probed":""))
+				if(!ssl_printf(ssl, ", EDNS %d%s.", edns_vs,
+					edns_lame_known?" probed":" assumed"))
 					return;
 			}
 		}
