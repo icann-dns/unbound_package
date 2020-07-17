@@ -1,0 +1,3 @@
+  * debian/unbound.init: Add "pidfile" magic comment (Closes: #807132)
+  * debian/unbound.init: Call start-stop-daemon with --retry for 'stop'
+    action (patch from Julien Cristau)
