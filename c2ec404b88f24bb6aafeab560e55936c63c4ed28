@@ -1,0 +1,3 @@
+  * Merge from Debian:
+    - Drop all existing delta
+    - Revert dnstap support (dependencies not in main)
