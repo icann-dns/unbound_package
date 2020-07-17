@@ -1,0 +1,9 @@
+  * New upstream release.
+  * Don't compress the example config file in /usr/share/doc/unbound;
+    closes: #722708.
+  * Fully enable hardening options; closes: #709837.
+    (Patch from Simon Deziel.)
+  * Add support for .d style configuration in /etc/unbound/unbound.conf.d;
+    closes: #656549.
+  * Move auto-trust-anchor-file configuration for the root into the new
+    /etc/unbound/unbound.conf.d directory.
