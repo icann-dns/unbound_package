@@ -1,0 +1,6 @@
+  * SECURITY UPDATE: vulnerability in the processing of wildcard
+    synthesized NSEC records (LP: #1773720)
+    - debian/patches/CVE-2017-15105.patch
+    - CVE-2017-15105
+  * Fix install of trust anchor when two anchors are present
+    - debian/patches/unbound-r4302.patch
