@@ -1,0 +1,2 @@
+  * Fix FTBFS by not calling "autoreconf -fvi" in debian/rules.
+    Cherry-picked from 1.4.6-1. (LP: #641601)
