@@ -1,0 +1,10 @@
+  * New upstream release
+    - Update debian/copyright
+    - Change usr/lib/libunbound.so.0.14.0 to usr/lib/libunbound.so.0.17.0 in
+      debian/libunbound0.install
+    - Update debian/libunbound0.symbols
+    - Add (>=1.4.0) version to ldns-dev build-dep due to upstream requirement
+  * Default install in chroot (supported by Ubuntu sysklogd)
+    - Change debian/unbound.default to CHROOT=yes
+    - Add debian/syslogd to provide sysklogd/syslogd the path to get log
+      information from the chroot and add to unbound.install
