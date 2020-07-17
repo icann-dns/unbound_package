@@ -1,9 +1,71 @@
+2 February 2012: Wouter
+	- 1.4.16 release tag.
+
+1 February 2012: Wouter
+	- Fix validation failures (like: validation failure xx: no NSEC3
+	  closest encloser from yy for DS zz. while building chain of trust,
+	  because of a bug in the TTL-fix in 1.4.15, it picked the wrong rdata
+	  for an NSEC3.  Now it does not change rdata, and fixes TTL.
+
+30 January 2012: Wouter
+	- Fix version-number in libtool to be version-info so it produces
+	  libunbound.so.2 like it should.
+
+26 January 2012: Wouter
+	- Tag 1.4.15 (same as 1.4.15rc1), for 1.4.15 release.
+	- trunk 1.4.16; includes changes memset testcode, #424 openindiana,
+	  and keyfile write fixup.
+	- applied patch to support outgoing-interface with ub_ctx_set_option.
+
+23 January 2012: Wouter
+	- Fix memset in test code.
+
+20 January 2012: Wouter
+	- Fix bug #424: compile on OpenIndiana OS with gcc 4.6.2.
+
+19 January 2012: Wouter
+	- Fix to write key files completely to a temporary file, and if that
+	  succeeds, replace the real key file.  So failures leave a useful file.
+
+18 January 2012: Wouter
+	- tag 1.4.15rc1 created
+	- updated libunbound/ubsyms.def and remade tag 1.4.15rc1.
+
+17 January 2012: Wouter
+	- Fix bug where canonical_compare of RRSIG did not downcase the
+	  signer-name.  This is mostly harmless because RRSIGs do not have
+	  to be sorted in canonical order, usually.
+
+12 January 2012: Wouter
+	- bug#428: add ub_version() call to libunbound.  API version increase,
+	  with (binary) backwards compatibility for the previous version.
+
+10 January 2012: Wouter
+	- Fix bug #425: unbound reports wrong TTL in reply, it reports a TTL
+	  that would be permissible by the RFCs but it is not the TTL in the
+	  cache.
+	- iana portlist updated.
+	- uninitialised variable in reprobe for rtt blocked domains fixed.
+	- lintfix and new flex output.
+
+2 January 2012: Wouter
+	- Fix to randomize hash function, based on 28c3 congress, reported
+	  by Peter van Dijk.
+
+24 December 2011: Wouter
+	- Fix for memory leak (about 20 bytes when a tcp or udp send operation
+	  towards authority servers failed, takes about 50.000 such failures to
+	  leak one Mb, such failures are also usually logged), reported by
+	  Robert Fleischmann.
+	- iana portlist updated.
+
 19 December 2011: Wouter
 	- Fix for VU#209659 CVE-2011-4528: Unbound denial of service
 	  vulnerabilities from nonstandard redirection and denial of existence
 	  http://www.unbound.net/downloads/CVE-2011-4528.txt
 	- robust checks for next-closer NSEC3s.
 	- tag 1.4.14 created.
+	- trunk has 1.4.15 in development.
 
 15 December 2011: Wouter
 	- remove uninit warning from cachedump code.
