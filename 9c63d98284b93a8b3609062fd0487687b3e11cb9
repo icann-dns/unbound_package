@@ -1,0 +1,3 @@
+  * debian/patches/disable_chroot_by_default: Readded disable-chroot-by-default
+    functionality (LP: #1303088).
+  * debian/patches/silence_open_files_limit_warning: Readded patch.
