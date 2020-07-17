@@ -1,0 +1,5 @@
+  * Imported Upstream version 1.5.9
+    - Updated L-Root IPv6 address (Closes: #818292)
+  * debian/unbound.init: Add "pidfile" magic comment (Closes: #807132)
+  * debian/libunbound2.symbols: Add new symbol 'ub_ctx_create_ub_event'
+  * Enable DNS query name minimisation by default
