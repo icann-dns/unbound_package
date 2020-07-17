@@ -136,8 +136,18 @@ static hashvalue_t
 hash_addr(struct sockaddr_storage* addr, socklen_t addrlen)
 {
 	hashvalue_t h = 0xab;
-	h = hashlittle(&addrlen, sizeof(addrlen), h);
-	h = hashlittle(addr, addrlen, h);
+	/* select the pieces to hash, some OS have changing data inside */
+	if(addr_is_ip6(addr, addrlen)) {
+		struct sockaddr_in6* in6 = (struct sockaddr_in6*)addr;
+		h = hashlittle(&in6->sin6_family, sizeof(in6->sin6_family), h);
+		h = hashlittle(&in6->sin6_port, sizeof(in6->sin6_port), h);
+		h = hashlittle(&in6->sin6_addr, INET6_SIZE, h);
+	} else {
+		struct sockaddr_in* in = (struct sockaddr_in*)addr;
+		h = hashlittle(&in->sin_family, sizeof(in->sin_family), h);
+		h = hashlittle(&in->sin_port, sizeof(in->sin_port), h);
+		h = hashlittle(&in->sin_addr, INET_SIZE, h);
+	}
 	return h;
 }
 
@@ -208,13 +218,15 @@ new_host_entry(struct infra_cache* infra, struct sockaddr_storage* addr,
 	data->ttl = tm + infra->host_ttl;
 	data->lameness = NULL;
 	data->edns_version = 0;
+	data->edns_lame_known = 0;
 	rtt_init(&data->rtt);
 	return &key->entry;
 }
 
 int 
 infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
-        socklen_t addrlen, uint32_t timenow, int* edns_vs, int* to)
+        socklen_t addrlen, uint32_t timenow, int* edns_vs, 
+	uint8_t* edns_lame_known, int* to)
 {
 	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
 		addrlen, 0);
@@ -231,6 +243,7 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 			rtt_init(&data->rtt);
 			/* do not touch lameness, it may be valid still */
 			data->edns_version = 0;
+			data->edns_lame_known = 0;
 		}
 	}
 	if(!e) {
@@ -240,6 +253,7 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 		data = (struct infra_host_data*)e->data;
 		*to = rtt_timeout(&data->rtt);
 		*edns_vs = data->edns_version;
+		*edns_lame_known = data->edns_lame_known;
 		slabhash_insert(infra->hosts, e->hash, e, data, NULL);
 		return 1;
 	}
@@ -247,28 +261,29 @@ infra_host(struct infra_cache* infra, struct sockaddr_storage* addr,
 	data = (struct infra_host_data*)e->data;
 	*to = rtt_timeout(&data->rtt);
 	*edns_vs = data->edns_version;
+	*edns_lame_known = data->edns_lame_known;
 	lock_rw_unlock(&e->lock);
 	return 1;
 }
 
 /** hash lameness key */
 static hashvalue_t
-hash_lameness(uint8_t* name, size_t namelen)
+hash_lameness(uint8_t* name)
 {
-	return hashlittle(name, namelen, 0xab);
+	return dname_query_hash(name, 0xab);
 }
 
 int 
 infra_lookup_lame(struct infra_host_data* host,
         uint8_t* name, size_t namelen, uint32_t timenow,
-	int* dlame, int* alame, int* olame)
+	int* dlame, int* rlame, int* alame, int* olame)
 {
 	struct lruhash_entry* e;
 	struct infra_lame_key k;
 	struct infra_lame_data *d;
 	if(!host->lameness)
 		return 0;
-	k.entry.hash = hash_lameness(name, namelen);
+	k.entry.hash = hash_lameness(name);
 	k.zonename = name;
 	k.namelen = namelen;
 	k.entry.key = (void*)&k;
@@ -282,10 +297,11 @@ infra_lookup_lame(struct infra_host_data* host,
 		return 0;
 	}
 	*dlame = d->isdnsseclame;
+	*rlame = d->rec_lame;
 	*alame = d->lame_type_A;
 	*olame = d->lame_other;
 	lock_rw_unlock(&e->lock);
-	return *dlame || *alame || *olame;
+	return *dlame || *rlame || *alame || *olame;
 }
 
 size_t 
@@ -332,7 +348,7 @@ int
 infra_set_lame(struct infra_cache* infra,
         struct sockaddr_storage* addr, socklen_t addrlen,
         uint8_t* name, size_t namelen, uint32_t timenow, int dnsseclame,
-	uint16_t qtype)
+	int reclame, uint16_t qtype)
 {
 	struct infra_host_data* data;
 	struct lruhash_entry* e;
@@ -359,13 +375,14 @@ infra_set_lame(struct infra_cache* infra,
 		return 0;
 	}
 	lock_rw_init(&k->entry.lock);
-	k->entry.hash = hash_lameness(name, namelen);
+	k->entry.hash = hash_lameness(name);
 	k->entry.key = (void*)k;
 	k->entry.data = (void*)d;
 	d->ttl = timenow + infra->lame_ttl;
 	d->isdnsseclame = dnsseclame;
-	d->lame_type_A = (!dnsseclame && qtype == LDNS_RR_TYPE_A);
-	d->lame_other = (!dnsseclame && qtype != LDNS_RR_TYPE_A);
+	d->rec_lame = reclame;
+	d->lame_type_A = (!dnsseclame && !reclame && qtype == LDNS_RR_TYPE_A);
+	d->lame_other = (!dnsseclame  && !reclame && qtype != LDNS_RR_TYPE_A);
 	k->namelen = namelen;
 	e = infra_lookup_host_nottl(infra, addr, addrlen, 1);
 	if(!e) {
@@ -399,11 +416,12 @@ infra_set_lame(struct infra_cache* infra,
 		}
 	} else {
 		/* lookup existing lameness entry (if any) and merge data */
-		int dlame, alame, olame; 
+		int dlame, rlame, alame, olame; 
 		if(infra_lookup_lame(data, name, namelen, timenow,
-			&dlame, &alame, &olame)) { 
+			&dlame, &rlame, &alame, &olame)) { 
 			/* merge data into new structure */
 			if(dlame) d->isdnsseclame = 1;
+			if(rlame) d->rec_lame = 1;
 			if(alame) d->lame_type_A = 1;
 			if(olame) d->lame_other = 1;
 		}
@@ -438,7 +456,7 @@ infra_update_tcp_works(struct infra_cache* infra,
 int 
 infra_rtt_update(struct infra_cache* infra,
         struct sockaddr_storage* addr, socklen_t addrlen,
-        int roundtrip, uint32_t timenow)
+        int roundtrip, int orig_rtt, uint32_t timenow)
 {
 	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
 		addrlen, 1);
@@ -454,7 +472,7 @@ infra_rtt_update(struct infra_cache* infra,
 	data = (struct infra_host_data*)e->data;
 	data->ttl = timenow + infra->host_ttl;
 	if(roundtrip == -1)
-		rtt_lost(&data->rtt);
+		rtt_lost(&data->rtt, orig_rtt);
 	else	rtt_update(&data->rtt, roundtrip);
 	if(data->rtt.rto > 0)
 		rto = data->rtt.rto;
@@ -483,6 +501,7 @@ infra_edns_update(struct infra_cache* infra,
 	data = (struct infra_host_data*)e->data;
 	data->ttl = timenow + infra->host_ttl;
 	data->edns_version = edns_version;
+	data->edns_lame_known = 1;
 
 	if(needtoinsert)
 		slabhash_insert(infra->hosts, e->hash, e, e->data, NULL);
@@ -494,38 +513,49 @@ int
 infra_get_lame_rtt(struct infra_cache* infra,
         struct sockaddr_storage* addr, socklen_t addrlen,
         uint8_t* name, size_t namelen, uint16_t qtype, 
-	int* lame, int* dnsseclame, int* rtt, uint32_t timenow)
+	int* lame, int* dnsseclame, int* reclame, int* rtt, uint32_t timenow)
 {
 	struct infra_host_data* host;
 	struct lruhash_entry* e = infra_lookup_host_nottl(infra, addr, 
 		addrlen, 0);
-	int dlm, alm, olm;
+	int dlm, rlm, alm, olm;
 	if(!e) 
 		return 0;
 	host = (struct infra_host_data*)e->data;
 	*rtt = rtt_unclamped(&host->rtt);
 	/* check lameness first, if so, ttl on host does not matter anymore */
-	if(infra_lookup_lame(host, name, namelen, timenow, &dlm, &alm, &olm)) {
+	if(infra_lookup_lame(host, name, namelen, timenow, 
+		&dlm, &rlm, &alm, &olm)) {
 		if(alm && qtype == LDNS_RR_TYPE_A) {
 			lock_rw_unlock(&e->lock);
 			*lame = 1;
 			*dnsseclame = 0;
+			*reclame = 0;
 			return 1;
 		} else if(olm && qtype != LDNS_RR_TYPE_A) {
 			lock_rw_unlock(&e->lock);
 			*lame = 1;
 			*dnsseclame = 0;
+			*reclame = 0;
 			return 1;
 		} else if(dlm) {
 			lock_rw_unlock(&e->lock);
 			*lame = 0;
 			*dnsseclame = 1;
+			*reclame = 0;
+			return 1;
+		} else if(rlm) {
+			lock_rw_unlock(&e->lock);
+			*lame = 0;
+			*dnsseclame = 0;
+			*reclame = 1;
 			return 1;
 		}
 		/* no lameness for this type of query */
 	}
 	*lame = 0;
 	*dnsseclame = 0;
+	*reclame = 0;
 	if(timenow > host->ttl) {
 		lock_rw_unlock(&e->lock);
 		return 0;

@@ -77,12 +77,15 @@ int iter_apply_cfg(struct iter_env* iter_env, struct config_file* cfg);
  * @param qtype: query type that we want to send.
  * @param dnssec_expected: set to 0, if a known dnssec-lame server is selected
  *	these are not preferred, but are used as a last resort.
+ * @param chase_to_rd: set to 1 if a known recursion lame server is selected
+ * 	these are not preferred, but are used as a last resort.
  * @return best target or NULL if no target.
  *	if not null, that target is removed from the result list in the dp.
  */
 struct delegpt_addr* iter_server_selection(struct iter_env* iter_env, 
 	struct module_env* env, struct delegpt* dp, uint8_t* name, 
-	size_t namelen, uint16_t qtype, int* dnssec_expected);
+	size_t namelen, uint16_t qtype, int* dnssec_expected,
+	int* chase_to_rd);
 
 /**
  * Allocate dns_msg from parsed msg, in regional.
@@ -135,10 +138,12 @@ void iter_mark_cycle_targets(struct module_qstate* qstate, struct delegpt* dp);
 /**
  * See if delegation is useful or offers immediately no targets for 
  * further recursion.
- * @param qstate: query state with RD flag and query name.
+ * @param qinfo: query name and type
+ * @param qflags: query flags with RD flag
  * @param dp: delegpt to check.
  */
-int iter_dp_is_useless(struct module_qstate* qstate, struct delegpt* dp);
+int iter_dp_is_useless(struct query_info* qinfo, uint16_t qflags, 
+	struct delegpt* dp);
 
 /**
  * See if delegation is expected to have DNSSEC information (RRSIGs) in 
@@ -177,5 +182,15 @@ int iter_msg_has_dnssec(struct dns_msg* msg);
  */
 int iter_msg_from_zone(struct dns_msg* msg, struct delegpt* dp, 
 	enum response_type type, uint16_t dclass);
+
+/**
+ * Check if two replies are equal
+ * For fallback procedures
+ * @param p: reply one. The reply has rrset data pointers in region.
+ * 	Does not check rrset-IDs
+ * @param q: reply two
+ * @return if one and two are equal.
+ */
+int reply_equal(struct reply_info* p, struct reply_info* q);
 
 #endif /* ITERATOR_ITER_UTILS_H */

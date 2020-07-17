@@ -75,6 +75,7 @@ config_create()
 	cfg->verbosity = 1;
 	cfg->stat_interval = 0;
 	cfg->stat_cumulative = 0;
+	cfg->stat_extended = 0;
 	cfg->num_threads = 1;
 	cfg->port = UNBOUND_DNS_PORT;
 	cfg->do_ip4 = 1;
@@ -93,11 +94,12 @@ config_create()
 	cfg->msg_cache_size = 4 * 1024 * 1024;
 	cfg->msg_cache_slabs = 4;
 	cfg->num_queries_per_thread = 1024;
+	cfg->jostle_time = 200;
 	cfg->rrset_cache_size = 4 * 1024 * 1024;
 	cfg->rrset_cache_slabs = 4;
 	cfg->host_ttl = 900;
 	cfg->lame_ttl = 900;
-	cfg->bogus_ttl = 900;
+	cfg->bogus_ttl = 60;
 	cfg->max_ttl = 3600 * 24;
 	cfg->infra_cache_slabs = 4;
 	cfg->infra_cache_numhosts = 10000;
@@ -129,7 +131,11 @@ config_create()
 	cfg->harden_large_queries = 0;
 	cfg->harden_glue = 1;
 	cfg->harden_dnssec_stripped = 1;
+	cfg->harden_referral_path = 0;
 	cfg->use_caps_bits_for_id = 0;
+	cfg->private_address = NULL;
+	cfg->private_domain = NULL;
+	cfg->unwanted_threshold = 0;
 	cfg->hide_identity = 0;
 	cfg->hide_version = 0;
 	cfg->identity = NULL;
@@ -137,14 +143,30 @@ config_create()
 	cfg->trust_anchor_file_list = NULL;
 	cfg->trust_anchor_list = NULL;
 	cfg->trusted_keys_file_list = NULL;
+	cfg->dlv_anchor_file = NULL;
+	cfg->dlv_anchor_list = NULL;
 	cfg->val_date_override = 0;
 	cfg->val_clean_additional = 1;
 	cfg->val_permissive_mode = 0;
 	cfg->key_cache_size = 4 * 1024 * 1024;
 	cfg->key_cache_slabs = 4;
+	cfg->neg_cache_size = 1 * 1024 * 1024;
 	cfg->local_zones = NULL;
 	cfg->local_zones_nodefault = NULL;
 	cfg->local_data = NULL;
+
+	cfg->remote_control_enable = 0;
+	cfg->control_ifs = NULL;
+	cfg->control_port = 953;
+	if(!(cfg->server_key_file = strdup(RUN_DIR"/unbound_server.key"))) 
+		goto error_exit;
+	if(!(cfg->server_cert_file = strdup(RUN_DIR"/unbound_server.pem"))) 
+		goto error_exit;
+	if(!(cfg->control_key_file = strdup(RUN_DIR"/unbound_control.key"))) 
+		goto error_exit;
+	if(!(cfg->control_cert_file = strdup(RUN_DIR"/unbound_control.pem"))) 
+		goto error_exit;
+
 	if(!(cfg->module_conf = strdup("validator iterator"))) goto error_exit;
 	if(!(cfg->val_nsec3_key_iterations = 
 		strdup("1024 150 2048 500 4096 2500"))) goto error_exit;
@@ -173,6 +195,7 @@ struct config_file* config_create_forlib()
 	cfg->use_syslog = 0;
 	cfg->key_cache_size = 1024*1024;
 	cfg->key_cache_slabs = 1;
+	cfg->neg_cache_size = 100 * 1024;
 	cfg->donotquery_localhost = 0; /* allow, so that you can ask a
 		forward nameserver running on localhost */
 	return cfg;
@@ -206,6 +229,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "num_threads:") == 0) {
 		/* not supported, library must have 1 thread in bgworker */
 		return 0;
+	} else if(strcmp(opt, "extended-statistics:") == 0) {
+		IS_YES_OR_NO;
+		cfg->stat_extended = (strcmp(val, "yes") == 0);
 	} else if(strcmp(opt, "do-ip4:") == 0) {
 		IS_YES_OR_NO;
 		cfg->do_ip4 = (strcmp(val, "yes") == 0);
@@ -244,6 +270,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "num-queries-per-thread:") == 0) {
 		IS_NONZERO_NUMBER;
 		cfg->num_queries_per_thread = (size_t)atoi(val);
+	} else if(strcmp(opt, "jostle-timeout:") == 0) {
+		IS_NUMBER_OR_ZERO;
+		cfg->jostle_time = (size_t)atoi(val);
 	} else if(strcmp(opt, "rrset-cache-size:") == 0) {
 		return cfg_parse_memsize(val, &cfg->rrset_cache_size);
 	} else if(strcmp(opt, "rrset-cache-slabs:") == 0) {
@@ -290,6 +319,16 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "harden-dnssec-stripped:") == 0) {
 		IS_YES_OR_NO;
 		cfg->harden_dnssec_stripped = (strcmp(val, "yes") == 0);
+	} else if(strcmp(opt, "harden-referral-path:") == 0) {
+		IS_YES_OR_NO;
+		cfg->harden_referral_path = (strcmp(val, "yes") == 0);
+	} else if(strcmp(opt, "private-address:") == 0) {
+		return cfg_strlist_insert(&cfg->private_address, strdup(val));
+	} else if(strcmp(opt, "private-domain:") == 0) {
+		return cfg_strlist_insert(&cfg->private_domain, strdup(val));
+	} else if(strcmp(opt, "unwanted-reply-threshold:") == 0) {
+		IS_NUMBER_OR_ZERO;
+		cfg->unwanted_threshold = (size_t)atoi(val);
 	} else if(strcmp(opt, "do-not-query-localhost:") == 0) {
 		IS_YES_OR_NO;
 		cfg->donotquery_localhost = (strcmp(val, "yes") == 0);
@@ -303,6 +342,12 @@ int config_set_option(struct config_file* cfg, const char* opt,
 			strdup(val));
 	} else if(strcmp(opt, "trusted-keys-file:") == 0) {
 		return cfg_strlist_insert(&cfg->trusted_keys_file_list, 
+			strdup(val));
+	} else if(strcmp(opt, "dlv-anchor-file:") == 0) {
+		free(cfg->dlv_anchor_file);
+		return (cfg->dlv_anchor_file = strdup(val)) != NULL;
+	} else if(strcmp(opt, "dlv-anchor:") == 0) {
+		return cfg_strlist_insert(&cfg->dlv_anchor_list, 
 			strdup(val));
 	} else if(strcmp(opt, "val-override-date:") == 0) {
 		if(strcmp(val, "") == 0 || strcmp(val, "0") == 0) {
@@ -331,8 +376,30 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	} else if(strcmp(opt, "key-cache-slabs:") == 0) {
 		IS_POW2_NUMBER;
 		cfg->key_cache_slabs = (size_t)atoi(val);
+	} else if(strcmp(opt, "neg-cache-size:") == 0) {
+		return cfg_parse_memsize(val, &cfg->neg_cache_size);
 	} else if(strcmp(opt, "local-data:") == 0) {
 		return cfg_strlist_insert(&cfg->local_data, strdup(val));
+	} else if(strcmp(opt, "control-enable:") == 0) {
+		IS_YES_OR_NO;
+		cfg->remote_control_enable = (strcmp(val, "yes") == 0);
+	} else if(strcmp(opt, "control-interface:") == 0) {
+		return cfg_strlist_insert(&cfg->control_ifs, strdup(val));
+	} else if(strcmp(opt, "control-port:") == 0) {
+		IS_NONZERO_NUMBER;
+		cfg->control_port = atoi(val);
+	} else if(strcmp(opt, "server-key-file:") == 0) {
+		free(cfg->server_key_file);
+		return (cfg->server_key_file = strdup(val)) != NULL;
+	} else if(strcmp(opt, "server-cert-file:") == 0) {
+		free(cfg->server_cert_file);
+		return (cfg->server_cert_file = strdup(val)) != NULL;
+	} else if(strcmp(opt, "control-key-file:") == 0) {
+		free(cfg->control_key_file);
+		return (cfg->control_key_file = strdup(val)) != NULL;
+	} else if(strcmp(opt, "control-cert-file:") == 0) {
+		free(cfg->control_cert_file);
+		return (cfg->control_cert_file = strdup(val)) != NULL;
 	} else if(strcmp(opt, "module-config:") == 0) {
 		free(cfg->module_conf);
 		return (cfg->module_conf = strdup(val)) != NULL;
@@ -345,7 +412,7 @@ int config_set_option(struct config_file* cfg, const char* opt,
 
 /** initialize the global cfg_parser object */
 static void
-create_cfg_parser(struct config_file* cfg, char* filename)
+create_cfg_parser(struct config_file* cfg, char* filename, const char* chroot)
 {
 	static struct config_parser_state st;
 	cfg_parser = &st;
@@ -353,20 +420,22 @@ create_cfg_parser(struct config_file* cfg, char* filename)
 	cfg_parser->line = 1;
 	cfg_parser->errors = 0;
 	cfg_parser->cfg = cfg;
+	cfg_parser->chroot = chroot;
 }
 
 int 
-config_read(struct config_file* cfg, char* filename)
+config_read(struct config_file* cfg, const char* filename, const char* chroot)
 {
 	FILE *in;
-	if(!filename)
+	char *fname = (char*)filename;
+	if(!fname)
 		return 1;
-	in = fopen(filename, "r");
+	in = fopen(fname, "r");
 	if(!in) {
-		log_err("Could not open %s: %s", filename, strerror(errno));
+		log_err("Could not open %s: %s", fname, strerror(errno));
 		return 0;
 	}
-	create_cfg_parser(cfg, filename);
+	create_cfg_parser(cfg, fname, chroot);
 	ub_c_in = in;
 	ub_c_parse();
 	fclose(in);
@@ -449,14 +518,23 @@ config_delete(struct config_file* cfg)
 	free(cfg->version);
 	free(cfg->module_conf);
 	free(cfg->outgoing_avail_ports);
+	config_delstrlist(cfg->private_address);
+	config_delstrlist(cfg->private_domain);
 	config_delstrlist(cfg->trust_anchor_file_list);
 	config_delstrlist(cfg->trusted_keys_file_list);
 	config_delstrlist(cfg->trust_anchor_list);
+	free(cfg->dlv_anchor_file);
+	config_delstrlist(cfg->dlv_anchor_list);
 	config_deldblstrlist(cfg->acls);
 	free(cfg->val_nsec3_key_iterations);
 	config_deldblstrlist(cfg->local_zones);
 	config_delstrlist(cfg->local_zones_nodefault);
 	config_delstrlist(cfg->local_data);
+	config_delstrlist(cfg->control_ifs);
+	free(cfg->server_key_file);
+	free(cfg->server_cert_file);
+	free(cfg->control_key_file);
+	free(cfg->control_cert_file);
 	free(cfg);
 }
 
@@ -729,3 +807,197 @@ config_apply(struct config_file* config)
 	MAX_TTL = (uint32_t)config->max_ttl;
 }
 
+/** 
+ * Calculate string length of full pathname in original filesys
+ * @param fname: the path name to convert.
+ * 	Must not be null or empty.
+ * @param cfg: config struct for chroot and chdir (if set).
+ * @param use_chdir: if false, only chroot is applied.
+ * @return length of string.
+ *	remember to allocate one more for 0 at end in mallocs.
+ */
+static size_t
+strlen_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
+{
+	size_t len = 0;
+	int slashit = 0;
+	if(cfg->chrootdir && cfg->chrootdir[0] && 
+		strncmp(cfg->chrootdir, fname, strlen(cfg->chrootdir)) == 0) {
+		/* already full pathname, return it */
+		return strlen(fname);
+	}
+	/* chroot */
+	if(cfg->chrootdir && cfg->chrootdir[0]) {
+		/* start with chrootdir */
+		len += strlen(cfg->chrootdir);
+		slashit = 1;
+	}
+	/* chdir */
+	if(fname[0] == '/' || !use_chdir) {
+		/* full path, no chdir */
+	} else if(cfg->directory && cfg->directory[0]) {
+		/* prepend chdir */
+		if(slashit && cfg->directory[0] != '/')
+			len++;
+		if(cfg->chrootdir && cfg->chrootdir[0] && 
+			strncmp(cfg->chrootdir, cfg->directory, 
+			strlen(cfg->chrootdir)) == 0)
+			len += strlen(cfg->directory)-strlen(cfg->chrootdir);
+		else	len += strlen(cfg->directory);
+		slashit = 1;
+	}
+	/* fname */
+	if(slashit && fname[0] != '/')
+		len++;
+	len += strlen(fname);
+	return len;
+}
+
+char*
+fname_after_chroot(const char* fname, struct config_file* cfg, int use_chdir)
+{
+	size_t len = strlen_after_chroot(fname, cfg, use_chdir);
+	int slashit = 0;
+	char* buf = (char*)malloc(len+1);
+	if(!buf)
+		return NULL;
+	buf[0] = 0;
+	/* is fname already in chroot ? */
+	if(cfg->chrootdir && cfg->chrootdir[0] && 
+		strncmp(cfg->chrootdir, fname, strlen(cfg->chrootdir)) == 0) {
+		/* already full pathname, return it */
+		strncpy(buf, fname, len);
+		buf[len] = 0;
+		return buf;
+	}
+	/* chroot */
+	if(cfg->chrootdir && cfg->chrootdir[0]) {
+		/* start with chrootdir */
+		strncpy(buf, cfg->chrootdir, len);
+		slashit = 1;
+	}
+	/* chdir */
+	if(fname[0] == '/' || !use_chdir) {
+		/* full path, no chdir */
+	} else if(cfg->directory && cfg->directory[0]) {
+		/* prepend chdir */
+		if(slashit && cfg->directory[0] != '/')
+			strncat(buf, "/", len-strlen(buf));
+		/* is the directory already in the chroot? */
+		if(cfg->chrootdir && cfg->chrootdir[0] && 
+			strncmp(cfg->chrootdir, cfg->directory, 
+			strlen(cfg->chrootdir)) == 0)
+			strncat(buf, cfg->directory+strlen(cfg->chrootdir), 
+				   len-strlen(buf));
+		else strncat(buf, cfg->directory, len-strlen(buf));
+		slashit = 1;
+	}
+	/* fname */
+	if(slashit && fname[0] != '/')
+		strncat(buf, "/", len-strlen(buf));
+	strncat(buf, fname, len-strlen(buf));
+	buf[len] = 0;
+	return buf;
+}
+
+/** return next space character in string */
+static char* next_space_pos(char* str)
+{
+	char* sp = strchr(str, ' ');
+	char* tab = strchr(str, '\t');
+	if(!tab && !sp)
+		return NULL;
+	if(!sp) return tab;
+	if(!tab) return sp;
+	return (sp<tab)?sp:tab;
+}
+
+/** return last space character in string */
+static char* last_space_pos(char* str)
+{
+	char* sp = strrchr(str, ' ');
+	char* tab = strrchr(str, '\t');
+	if(!tab && !sp)
+		return NULL;
+	if(!sp) return tab;
+	if(!tab) return sp;
+	return (sp>tab)?sp:tab;
+}
+
+char* cfg_ptr_reverse(char* str)
+{
+	char* ip, *ip_end;
+	char* name;
+	char* result;
+	char buf[1024];
+	struct sockaddr_storage addr;
+	socklen_t addrlen;
+
+	/* parse it as: [IP] [between stuff] [name] */
+	ip = str;
+	while(*ip && isspace(*ip))
+		ip++;
+	if(!*ip) {
+		log_err("syntax error: too short: %s", str);
+		return NULL;
+	}
+	ip_end = next_space_pos(ip);
+	if(!ip_end || !*ip_end) {
+		log_err("syntax error: expected name: %s", str);
+		return NULL;
+	}
+
+	name = last_space_pos(ip_end);
+	if(!name || !*name) {
+		log_err("syntax error: expected name: %s", str);
+		return NULL;
+	}
+
+	sscanf(ip, "%100s", buf);
+	buf[sizeof(buf)-1]=0;
+
+	if(!ipstrtoaddr(buf, UNBOUND_DNS_PORT, &addr, &addrlen)) {
+		log_err("syntax error: cannot parse address: %s", str);
+		return NULL;
+	}
+
+	/* reverse IPv4:
+	 * ddd.ddd.ddd.ddd.in-addr-arpa.
+	 * IPv6: (h.){32}.ip6.arpa.  */
+
+	if(addr_is_ip6(&addr, addrlen)) {
+		struct in6_addr* ad = &((struct sockaddr_in6*)&addr)->sin6_addr;
+		const char* hex = "0123456789abcdef";
+		char *p = buf;
+		int i;
+		for(i=15; i>=0; i--) {
+			uint8_t b = ((uint8_t*)ad)[i];
+			*p++ = hex[ (b&0x0f) ];
+			*p++ = '.';
+			*p++ = hex[ (b&0xf0) >> 4 ];
+			*p++ = '.';
+		}
+		snprintf(buf+16*4, sizeof(buf)-16*4, "ip6.arpa. ");
+	} else {
+		struct in_addr* ad = &((struct sockaddr_in*)&addr)->sin_addr;
+		snprintf(buf, sizeof(buf), "%u.%u.%u.%u.in-addr.arpa. ",
+		(unsigned)((uint8_t*)ad)[3], (unsigned)((uint8_t*)ad)[2],
+		(unsigned)((uint8_t*)ad)[1], (unsigned)((uint8_t*)ad)[0]);
+	}
+
+	/* printed the reverse address, now the between goop and name on end */
+	while(*ip_end && isspace(*ip_end))
+		ip_end++;
+	if(name>ip_end) {
+		snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), "%.*s", 
+			(int)(name-ip_end), ip_end);
+	}
+	snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), " PTR %s", name);
+
+	result = strdup(buf);
+	if(!result) {
+		log_err("out of memory parsing %s", str);
+		return NULL;
+	}
+	return result;
+}

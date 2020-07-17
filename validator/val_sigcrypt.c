@@ -189,13 +189,7 @@ ds_get_key_algo(struct ub_packed_rrset_key* k, size_t idx)
 	return (int)rdata[2+2];
 }
 
-/**
- * Get DS RR digest algorithm
- * @param k: DS rrset.
- * @param idx: which DS.
- * @return algorithm or 0 if DS too short.
- */
-static int
+int
 ds_get_digest_algo(struct ub_packed_rrset_key* k, size_t idx)
 {
 	uint8_t* rdata;
@@ -254,11 +248,11 @@ static size_t
 ds_digest_size_algo(struct ub_packed_rrset_key* k, size_t idx)
 {
 	switch(ds_get_digest_algo(k, idx)) {
-#ifdef SHA_DIGEST_LENGTH
+#ifdef HAVE_EVP_SHA1
 		case LDNS_SHA1:
 			return SHA_DIGEST_LENGTH;
 #endif
-#ifdef SHA256_DIGEST_LENGTH
+#ifdef HAVE_EVP_SHA256
 		case LDNS_SHA256:
 			return SHA256_DIGEST_LENGTH;
 #endif
@@ -300,13 +294,13 @@ ds_create_dnskey_digest(struct module_env* env,
 	ldns_buffer_flip(b);
 	
 	switch(ds_get_digest_algo(ds_rrset, ds_idx)) {
-#ifdef SHA_DIGEST_LENGTH
+#ifdef HAVE_EVP_SHA1
 		case LDNS_SHA1:
 			(void)SHA1((unsigned char*)ldns_buffer_begin(b),
 				ldns_buffer_limit(b), (unsigned char*)digest);
 			return 1;
 #endif
-#ifdef SHA256_DIGEST_LENGTH
+#ifdef HAVE_EVP_SHA256
 		case LDNS_SHA256:
 			(void)SHA256((unsigned char*)ldns_buffer_begin(b),
 				ldns_buffer_limit(b), (unsigned char*)digest);
@@ -376,6 +370,14 @@ dnskey_algo_id_is_supported(int id)
 	case LDNS_RSASHA1:
 	case LDNS_RSASHA1_NSEC3:
 	case LDNS_RSAMD5:
+#ifdef HAVE_EVP_SHA256
+	case LDNS_RSASHA256:
+	case LDNS_RSASHA256_NSEC3:
+#endif
+#ifdef HAVE_EVP_SHA512
+	case LDNS_RSASHA512:
+	case LDNS_RSASHA512_NSEC3:
+#endif
 		return 1;
 	default:
 		return 0;
@@ -406,26 +408,64 @@ int dnskey_algo_is_supported(struct ub_packed_rrset_key* dnskey_rrset,
 		dnskey_idx));
 }
 
+/**
+ * Fillup needed algorithm array for DNSKEY set
+ * @param dnskey: the key
+ * @param needs: array per algorithm.
+ * @return the number of algorithms that need valid signatures
+ */
+static size_t
+dnskeyset_needs(struct ub_packed_rrset_key* dnskey, uint8_t needs[])
+{
+	uint8_t algo;
+	size_t i, total = 0;
+	size_t num = rrset_get_count(dnskey);
+
+	memset(needs, 0, sizeof(uint8_t)*256);
+	for(i=0; i<num; i++) {
+		algo = (uint8_t)dnskey_get_algo(dnskey, i);
+		if(needs[algo] == 0) {
+			needs[algo] = 1;
+			total++;
+		}
+	}
+	return total;
+}
+
 enum sec_status 
 dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey)
 {
 	enum sec_status sec;
-	size_t i, num;
+	size_t i, num, numneeds;
 	rbtree_t* sortree = NULL;
+	/* make sure that for all DNSKEY algorithms there are valid sigs */
+	uint8_t needs[256]; /* 1 if need sig for that algorithm */
+
 	num = rrset_get_sigcount(rrset);
 	if(num == 0) {
 		verbose(VERB_QUERY, "rrset failed to verify due to a lack of "
 			"signatures");
 		return sec_status_bogus;
 	}
+
+	numneeds = dnskeyset_needs(dnskey, needs);
 	for(i=0; i<num; i++) {
 		sec = dnskeyset_verify_rrset_sig(env, ve, *env->now, rrset, 
 			dnskey, i, &sortree);
-		if(sec == sec_status_secure)
-			return sec;
+		/* see which algorithm has been fixed up */
+		if(sec == sec_status_secure) {
+			uint8_t a = (uint8_t)rrset_get_sig_algo(rrset, i);
+			if(needs[a] == 1) {
+				needs[a] = 0;
+				numneeds --;
+				if(numneeds == 0) /* done! */
+					return sec;
+			}
+		}
 	}
-	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
+	verbose(VERB_ALGO, "rrset failed to verify: no valid signatures for "
+		"%d algorithms", (int)numneeds);
 	return sec_status_bogus;
 }
 
@@ -510,57 +550,6 @@ struct canon_rr {
 	/** which RR in the rrset */
 	size_t rr_idx;
 };
-
-/**
- * Compare HINFO rrsets. For them, the string length bytes are not lowercased,
- * but the string contents are lowercased.
- *
- * This routine works for any 'all STR' RR type. It works similar to the
- * compare_byfield routine, but stripped down, and modified to lowercase
- * STR fields.
- *
- * @param d: rrset data
- * @param i: first RR to compare
- * @param j: first RR to compare
- * @return comparison code.
- */
-static int
-canonical_compare_hinfo(struct packed_rrset_data* d, size_t i, size_t j)
-{
-	uint8_t* di = d->rr_data[i]+2; /* ptr to current rdata byte */
-	uint8_t* dj = d->rr_data[j]+2;
-	size_t ilen = d->rr_len[i]-2; /* length left in rdata */
-	size_t jlen = d->rr_len[j]-2;
-	size_t strlen_i = 0;
-	size_t strlen_j = 0;
-	while(ilen > 0 && jlen > 0) {
-		/* compare this pair of bytes */
-		if( ((strlen_i)?(uint8_t)tolower((int)*di):*di)
-		 != ((strlen_j)?(uint8_t)tolower((int)*dj):*dj)
-		 ) {
-		  if(((strlen_i)?(uint8_t)tolower((int)*di):*di)
-		  < ((strlen_j)?(uint8_t)tolower((int)*dj):*dj))
-		 	return -1;
-		    return 1;
-		}
-		ilen --;
-		jlen --;
-		/* read length byte of the string in rdata if strlen=0 */
-		if(strlen_i == 0) {
-			strlen_i = (size_t)*di;
-		} else 	strlen_i--;
-		if(strlen_j == 0) {
-			strlen_j = (size_t)*dj;
-		} else 	strlen_j--;
-		di++;
-		dj++;
-	}
-	if(ilen == 0 && jlen == 0)
-		return 0;
-	if(ilen == 0)
-		return -1;
-	return 1;
-}
 
 /**
  * Compare two RR for canonical order, in a field-style sweep.
@@ -767,11 +756,7 @@ canonical_compare(struct ub_packed_rrset_key* rrset, size_t i, size_t j)
 			log_assert(desc->_minimum == desc->_maximum);
 			return canonical_compare_byfield(d, desc, i, j);
 
-		/* This RR type is special, as the contents of text fields
-		 * is lowercased. */
-		case LDNS_RR_TYPE_HINFO:
-			return canonical_compare_hinfo(d, i, j);
-
+		case LDNS_RR_TYPE_HINFO: /* no longer downcased */
 		case LDNS_RR_TYPE_NSEC: 
 		case LDNS_RR_TYPE_RRSIG:
 	default:
@@ -869,21 +854,6 @@ insert_can_owner(ldns_buffer* buf, struct ub_packed_rrset_key* k,
 	}
 }
 
-/** 
- * Lowercase a text rdata field in a buffer.
- * @param p: pointer to start of text field (length byte).
- */
-static void
-lowercase_text_field(uint8_t* p)
-{
-	int i, len = (int)*p;
-	p++;
-	for(i=0; i<len; i++) {
-		*p = (uint8_t)tolower((int)*p);
-		p++;
-	}
-}
-
 /**
  * Canonicalize Rdata in buffer.
  * @param buf: buffer at position just after the rdata.
@@ -916,18 +886,6 @@ canonicalize_rdata(ldns_buffer* buf, struct ub_packed_rrset_key* rrset,
 			query_dname_tolower(datstart);
 			query_dname_tolower(datstart + 
 				dname_valid(datstart, len-2));
-			return;
-		case LDNS_RR_TYPE_HINFO:
-			/* lowercase text records */
-			len -= 2;
-			if(len < (size_t)datstart[0]+1)
-				return;
-			lowercase_text_field(datstart);
-			len -= (size_t)datstart[0]+1; /* and skip the 1st */
-			datstart += (size_t)datstart[0]+1;
-			if(len < (size_t)datstart[0]+1)
-				return;
-			lowercase_text_field(datstart);
 			return;
 		case LDNS_RR_TYPE_RT:
 		case LDNS_RR_TYPE_AFSDB:
@@ -988,6 +946,7 @@ canonicalize_rdata(ldns_buffer* buf, struct ub_packed_rrset_key* rrset,
 		/* do not canonicalize NSEC rdata name, compat with bug
 		 * from bind 9.4 signer, where it does not do so */
 		case LDNS_RR_TYPE_NSEC: /* type starts with the name */
+		case LDNS_RR_TYPE_HINFO: /* not downcased */
 		/* A6 not supported */
 		default:	
 			/* nothing to do for unknown types */
@@ -1262,18 +1221,40 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 			break;
 		case LDNS_RSASHA1:
 		case LDNS_RSASHA1_NSEC3:
+#ifdef HAVE_EVP_SHA256
+		case LDNS_RSASHA256:
+		case LDNS_RSASHA256_NSEC3:
+#endif
+#ifdef HAVE_EVP_SHA512
+		case LDNS_RSASHA512:
+		case LDNS_RSASHA512_NSEC3:
+#endif
 			rsa = ldns_key_buf2rsa_raw(key, keylen);
 			if(!rsa) {
 				verbose(VERB_QUERY, "verify: "
-					"ldns_key_buf2rsa_raw SHA1 failed");
+					"ldns_key_buf2rsa_raw SHA failed");
 				return 0;
 			}
 			if(EVP_PKEY_assign_RSA(evp_key, rsa) == 0) {
 				verbose(VERB_QUERY, "verify: "
-					"EVP_PKEY_assign_RSA SHA1 failed");
+					"EVP_PKEY_assign_RSA SHA failed");
 				return 0;
 			}
-			*digest_type = EVP_sha1();
+
+			/* select SHA version */
+#ifdef HAVE_EVP_SHA256
+			if(algo == LDNS_RSASHA256 || 
+				algo == LDNS_RSASHA256_NSEC3)
+				*digest_type = EVP_sha256();
+			else
+#endif
+#ifdef HAVE_EVP_SHA512
+				if(algo == LDNS_RSASHA512 || 
+					algo == LDNS_RSASHA512_NSEC3)
+				*digest_type = EVP_sha512();
+			else
+#endif
+				*digest_type = EVP_sha1();
 
 			break;
 		case LDNS_RSAMD5:
@@ -1436,6 +1417,10 @@ dnskey_verify_rrset_sig(struct regional* region, ldns_buffer* buf,
 	/* verify key dname == sig signer name */
 	if(query_dname_compare(signer, dnskey->rk.dname) != 0) {
 		verbose(VERB_QUERY, "verify: wrong key for rrsig");
+		log_nametypeclass(VERB_QUERY, "RRSIG signername is", 
+			signer, 0, 0);
+		log_nametypeclass(VERB_QUERY, "the key name is", 
+			dnskey->rk.dname, 0, 0);
 		return sec_status_bogus;
 	}
 

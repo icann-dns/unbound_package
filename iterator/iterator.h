@@ -50,6 +50,7 @@ struct iter_hints;
 struct iter_forwards;
 struct iter_donotq;
 struct iter_prep_list;
+struct iter_priv;
 
 /** max number of query restarts. Determines max number of CNAME chain. */
 #define MAX_RESTART_COUNT       8
@@ -91,6 +92,9 @@ struct iter_env {
 
 	/** A set of inetaddrs that should never be queried. */
 	struct iter_donotq* donotq;
+
+	/** private address space and private domains */
+	struct iter_priv* priv;
 
 	/** The maximum dependency depth that this resolver will pursue. */
 	int max_dependency_depth;
@@ -206,6 +210,8 @@ struct iter_qstate {
 	struct query_info qchase;
 	/** query flags to use when chasing the answer (i.e. RD flag) */
 	uint16_t chase_flags;
+	/** true if we set RD bit because of last resort recursion lame query*/
+	int chase_to_rd;
 
 	/** 
 	 * This is the current delegation point for an in-progress query. This
@@ -213,6 +219,13 @@ struct iter_qstate {
 	 * (sub)queried for vs which ones have already been visited.
 	 */
 	struct delegpt* dp;
+
+	/** state for 0x20 fallback when capsfail happens, 0 not a fallback */
+	int caps_fallback;
+	/** state for capsfail: current server number to try */
+	size_t caps_server;
+	/** state for capsfail: stored query for comparisons */
+	struct reply_info* caps_reply;
 
 	/** Current delegation message - returned for non-RD queries */
 	struct dns_msg* deleg_msg;

@@ -85,6 +85,16 @@ enum sec_status val_nsec_prove_nodata_dsreply(struct module_env* env,
 int nsecbitmap_has_type_rdata(uint8_t* bitmap, size_t len, uint16_t type);
 
 /**
+ * Check if type is present in the NSEC typemap
+ * @param nsec: the nsec RRset.
+ *	If there are multiple RRs, then each must have the same typemap,
+ *	since the typemap represents the types at this domain node.
+ * @param type: type to check for, host order.
+ * @return true if present
+ */
+int nsec_has_type(struct ub_packed_rrset_key* nsec, uint16_t type);
+
+/**
  * Determine if a NSEC proves the NOERROR/NODATA conditions. This will also
  * handle the empty non-terminal (ENT) case and partially handle the
  * wildcard case. If the ownername of 'nsec' is a wildcard, the validator
@@ -144,5 +154,18 @@ uint8_t* nsec_closest_encloser(uint8_t* qname,
  */
 int val_nsec_proves_no_wc(struct ub_packed_rrset_key* nsec, uint8_t* qname, 
 	size_t qnamelen);
+
+/**
+ * Determine the DLV result, what to do with NSEC DLV reply.
+ * @param qinfo: what was queried for.
+ * @param rep: the nonpositive reply.
+ * @param nm: dlv lookup name, to adjust for new lookup name (if needed).
+ * @param nm_len: length of lookup name.
+ * @return 0 on error, 1 if a higher point is found.
+ * 	If the higher point is above the dlv repo anchor, the qname does 
+ * 	not exist.
+ */
+int val_nsec_check_dlv(struct query_info* qinfo,
+	struct reply_info* rep, uint8_t** nm, size_t* nm_len);
 
 #endif /* VALIDATOR_VAL_NSEC_H */

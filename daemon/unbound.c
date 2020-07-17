@@ -52,6 +52,7 @@
 #include "util/module.h"
 #include <signal.h>
 #include <fcntl.h>
+#include <openssl/crypto.h>
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
@@ -84,8 +85,9 @@ static void usage()
 	printf("-d	do not fork into the background.\n");
 	printf("-v	verbose (more times to increase verbosity)\n");
 	printf("Version %s\n", PACKAGE_VERSION);
-	printf("libevent %s, libldns %s\n", 
-		event_get_version(), ldns_version());
+	printf("libevent %s, libldns %s, %s\n", 
+		event_get_version(), ldns_version(), 
+		SSLeay_version(SSLEAY_VERSION));
 	printf("BSD licensed, see LICENSE in source package for details.\n");
 	printf("Report bugs to %s\n", PACKAGE_BUGREPORT);
 }
@@ -95,11 +97,13 @@ static void
 checkrlimits(struct config_file* cfg)
 {
 #ifdef HAVE_GETRLIMIT
-	int list = ((cfg->do_ip4?1:0) + (cfg->do_ip6?1:0)) * 
-		((cfg->do_udp?1:0) + (cfg->do_tcp?1 + 
+	/* list has number of ports to listen to, ifs number addresses */
+	int list = ((cfg->do_udp?1:0) + (cfg->do_tcp?1 + 
 			(int)cfg->incoming_num_tcp:0));
-	size_t ifs = (size_t)(cfg->num_ifs==0?1:cfg->num_ifs);
-	size_t listen_num = list*ifs;
+	size_t listen_ifs = (size_t)(cfg->num_ifs==0?
+		((cfg->do_ip4 && !cfg->if_automatic?1:0) + 
+		 (cfg->do_ip6?1:0)):cfg->num_ifs);
+	size_t listen_num = list*listen_ifs;
 	size_t outudpnum = (size_t)cfg->outgoing_num_ports;
 	size_t outtcpnum = cfg->outgoing_num_tcp;
 	size_t misc = 4; /* logfile, pidfile, stdout... */
@@ -130,6 +134,10 @@ checkrlimits(struct config_file* cfg)
 			log_warn("setrlimit: %s", strerror(errno));
 			log_warn("cannot increase max open fds from %u to %u",
 				(unsigned)avail, (unsigned)total+10);
+			/* check that calculation below does not underflow,
+			 * with 15 as margin */
+			if(numthread*perthread_noudp+15 > avail)
+				fatal_exit("too much tcp. not enough fds.");
 			cfg->outgoing_num_ports = (int)((avail 
 				- numthread*perthread_noudp 
 				- 10 /* safety margin */) /numthread);
@@ -259,23 +267,21 @@ writepid (const char* pidfile, pid_t pid)
 
 /**
  * check old pid file.
- * @param cfg: the config settings
+ * @param pidfile: the file name of the pid file.
+ * @param inchroot: if pidfile is inchroot and we can thus expect to
+ *	be able to delete it.
  */
 static void
-checkoldpid(struct config_file* cfg)
+checkoldpid(char* pidfile, int inchroot)
 {
 	pid_t old;
-	char* file = cfg->pidfile;
-	if(cfg->chrootdir && cfg->chrootdir[0] &&
-		strncmp(file, cfg->chrootdir, strlen(cfg->chrootdir))==0) {
-		file += strlen(cfg->chrootdir);
-	}
-	if((old = readpid(file)) != -1) {
+	if((old = readpid(pidfile)) != -1) {
 		/* see if it is still alive */
 		if(kill(old, 0) == 0 || errno == EPERM)
 			log_warn("unbound is already running as pid %u.", 
 				(unsigned)old);
-		else	log_warn("did not exit gracefully last time (%u)", 
+		else	if(inchroot)
+			log_warn("did not exit gracefully last time (%u)", 
 				(unsigned)old);
 	}
 }
@@ -283,7 +289,7 @@ checkoldpid(struct config_file* cfg)
 
 /** detach from command line */
 static void
-detach(struct config_file* cfg)
+detach(void)
 {
 #ifdef HAVE_WORKING_FORK
 	int fd;
@@ -292,7 +298,6 @@ detach(struct config_file* cfg)
 		case 0:
 			break;
 		case -1:
-			unlink(cfg->pidfile);
 			fatal_exit("fork failed: %s", strerror(errno));
 		default:
 			/* exit interactive session */
@@ -310,15 +315,13 @@ detach(struct config_file* cfg)
 		if (fd > 2)
 			(void)close(fd);
 	}
-#else
-	(void)cfg;
 #endif /* HAVE_WORKING_FORK */
 }
 
 /** daemonize, drop user priviliges and chroot if needed */
 static void
-do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
-	char** cfgfile)
+perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
+	const char** cfgfile)
 {
 #ifdef HAVE_GETPWNAM
 	uid_t uid;
@@ -328,7 +331,6 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	memset(&gid, 112, sizeof(gid));
 	log_assert(cfg);
 
-	/* daemonize last to be able to print error to user */
 	if(cfg->username && cfg->username[0]) {
 		struct passwd *pwd;
 		if((pwd = getpwnam(cfg->username)) == NULL)
@@ -338,6 +340,66 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		endpwent();
 	}
 #endif
+
+	/* init syslog (as root) if needed, before daemonize, otherwise
+	 * a fork error could not be printed since daemonize closed stderr.*/
+	if(cfg->use_syslog) {
+		log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
+	}
+	/* if using a logfile, we cannot open it because the logfile would
+	 * be created with the wrong permissions, we cannot chown it because
+	 * we cannot chown system logfiles, so we do not open at all.
+	 * So, using a logfile, the user does not see errors unless -d is
+	 * given to unbound on the commandline. */
+
+#ifdef HAVE_KILL
+	/* check old pid file before forking */
+	if(cfg->pidfile && cfg->pidfile[0]) {
+		/* calculate position of pidfile */
+		if(cfg->pidfile[0] == '/')
+			daemon->pidfile = strdup(cfg->pidfile);
+		else	daemon->pidfile = fname_after_chroot(cfg->pidfile, 
+				cfg, 1);
+		if(!daemon->pidfile)
+			fatal_exit("pidfile alloc: out of memory");
+		checkoldpid(daemon->pidfile,
+			/* true if pidfile is inside chrootdir, or nochroot */
+			!(cfg->chrootdir && cfg->chrootdir[0]) ||
+			(cfg->chrootdir && cfg->chrootdir[0] &&
+			strncmp(daemon->pidfile, cfg->chrootdir,
+				strlen(cfg->chrootdir))==0));
+	}
+#endif
+
+	/* daemonize because pid is needed by the writepid func */
+	if(!debug_mode && cfg->do_daemonize) {
+		detach();
+	}
+
+	/* write new pidfile (while still root, so can be outside chroot) */
+#ifdef HAVE_KILL
+	if(cfg->pidfile && cfg->pidfile[0]) {
+		writepid(daemon->pidfile, getpid());
+		if(!(cfg->chrootdir && cfg->chrootdir[0]) || 
+			(cfg->chrootdir && cfg->chrootdir[0] && 
+			strncmp(daemon->pidfile, cfg->chrootdir, 
+			strlen(cfg->chrootdir))==0)) {
+			/* delete of pidfile could potentially work,
+			 * chown to get permissions */
+			if(cfg->username && cfg->username[0]) {
+			if(chown(daemon->pidfile, uid, gid) == -1) {
+				fatal_exit("cannot chown %u.%u %s: %s",
+					(unsigned)uid, (unsigned)gid,
+					daemon->pidfile, strerror(errno));
+			}
+			}
+		}
+	}
+#else
+	(void)daemon;
+#endif
+
+	/* box into the chroot */
 #ifdef HAVE_CHROOT
 	if(cfg->chrootdir && cfg->chrootdir[0]) {
 		if(chdir(cfg->chrootdir)) {
@@ -352,10 +414,25 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 		if(strncmp(*cfgfile, cfg->chrootdir, 
 			strlen(cfg->chrootdir)) == 0) 
 			(*cfgfile) += strlen(cfg->chrootdir);
+
+		/* adjust stored pidfile for chroot */
+		if(daemon->pidfile && daemon->pidfile[0] && 
+			strncmp(daemon->pidfile, cfg->chrootdir,
+			strlen(cfg->chrootdir))==0) {
+			char* old = daemon->pidfile;
+			daemon->pidfile = strdup(old+strlen(cfg->chrootdir));
+			free(old);
+			if(!daemon->pidfile)
+				log_err("out of memory in pidfile adjust");
+		}
+		daemon->chroot = strdup(cfg->chrootdir);
+		if(!daemon->chroot)
+			log_err("out of memory in daemon chroot dir storage");
 	}
 #else
 	(void)cfgfile;
 #endif
+	/* change to working directory inside chroot */
 	if(cfg->directory && cfg->directory[0]) {
 		char* dir = cfg->directory;
 		if(cfg->chrootdir && cfg->chrootdir[0] &&
@@ -370,43 +447,36 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 			verbose(VERB_QUERY, "chdir to %s", dir);
 		}
 	}
+
+	/* drop permissions after chroot, getpwnam, pidfile, syslog done*/
 #ifdef HAVE_GETPWNAM
 	if(cfg->username && cfg->username[0]) {
+#ifdef HAVE_SETRESGID
+		if(setresgid(gid,gid,gid) != 0)
+#elif defined(HAVE_SETREGID) && !defined(DARWIN_BROKEN_SETREUID)
+		if(setregid(gid,gid) != 0)
+#else /* use setgid */
 		if(setgid(gid) != 0)
+#endif /* HAVE_SETRESGID */
 			fatal_exit("unable to set group id of %s: %s", 
 				cfg->username, strerror(errno));
+#ifdef HAVE_SETRESUID
+		if(setresuid(uid,uid,uid) != 0)
+#elif defined(HAVE_SETREUID) && !defined(DARWIN_BROKEN_SETREUID)
+		if(setreuid(uid,uid) != 0)
+#else /* use setuid */
 		if(setuid(uid) != 0)
+#endif /* HAVE_SETRESUID */
 			fatal_exit("unable to set user id of %s: %s", 
 				cfg->username, strerror(errno));
 		verbose(VERB_QUERY, "drop user privileges, run as %s", 
 			cfg->username);
 	}
 #endif
-#ifdef HAVE_KILL
-	/* check old pid file before forking */
-	if(cfg->pidfile && cfg->pidfile[0]) {
-		checkoldpid(cfg);
-	}
-#endif
-
-	/* init logfile just before fork */
-	log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
-	if(!debug_mode && cfg->do_daemonize) {
-		detach(cfg);
-	}
-#ifdef HAVE_KILL
-	if(cfg->pidfile && cfg->pidfile[0]) {
-		char* pf = cfg->pidfile;
-		if(cfg->chrootdir && cfg->chrootdir[0] &&
-			strncmp(pf, cfg->chrootdir, strlen(cfg->chrootdir))==0)
-			pf += strlen(cfg->chrootdir);
-		writepid(pf, getpid());
-		if(!(daemon->pidfile = strdup(pf)))
-			log_err("pidf: malloc failed");
-	}
-#else
-	(void)daemon;
-#endif
+	/* file logging inited after chroot,chdir,setuid is done so that 
+	 * it would succeed on SIGHUP as well */
+	if(!cfg->use_syslog)
+		log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
 }
 
 /**
@@ -417,23 +487,23 @@ do_chroot(struct daemon* daemon, struct config_file* cfg, int debug_mode,
  * @param debug_mode: if set, do not daemonize.
  */
 static void 
-run_daemon(char* cfgfile, int cmdline_verbose, int debug_mode)
+run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode)
 {
 	struct config_file* cfg = NULL;
 	struct daemon* daemon = NULL;
-	int done_chroot = 0;
+	int done_setup = 0;
 
 	if(!(daemon = daemon_init()))
 		fatal_exit("alloc failure");
 	while(!daemon->need_to_exit) {
-		if(done_chroot)
+		if(done_setup)
 			verbose(VERB_OPS, "Restart of %s.", PACKAGE_STRING);
 		else	verbose(VERB_OPS, "Start of %s.", PACKAGE_STRING);
 
 		/* config stuff */
 		if(!(cfg = config_create()))
 			fatal_exit("Could not alloc config defaults");
-		if(!config_read(cfg, cfgfile)) {
+		if(!config_read(cfg, cfgfile, daemon->chroot)) {
 			if(errno != ENOENT)
 				fatal_exit("Could not read config file: %s",
 					cfgfile);
@@ -444,10 +514,14 @@ run_daemon(char* cfgfile, int cmdline_verbose, int debug_mode)
 		/* prepare */
 		if(!daemon_open_shared_ports(daemon))
 			fatal_exit("could not open ports");
-		if(!done_chroot) { 
-			do_chroot(daemon, cfg, debug_mode, &cfgfile); 
-			done_chroot = 1; 
-		} else log_init(cfg->logfile, cfg->use_syslog, cfg->chrootdir);
+		if(!done_setup) { 
+			perform_setup(daemon, cfg, debug_mode, &cfgfile); 
+			done_setup = 1; 
+		} else {
+			/* reopen log after HUP to facilitate log rotation */
+			if(!cfg->use_syslog)
+				log_init(cfg->logfile, 0, cfg->chrootdir);
+		}
 		/* work */
 		daemon_fork(daemon);
 
@@ -457,8 +531,17 @@ run_daemon(char* cfgfile, int cmdline_verbose, int debug_mode)
 		config_delete(cfg);
 	}
 	verbose(VERB_ALGO, "Exit cleanup.");
-	if(daemon->pidfile)
+	/* this unlink may not work if the pidfile is located outside
+	 * of the chroot/workdir or we no longer have permissions */
+	if(daemon->pidfile) {
+		int fd;
+		/* truncate pidfile */
+		fd = open(daemon->pidfile, O_WRONLY | O_TRUNC, 0644);
+		if(fd != -1)
+			close(fd);
+		/* delete pidfile */
 		unlink(daemon->pidfile);
+	}
 	daemon_delete(daemon);
 }
 
@@ -477,7 +560,7 @@ int
 main(int argc, char* argv[])
 {
 	int c;
-	char* cfgfile = CONFIGFILE;
+	const char* cfgfile = CONFIGFILE;
 	int cmdline_verbose = 0;
 	int debug_mode = 0;
 

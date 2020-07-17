@@ -63,6 +63,7 @@
 #include "config.h"
 struct comm_point;
 struct comm_reply;
+struct event_base;
 
 /* internal event notification data storage structure. */
 struct internal_event;
@@ -79,6 +80,8 @@ typedef int comm_point_callback_t(struct comm_point*, void*, int,
 #define NETEVENT_CLOSED -1
 /** to pass timeout happened to callback function */
 #define NETEVENT_TIMEOUT -2 
+/** to pass fallback from capsforID to callback function; 0x20 failed */
+#define NETEVENT_CAPSFAIL -3
 
 /**
  * A communication point dispatcher. Thread specific.
@@ -257,9 +260,11 @@ struct comm_signal {
 
 /**
  * Create a new comm base.
+ * @param sigs: if true it attempts to create a default loop for 
+ *   signal handling.
  * @return: the new comm base. NULL on error.
  */
-struct comm_base* comm_base_create();
+struct comm_base* comm_base_create(int sigs);
 
 /**
  * Destroy a comm base.
@@ -288,6 +293,13 @@ void comm_base_dispatch(struct comm_base* b);
  * @param b: the communication base that is in dispatch().
  */
 void comm_base_exit(struct comm_base* b);
+
+/**
+ * Access internal data structure (for util/tube.c on windows)
+ * @param b: comm base
+ * @return event_base. Could be libevent, or internal event handler.
+ */
+struct event_base* comm_base_internal(struct comm_base* b);
 
 /**
  * Create an UDP comm point. Calls malloc.
@@ -436,6 +448,14 @@ void comm_point_stop_listening(struct comm_point* c);
 void comm_point_start_listening(struct comm_point* c, int newfd, int sec);
 
 /**
+ * Stop listening and start listening again for reading or writing.
+ * @param c: commpoint
+ * @param rd: if true, listens for reading.
+ * @param wr: if true, listens for writing.
+ */
+void comm_point_listen_for_rw(struct comm_point* c, int rd, int wr);
+
+/**
  * Get size of memory used by comm point.
  * For TCP handlers this includes subhandlers.
  * For UDP handlers, this does not include the (shared) UDP buffer.
@@ -512,6 +532,17 @@ int comm_signal_bind(struct comm_signal* comsig, int sig);
  */
 void comm_signal_delete(struct comm_signal* comsig);
 
+/**
+ * perform accept(2) with error checking.
+ * @param c: commpoint with accept fd.
+ * @param addr: remote end returned here.
+ * @param addrlen: length of remote end returned here.
+ * @return new fd, or -1 on error.
+ *	if -1, error message has been printed if necessary, simply drop
+ *	out of the reading handler.
+ */
+int comm_point_perform_accept(struct comm_point* c, 
+	struct sockaddr_storage* addr, socklen_t* addrlen);
 
 /**** internal routines ****/
 
