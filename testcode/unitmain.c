@@ -40,6 +40,22 @@
  */
 
 #include "config.h"
+#ifdef HAVE_OPENSSL_ERR_H
+#include <openssl/err.h>
+#endif
+
+#ifdef HAVE_OPENSSL_RAND_H
+#include <openssl/rand.h>
+#endif
+
+#ifdef HAVE_OPENSSL_CONF_H
+#include <openssl/conf.h>
+#endif
+
+#ifdef HAVE_OPENSSL_ENGINE_H
+#include <openssl/engine.h>
+#endif
+#include "ldns/ldns.h"
 #include "util/log.h"
 #include "testcode/unitmain.h"
 
@@ -431,10 +447,12 @@ static void
 rnd_test()
 {
 	struct ub_randstate* r;
-	int num = 100, i;
-	long int a[100];
+	int num = 1000, i;
+	long int a[1000];
+	unsigned int seed = (unsigned)time(NULL);
 	unit_show_feature("ub_random");
-	unit_assert( (r = ub_initstate((unsigned)time(NULL), NULL)) );
+	printf("ub_random seed is %u\n", seed);
+	unit_assert( (r = ub_initstate(seed, NULL)) );
 	for(i=0; i<num; i++) {
 		a[i] = ub_random(r);
 		unit_assert(a[i] >= 0);
@@ -443,6 +461,14 @@ rnd_test()
 			unit_assert(a[i] != a[i-1] || a[i] != a[i-2] ||
 				a[i] != a[i-3] || a[i] != a[i-4] ||
 				a[i] != a[i-5] || a[i] != a[i-6]);
+	}
+	a[0] = ub_random_max(r, 1);
+	unit_assert(a[0] >= 0 && a[0] < 1);
+	a[0] = ub_random_max(r, 10000);
+	unit_assert(a[0] >= 0 && a[0] < 10000);
+	for(i=0; i<num; i++) {
+		a[i] = ub_random_max(r, 10);
+		unit_assert(a[i] >= 0 && a[i] < 10);
 	}
 	ub_randfree(r);
 }
@@ -489,6 +515,7 @@ main(int argc, char* argv[])
 	rtt_test();
 	anchors_test();
 	alloc_test();
+	regional_test();
 	lruhash_test();
 	slabhash_test();
 	infra_test();
@@ -497,7 +524,7 @@ main(int argc, char* argv[])
 	printf("%d checks ok.\n", testcount);
 #ifdef HAVE_OPENSSL_CONFIG
 	EVP_cleanup();
-	/*ENGINE_cleanup();*/
+	ENGINE_cleanup();
 	CONF_modules_free();
 #endif
 	CRYPTO_cleanup_all_ex_data();
