@@ -1,0 +1,4 @@
+  * SECURITY UPDATE: denial of service via large number of referrals
+    - debian/patches/CVE-2014-8602.patch: limit number of targets in
+      iterator/iterator.h, iterator/iterator.c.
+    - CVE-2014-8602
