@@ -1159,20 +1159,24 @@ nsec3_do_prove_nodata(struct module_env* env, struct nsec3_filter* flt,
 	}
 
 	/* Case 5: */
-	if(qinfo->qtype != LDNS_RR_TYPE_DS) {
-		verbose(VERB_ALGO, "proveNodata: could not find matching "
-			"NSEC3, nor matching wildcard, and qtype is not DS "
-			"-- no more options, bogus.");
-		return sec_status_bogus;
-	}
+	/* Due to forwarders, cnames, and other collating effects, we
+	 * can see the ordinary unsigned data from a zone beneath an
+	 * insecure delegation under an optout here */
 
 	/* We need to make sure that the covering NSEC3 is opt-out. */
 	log_assert(ce.nc_rrset);
 	if(!nsec3_has_optout(ce.nc_rrset, ce.nc_rr)) {
-		verbose(VERB_ALGO, "proveNodata: covering NSEC3 was not "
+		if(qinfo->qtype == LDNS_RR_TYPE_DS)
+		  verbose(VERB_ALGO, "proveNodata: covering NSEC3 was not "
 			"opt-out in an opt-out DS NOERROR/NODATA case.");
+		else verbose(VERB_ALGO, "proveNodata: could not find matching "
+			"NSEC3, nor matching wildcard, nor optout NSEC3 "
+			"-- no more options, bogus.");
 		return sec_status_bogus;
 	}
+	/* the optout is a secure denial of DS records */
+	if(qinfo->qtype != LDNS_RR_TYPE_DS)
+		return sec_status_insecure;
 	return sec_status_secure;
 }
 
@@ -1239,16 +1243,16 @@ nsec3_prove_wildcard(struct module_env* env, struct val_env* ve,
 
 /** test if list is all secure */
 static int
-list_is_secure(struct module_env* env, struct val_env* ve,
+list_is_secure(struct module_env* env, struct val_env* ve, 
 	struct ub_packed_rrset_key** list, size_t num,
-	struct key_entry_key* kkey)
+	struct key_entry_key* kkey, char** reason)
 {
 	size_t i;
 	enum sec_status sec;
 	for(i=0; i<num; i++) {
 		if(list[i]->rk.type != htons(LDNS_RR_TYPE_NSEC3))
 			continue;
-		sec = val_verify_rrset_entry(env, ve, list[i], kkey);
+		sec = val_verify_rrset_entry(env, ve, list[i], kkey, reason);
 		if(sec != sec_status_secure) {
 			verbose(VERB_ALGO, "NSEC3 did not verify");
 			return 0;
@@ -1260,7 +1264,7 @@ list_is_secure(struct module_env* env, struct val_env* ve,
 enum sec_status
 nsec3_prove_nods(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key** list, size_t num,
-	struct query_info* qinfo, struct key_entry_key* kkey)
+	struct query_info* qinfo, struct key_entry_key* kkey, char** reason)
 {
 	rbtree_t ct;
 	struct nsec3_filter flt;
@@ -1269,14 +1273,18 @@ nsec3_prove_nods(struct module_env* env, struct val_env* ve,
 	int rr;
 	log_assert(qinfo->qtype == LDNS_RR_TYPE_DS);
 
-	if(!list || num == 0 || !kkey || !key_entry_isgood(kkey))
+	if(!list || num == 0 || !kkey || !key_entry_isgood(kkey)) {
+		*reason = "no valid NSEC3s";
 		return sec_status_bogus; /* no valid NSEC3s, bogus */
-	if(!list_is_secure(env, ve, list, num, kkey))
+	}
+	if(!list_is_secure(env, ve, list, num, kkey, reason))
 		return sec_status_bogus; /* not all NSEC3 records secure */
 	rbtree_init(&ct, &nsec3_hash_cmp); /* init names-to-hash cache */
 	filter_init(&flt, list, num, qinfo); /* init RR iterator */
-	if(!flt.zone)
+	if(!flt.zone) {
+		*reason = "no NSEC3 records";
 		return sec_status_bogus; /* no RRs */
+	}
 	if(nsec3_iteration_count_high(ve, &flt, kkey))
 		return sec_status_insecure; /* iteration count too high */
 
@@ -1291,10 +1299,12 @@ nsec3_prove_nods(struct module_env* env, struct val_env* ve,
 			qinfo->qname_len != 1) {
 			verbose(VERB_ALGO, "nsec3 provenods: NSEC3 is from"
 				" child zone, bogus");
+			*reason = "NSEC3 from child zone";
 			return sec_status_bogus;
 		} else if(nsec3_has_type(rrset, rr, LDNS_RR_TYPE_DS)) {
 			verbose(VERB_ALGO, "nsec3 provenods: NSEC3 has qtype"
 				" DS, bogus");
+			*reason = "NSEC3 has DS in bitmap";
 			return sec_status_bogus;
 		}
 		/* If the NSEC3 RR doesn't have the NS bit set, then 
@@ -1309,6 +1319,7 @@ nsec3_prove_nods(struct module_env* env, struct val_env* ve,
 	if(!nsec3_prove_closest_encloser(env, &flt, &ct, qinfo, 1, &ce)) {
 		verbose(VERB_ALGO, "nsec3 provenods: did not match qname, "
 		          "nor found a proven closest encloser.");
+		*reason = "no NSEC3 closest encloser";
 		return sec_status_bogus;
 	}
 
@@ -1320,6 +1331,8 @@ nsec3_prove_nods(struct module_env* env, struct val_env* ve,
 	if(!nsec3_has_optout(ce.nc_rrset, ce.nc_rr)) {
 		verbose(VERB_ALGO, "nsec3 provenods: covering NSEC3 was not "
 			"opt-out in an opt-out DS NOERROR/NODATA case.");
+		*reason = "covering NSEC3 was not opt-out in an opt-out "
+			"DS NOERROR/NODATA case";
 		return sec_status_bogus;
 	}
 	return sec_status_secure;
@@ -1330,6 +1343,7 @@ nsec3_prove_nxornodata(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key** list, size_t num, 
 	struct query_info* qinfo, struct key_entry_key* kkey, int* nodata)
 {
+	enum sec_status sec;
 	rbtree_t ct;
 	struct nsec3_filter flt;
 	*nodata = 0;
@@ -1348,9 +1362,9 @@ nsec3_prove_nxornodata(struct module_env* env, struct val_env* ve,
 
 	if(nsec3_do_prove_nameerror(env, &flt, &ct, qinfo)==sec_status_secure)
 		return sec_status_secure;
-	if(nsec3_do_prove_nodata(env, &flt, &ct, qinfo)==sec_status_secure) {
+	sec = nsec3_do_prove_nodata(env, &flt, &ct, qinfo);
+	if(sec==sec_status_secure) {
 		*nodata = 1;
-		return sec_status_secure;
 	}
-	return sec_status_bogus;
+	return sec;
 }

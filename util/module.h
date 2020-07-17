@@ -46,6 +46,7 @@
 #include "util/data/msgparse.h"
 struct alloc_cache;
 struct rrset_cache;
+struct key_cache;
 struct config_file;
 struct slabhash;
 struct query_info;
@@ -77,6 +78,8 @@ struct module_env {
 	struct rrset_cache* rrset_cache;
 	/** shared infrastructure cache (edns, lameness) */
 	struct infra_cache* infra_cache;
+	/** shared key cache */
+	struct key_cache* key_cache;
 
 	/* --- services --- */
 	/** 
@@ -209,6 +212,8 @@ struct module_env {
 	/** negative cache, configured by the validator. if not NULL,
 	 * contains NSEC record lookup trees. */
 	struct val_neg_cache* neg_cache;
+	/** the 5011-probe timer (if any) */
+	struct comm_timer* probe_timer;
 	/** Mapping of forwarding zones to targets.
 	 * iterator forwarder information. per-thread, created by worker */
 	struct iter_forwards* fwds;
@@ -228,6 +233,8 @@ enum module_ext_state {
 	module_wait_reply,
 	/** module is waiting for another module */
 	module_wait_module,
+	/** module is waiting for another module; that other is restarted */
+	module_restart_next,
 	/** module is waiting for sub-query */
 	module_wait_subquery,
 	/** module could not finish the query */
@@ -256,6 +263,19 @@ enum module_ev {
 	module_event_error
 };
 
+/** 
+ * Linked list of sockaddrs 
+ * May be allocated such that only 'len' bytes of addr exist for the structure.
+ */
+struct sock_list {
+	/** next in list */
+	struct sock_list* next;
+	/** length of addr */
+	socklen_t len;
+	/** sockaddr */
+	struct sockaddr_storage addr;
+};
+
 /**
  * Module state, per query.
  */
@@ -273,8 +293,14 @@ struct module_qstate {
 	struct dns_msg* return_msg;
 	/** the rcode, in case of error, instead of a reply message */
 	int return_rcode;
+	/** origin of the reply (can be NULL from cache, list for cnames) */
+	struct sock_list* reply_origin;
+	/** IP blacklist for queries */
+	struct sock_list* blacklist;
 	/** region for this query. Cleared when query process finishes. */
 	struct regional* region;
+	/** failure reason information if val-log-level is high */
+	struct config_strlist* errinf;
 
 	/** which module is executing */
 	int curmod;

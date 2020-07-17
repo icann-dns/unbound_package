@@ -66,6 +66,7 @@
 #include "util/fptr_wlist.h"
 #include "util/tube.h"
 #include "iterator/iter_fwd.h"
+#include "validator/autotrust.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #  include <sys/types.h>
@@ -805,6 +806,7 @@ worker_handle_request(struct comm_point* c, void* arg, int error,
 	}
 	if(local_zones_answer(worker->daemon->local_zones, &qinfo, &edns, 
 		c->buffer, worker->scratchpad)) {
+		regional_free_all(worker->scratchpad);
 		if(ldns_buffer_limit(c->buffer) == 0) {
 			comm_point_drop_reply(repinfo);
 			return 0;
@@ -921,8 +923,10 @@ worker_restart_timer(struct worker* worker)
 {
 	if(worker->env.cfg->stat_interval > 0) {
 		struct timeval tv;
+#ifndef S_SPLINT_S
 		tv.tv_sec = worker->env.cfg->stat_interval;
 		tv.tv_usec = 0;
+#endif
 		comm_timer_set(worker->stat_timer, &tv);
 	}
 }
@@ -938,6 +942,18 @@ void worker_stat_timer_cb(void* arg)
 	}
 	/* start next timer */
 	worker_restart_timer(worker);
+}
+
+void worker_probe_timer_cb(void* arg)
+{
+	struct worker* worker = (struct worker*)arg;
+	struct timeval tv;
+#ifndef S_SPLINT_S
+	tv.tv_sec = (time_t)autr_probe_timer(&worker->env);
+	tv.tv_usec = 0;
+#endif
+	if(tv.tv_sec != 0)
+		comm_timer_set(worker->env.probe_timer, &tv);
 }
 
 struct worker* 
@@ -1036,7 +1052,8 @@ worker_init(struct worker* worker, struct config_file *cfg,
 		cfg->do_tcp?cfg->outgoing_num_tcp:0, 
 		worker->daemon->env->infra_cache, worker->rndstate,
 		cfg->use_caps_bits_for_id, worker->ports, worker->numports,
-		cfg->unwanted_threshold, &worker_alloc_cleanup, worker);
+		cfg->unwanted_threshold, &worker_alloc_cleanup, worker,
+		cfg->do_udp);
 	if(!worker->back) {
 		log_err("could not create outgoing sockets");
 		worker_delete(worker);
@@ -1091,6 +1108,24 @@ worker_init(struct worker* worker, struct config_file *cfg,
 		worker_delete(worker);
 		return 0;
 	}
+	/* one probe timer per process -- if we have 5011 anchors */
+	if(autr_get_num_anchors(worker->env.anchors) > 0
+#ifndef THREADS_DISABLED
+		&& worker->thread_num == 0
+#endif
+		) {
+		struct timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
+		worker->env.probe_timer = comm_timer_create(worker->base,
+			worker_probe_timer_cb, worker);
+		if(!worker->env.probe_timer) {
+			log_err("could not create 5011-probe timer");
+		} else {
+			/* let timer fire, then it can reset itself */
+			comm_timer_set(worker->env.probe_timer, &tv);
+		}
+	}
 	if(!worker->env.mesh || !worker->env.scratch_buffer) {
 		worker_delete(worker);
 		return 0;
@@ -1130,6 +1165,7 @@ worker_delete(struct worker* worker)
 	comm_signal_delete(worker->comsig);
 	tube_delete(worker->cmd);
 	comm_timer_delete(worker->stat_timer);
+	comm_timer_delete(worker->env.probe_timer);
 	free(worker->ports);
 	if(worker->thread_num == 0) {
 		log_set_time(NULL);
@@ -1249,13 +1285,15 @@ void libworker_handle_control_cmd(struct tube* ATTR_UNUSED(tube),
 }
 
 void libworker_fg_done_cb(void* ATTR_UNUSED(arg), int ATTR_UNUSED(rcode),
-        ldns_buffer* ATTR_UNUSED(buf), enum sec_status ATTR_UNUSED(s))
+        ldns_buffer* ATTR_UNUSED(buf), enum sec_status ATTR_UNUSED(s),
+	char* ATTR_UNUSED(why_bogus))
 {
 	log_assert(0);
 }
 
 void libworker_bg_done_cb(void* ATTR_UNUSED(arg), int ATTR_UNUSED(rcode),
-        ldns_buffer* ATTR_UNUSED(buf), enum sec_status ATTR_UNUSED(s))
+        ldns_buffer* ATTR_UNUSED(buf), enum sec_status ATTR_UNUSED(s),
+	char* ATTR_UNUSED(why_bogus))
 {
 	log_assert(0);
 }
@@ -1277,3 +1315,4 @@ int codeline_cmp(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
         log_assert(0);
         return 0;
 }
+

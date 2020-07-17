@@ -41,6 +41,13 @@
  */
 
 #include "config.h"
+/* remove alloc checks, not in this part of the code */
+#ifdef UNBOUND_ALLOC_STATS
+#undef malloc
+#undef calloc
+#undef free
+#undef realloc
+#endif
 #include "libunbound/unbound.h"
 #include <ldns/ldns.h>
 
@@ -193,24 +200,18 @@ secure_str(struct ub_result* result)
 static void
 pretty_type(char* s, size_t len, int t)
 {
-	const ldns_rr_descriptor *d = ldns_rr_descript((uint16_t)t);
-	if(d) {
-		snprintf(s, len, "%s", d->_name);
-	} else {
-		snprintf(s, len, "TYPE%d", t);
-	}
+	char* d = ldns_rr_type2str(t);
+	snprintf(s, len, "%s", d);
+	free(d);
 }
 
 /** nice string for class */
 static void
 pretty_class(char* s, size_t len, int c)
 {
-	ldns_lookup_table *cl = ldns_lookup_by_id(ldns_rr_classes, c);
-	if(cl) {
-		snprintf(s, len, "%s", cl->name);
-	} else {
-		snprintf(s, len, "CLASS%d", c);
-	}
+	char* d = ldns_rr_class2str(c);
+	snprintf(s, len, "%s", d);
+	free(d);
 }
 
 /** nice string for rcode */
@@ -297,6 +298,8 @@ pretty_output(char* q, int t, int c, struct ub_result* result, int docname)
 		if(verb > 0)
 			printf(" %s", secstatus);
 		printf("\n");
+		if(result->bogus && result->why_bogus)
+			printf("%s\n", result->why_bogus);
 		return;
 	}
 	if(docname && result->canonname &&
@@ -324,10 +327,31 @@ pretty_output(char* q, int t, int c, struct ub_result* result, int docname)
 				printf(" has no domain name ptr");
 			else if(t == LDNS_RR_TYPE_MX)
 				printf(" has no mail handler record");
-			else	printf(" has no %s record", tstr);
+			else if(t == LDNS_RR_TYPE_ANY) {
+				ldns_pkt* p = NULL;
+				if(ldns_wire2pkt(&p, result->answer_packet,
+				  (size_t)result->answer_len)==LDNS_STATUS_OK){
+					if(ldns_rr_list_rr_count(
+						ldns_pkt_answer(p)) == 0)
+						printf(" has no records\n");
+					else {
+						printf(" ANY:\n");
+						ldns_rr_list_print(stdout,
+							ldns_pkt_answer(p));
+					}
+				} else {
+					fprintf(stderr, "could not parse "
+						"reply packet to ANY query\n");
+					exit(1);
+				}
+				ldns_pkt_free(p);
+
+			} else	printf(" has no %s record", tstr);
 			printf(" %s\n", secstatus);
 		}
 		/* else: emptiness to indicate no data */
+		if(result->bogus && result->why_bogus)
+			printf("%s\n", result->why_bogus);
 		return;
 	}
 	i=0;
@@ -339,6 +363,8 @@ pretty_output(char* q, int t, int c, struct ub_result* result, int docname)
 			(size_t)result->len[i]);
 		i++;
 	}
+	if(result->bogus && result->why_bogus)
+		printf("%s\n", result->why_bogus);
 }
 
 /** perform a lookup and printout return if domain existed */
@@ -433,7 +459,6 @@ int main(int argc, char* argv[])
 			debuglevel++;
 			if(debuglevel < 2) 
 				debuglevel = 2; /* at least VERB_DETAIL */
-			check_ub_res(ub_ctx_debuglevel(ctx, debuglevel));
 			break;
 		case 'r':
 			check_ub_res(ub_ctx_resolvconf(ctx, "/etc/resolv.conf"));
@@ -459,6 +484,8 @@ int main(int argc, char* argv[])
 			usage();
 		}
 	}
+	if(debuglevel != 0) /* set after possible -C options */
+		check_ub_res(ub_ctx_debuglevel(ctx, debuglevel));
 	argc -= optind;
 	argv += optind;
 	if(argc != 1)

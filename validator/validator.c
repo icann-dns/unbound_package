@@ -48,6 +48,7 @@
 #include "validator/val_nsec.h"
 #include "validator/val_nsec3.h"
 #include "validator/val_neg.h"
+#include "validator/autotrust.h"
 #include "services/cache/dns.h"
 #include "util/data/dname.h"
 #include "util/module.h"
@@ -117,6 +118,7 @@ val_apply_cfg(struct module_env* env, struct val_env* val_env,
 		log_err("out of memory");
 		return 0;
 	}
+	env->key_cache = val_env->kcache;
 	if(!anchors_apply_cfg(env->anchors, cfg)) {
 		log_err("validator: error in trustanchors config");
 		return 0;
@@ -186,18 +188,10 @@ val_deinit(struct module_env* env, int id)
 	env->modinfo[id] = NULL;
 }
 
-/** allocate new validator query state */
+/** fill in message structure */
 static struct val_qstate*
-val_new(struct module_qstate* qstate, int id)
+val_new_getmsg(struct module_qstate* qstate, struct val_qstate* vq)
 {
-	struct val_qstate* vq = (struct val_qstate*)regional_alloc(
-		qstate->region, sizeof(*vq));
-	log_assert(!qstate->minfo[id]);
-	if(!vq)
-		return NULL;
-	memset(vq, 0, sizeof(*vq));
-	qstate->minfo[id] = vq;
-	vq->state = VAL_INIT_STATE;
 	if(!qstate->return_msg || qstate->return_rcode != LDNS_RCODE_NOERROR) {
 		/* create a message to verify */
 		verbose(VERB_ALGO, "constructing reply for validation");
@@ -231,6 +225,21 @@ val_new(struct module_qstate* qstate, int id)
 		return NULL;
 	vq->rrset_skip = 0;
 	return vq;
+}
+
+/** allocate new validator query state */
+static struct val_qstate*
+val_new(struct module_qstate* qstate, int id)
+{
+	struct val_qstate* vq = (struct val_qstate*)regional_alloc(
+		qstate->region, sizeof(*vq));
+	log_assert(!qstate->minfo[id]);
+	if(!vq)
+		return NULL;
+	memset(vq, 0, sizeof(*vq));
+	qstate->minfo[id] = vq;
+	vq->state = VAL_INIT_STATE;
+	return val_new_getmsg(qstate, vq);
 }
 
 /**
@@ -328,6 +337,7 @@ static int
 generate_request(struct module_qstate* qstate, int id, uint8_t* name, 
 	size_t namelen, uint16_t qtype, uint16_t qclass, uint16_t flags)
 {
+	struct val_qstate* vq = (struct val_qstate*)qstate->minfo[id];
 	struct module_qstate* newq;
 	struct query_info ask;
 	ask.qname = name;
@@ -341,8 +351,13 @@ generate_request(struct module_qstate* qstate, int id, uint8_t* name,
 		log_err("Could not generate request: out of memory");
 		return 0;
 	}
-	/* ignore newq; validator does not need state created for that
+	/* newq; validator does not need state created for that
 	 * query, and its a 'normal' for iterator as well */
+	if(newq) {
+		/* add our blacklist to the query blacklist */
+		sock_list_merge(&newq->blacklist, newq->region,
+			vq->chain_blacklist);
+	}
 	qstate->ext_state[id] = module_wait_subquery;
 	return 1;
 }
@@ -372,6 +387,15 @@ prime_trust_anchor(struct module_qstate* qstate, struct val_qstate* vq,
 	 * query, and its a 'normal' for iterator as well */
 	vq->wait_prime_ta = 1; /* to elicit PRIME_RESP_STATE processing 
 		from the validator inform_super() routine */
+	/* store trust anchor name for later lookup when prime returns */
+	vq->trust_anchor_name = regional_alloc_init(qstate->region,
+		toprime->name, toprime->namelen);
+	vq->trust_anchor_len = toprime->namelen;
+	vq->trust_anchor_labs = toprime->namelabs;
+	if(!vq->trust_anchor_name) {
+		log_err("Could not prime trust anchor: out of memory");
+		return 0;
+	}
 	return 1;
 }
 
@@ -385,6 +409,7 @@ prime_trust_anchor(struct module_qstate* qstate, struct val_qstate* vq,
  * trusted DNSKEY rrset that signs this response must already have been
  * completed.
  * 
+ * @param qstate: query state.
  * @param env: module env for verify.
  * @param ve: validator env for verify.
  * @param qchase: query that was made.
@@ -395,15 +420,16 @@ prime_trust_anchor(struct module_qstate* qstate, struct val_qstate* vq,
  * 	fail to verify. The message is then set to bogus.
  */
 static int
-validate_msg_signatures(struct module_env* env, struct val_env* ve,
-	struct query_info* qchase, struct reply_info* chase_reply, 
-	struct key_entry_key* key_entry)
+validate_msg_signatures(struct module_qstate* qstate, struct module_env* env,
+	struct val_env* ve, struct query_info* qchase,
+	struct reply_info* chase_reply, struct key_entry_key* key_entry)
 {
 	uint8_t* sname;
 	size_t i, slen;
 	struct ub_packed_rrset_key* s;
 	enum sec_status sec;
 	int dname_seen = 0;
+	char* reason = NULL;
 
 	/* validate the ANSWER section */
 	for(i=0; i<chase_reply->an_numrrsets; i++) {
@@ -424,13 +450,19 @@ validate_msg_signatures(struct module_env* env, struct val_env* ve,
 		}
 
 		/* Verify the answer rrset */
-		sec = val_verify_rrset_entry(env, ve, s, key_entry);
+		sec = val_verify_rrset_entry(env, ve, s, key_entry, &reason);
 		/* If the (answer) rrset failed to validate, then this 
 		 * message is BAD. */
 		if(sec != sec_status_secure) {
 			log_nametypeclass(VERB_QUERY, "validator: response "
 				"has failed ANSWER rrset:", s->rk.dname,
 				ntohs(s->rk.type), ntohs(s->rk.rrset_class));
+			errinf(qstate, reason);
+			if(ntohs(s->rk.type) == LDNS_RR_TYPE_CNAME)
+				errinf(qstate, "for CNAME");
+			else if(ntohs(s->rk.type) == LDNS_RR_TYPE_DNAME)
+				errinf(qstate, "for DNAME");
+			errinf_origin(qstate, qstate->reply_origin);
 			chase_reply->security = sec_status_bogus;
 			return 0;
 		}
@@ -447,13 +479,16 @@ validate_msg_signatures(struct module_env* env, struct val_env* ve,
 	for(i=chase_reply->an_numrrsets; i<chase_reply->an_numrrsets+
 		chase_reply->ns_numrrsets; i++) {
 		s = chase_reply->rrsets[i];
-		sec = val_verify_rrset_entry(env, ve, s, key_entry);
+		sec = val_verify_rrset_entry(env, ve, s, key_entry, &reason);
 		/* If anything in the authority section fails to be secure, 
 		 * we have a bad message. */
 		if(sec != sec_status_secure) {
 			log_nametypeclass(VERB_QUERY, "validator: response "
 				"has failed AUTHORITY rrset:", s->rk.dname,
 				ntohs(s->rk.type), ntohs(s->rk.rrset_class));
+			errinf(qstate, reason);
+			errinf_rrset(qstate, s);
+			errinf_origin(qstate, qstate->reply_origin);
 			chase_reply->security = sec_status_bogus;
 			return 0;
 		}
@@ -469,7 +504,8 @@ validate_msg_signatures(struct module_env* env, struct val_env* ve,
 		/* leave others unchecked, those get removed later on too */
 		val_find_rrset_signer(s, &sname, &slen);
 		if(sname && query_dname_compare(sname, key_entry->name)==0)
-			(void)val_verify_rrset_entry(env, ve, s, key_entry);
+			(void)val_verify_rrset_entry(env, ve, s, key_entry,
+				&reason);
 		/* the additional section can fail to be secure, 
 		 * it is optional, check signature in case we need
 		 * to clean the additional section later. */
@@ -1160,9 +1196,14 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 {
 	uint8_t* lookup_name;
 	size_t lookup_len;
+	struct trust_anchor* anchor;
 	enum val_classification subtype = val_classify_response(
 		qstate->query_flags, &qstate->qinfo, &vq->qchase, 
 		vq->orig_msg->rep, vq->rrset_skip);
+	if(vq->restart_count > VAL_MAX_RESTART_COUNT) {
+		verbose(VERB_ALGO, "restart count exceeded");
+		return val_error(qstate, id);
+	}
 	verbose(VERB_ALGO, "validator classification %s", 
 		val_classification_to_string(subtype));
 	if(subtype == VAL_CLASS_REFERRAL && 
@@ -1197,15 +1238,13 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 	vq->key_entry = NULL;
 	vq->empty_DS_name = NULL;
 	vq->ds_rrset = 0;
-	vq->trust_anchor = anchors_lookup(qstate->env->anchors, 
+	anchor = anchors_lookup(qstate->env->anchors, 
 		lookup_name, lookup_len, vq->qchase.qclass);
 
 	/* Determine the signer/lookup name */
 	val_find_signer(subtype, &vq->qchase, vq->orig_msg->rep, 
 		vq->rrset_skip, &vq->signer_name, &vq->signer_len);
 	if(vq->signer_name == NULL) {
-		lookup_name = vq->qchase.qname;
-		lookup_len = vq->qchase.qname_len;
 		log_nametypeclass(VERB_ALGO, "no signer, using", lookup_name,
 			0, 0);
 	} else {
@@ -1216,13 +1255,11 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 
 	/* for NXDOMAIN it could be signed by a parent of the trust anchor */
 	if(subtype == VAL_CLASS_NAMEERROR && vq->signer_name &&
-		vq->trust_anchor &&
-		dname_strict_subdomain_c(vq->trust_anchor->name, lookup_name)){
-		while(vq->trust_anchor && dname_strict_subdomain_c(
-			vq->trust_anchor->name, lookup_name)) {
-			vq->trust_anchor = vq->trust_anchor->parent;
-		}
-		if(!vq->trust_anchor) { /* unsigned parent denies anchor*/
+		anchor && dname_strict_subdomain_c(anchor->name, lookup_name)){
+		lock_basic_unlock(&anchor->lock);
+		anchor = anchors_lookup(qstate->env->anchors, 
+			lookup_name, lookup_len, vq->qchase.qclass);
+		if(!anchor) { /* unsigned parent denies anchor*/
 			verbose(VERB_QUERY, "unsigned parent zone denies"
 				" trust anchor, indeterminate");
 			vq->chase_reply->security = sec_status_indeterminate;
@@ -1248,7 +1285,7 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 		vq->qchase.qclass, qstate->region, *qstate->env->now);
 
 	/* there is no key(from DLV) and no trust anchor */
-	if(vq->key_entry == NULL && vq->trust_anchor == NULL) {
+	if(vq->key_entry == NULL && anchor == NULL) {
 		/*response isn't under a trust anchor, so we cannot validate.*/
 		vq->chase_reply->security = sec_status_indeterminate;
 		/* go to finished state to cache this result */
@@ -1257,16 +1294,14 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 	}
 	/* if not key, or if keyentry is *above* the trustanchor, i.e.
 	 * the keyentry is based on another (higher) trustanchor */
-	else if(vq->key_entry == NULL || (vq->trust_anchor &&
-		dname_strict_subdomain_c(vq->trust_anchor->name, 
-		vq->key_entry->name))) {
+	else if(vq->key_entry == NULL || (anchor &&
+		dname_strict_subdomain_c(anchor->name, vq->key_entry->name))) {
 		/* trust anchor is an 'unsigned' trust anchor */
-		if(vq->trust_anchor && vq->trust_anchor->numDS == 0 &&
-			vq->trust_anchor->numDNSKEY == 0) {
+		if(anchor && anchor->numDS == 0 && anchor->numDNSKEY == 0) {
 			vq->chase_reply->security = sec_status_insecure;
-			val_mark_insecure(vq->chase_reply, 
-				vq->trust_anchor->name, 
+			val_mark_insecure(vq->chase_reply, anchor->name, 
 				qstate->env->rrset_cache, qstate->env);
+			lock_basic_unlock(&anchor->lock);
 			vq->dlv_checked=1; /* skip DLV check */
 			/* go to finished state to cache this result */
 			vq->state = VAL_FINISHED_STATE;
@@ -1274,13 +1309,21 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 		}
 		/* fire off a trust anchor priming query. */
 		verbose(VERB_DETAIL, "prime trust anchor");
-		if(!prime_trust_anchor(qstate, vq, id, vq->trust_anchor))
+		if(!prime_trust_anchor(qstate, vq, id, anchor)) {
+			lock_basic_unlock(&anchor->lock);
 			return val_error(qstate, id);
+		}
+		lock_basic_unlock(&anchor->lock);
 		/* and otherwise, don't continue processing this event.
 		 * (it will be reactivated when the priming query returns). */
 		vq->state = VAL_FINDKEY_STATE;
 		return 0;
-	} else if(key_entry_isnull(vq->key_entry)) {
+	}
+	if(anchor) {
+		lock_basic_unlock(&anchor->lock);
+	}
+
+	if(key_entry_isnull(vq->key_entry)) {
 		/* response is under a null key, so we cannot validate
 		 * However, we do set the status to INSECURE, since it is 
 		 * essentially proven insecure. */
@@ -1323,11 +1366,22 @@ processFindKey(struct module_qstate* qstate, struct val_qstate* vq, int id)
 	int strip_lab;
 
 	log_query_info(VERB_ALGO, "validator: FindKey", &vq->qchase);
-	/* We know that state.key_entry is not a null or bad key -- if it were,
+	/* We know that state.key_entry is not 0 or bad key -- if it were,
 	 * then previous processing should have directed this event to 
-	 * a different state. */
-	log_assert(vq->key_entry && !key_entry_isbad(vq->key_entry) && 
-		!key_entry_isnull(vq->key_entry));
+	 * a different state. 
+	 * It could be an isnull key, which signals that a DLV was just
+	 * done and the DNSKEY after the DLV failed with dnssec-retry state
+	 * and the DNSKEY has to be performed again. */
+	log_assert(vq->key_entry && !key_entry_isbad(vq->key_entry));
+	if(key_entry_isnull(vq->key_entry)) {
+		if(!generate_request(qstate, id, vq->ds_rrset->rk.dname, 
+			vq->ds_rrset->rk.dname_len, LDNS_RR_TYPE_DNSKEY, 
+			vq->qchase.qclass, BIT_CD)) {
+			log_err("mem error generating DNSKEY request");
+			return val_error(qstate, id);
+		}
+		return 0;
+	}
 
 	target_key_name = vq->signer_name;
 	target_key_len = vq->signer_len;
@@ -1462,6 +1516,15 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 		return 1;
 	}
 
+	if(key_entry_isbad(vq->key_entry)) {
+		log_nametypeclass(VERB_DETAIL, "Could not establish a chain "
+			"of trust to keys for", vq->key_entry->name,
+			LDNS_RR_TYPE_DNSKEY, vq->key_entry->key_class);
+		vq->chase_reply->security = sec_status_bogus;
+		errinf(qstate, "while building chain of trust");
+		return 1;
+	}
+
 	/* signerName being null is the indicator that this response was 
 	 * unsigned */
 	if(vq->signer_name == NULL) {
@@ -1469,14 +1532,8 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 			"signer name", &vq->qchase);
 		verbose(VERB_DETAIL, "Could not establish validation of "
 		          "INSECURE status of unsigned response.");
-		vq->chase_reply->security = sec_status_bogus;
-		return 1;
-	}
-
-	if(key_entry_isbad(vq->key_entry)) {
-		log_nametypeclass(VERB_DETAIL, "Could not establish a chain "
-			"of trust to keys for", vq->key_entry->name,
-			LDNS_RR_TYPE_DNSKEY, vq->key_entry->key_class);
+		errinf(qstate, "no signatures");
+		errinf_origin(qstate, qstate->reply_origin);
 		vq->chase_reply->security = sec_status_bogus;
 		return 1;
 	}
@@ -1485,7 +1542,7 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 
 	/* check signatures in the message; 
 	 * answer and authority must be valid, additional is only checked. */
-	if(!validate_msg_signatures(qstate->env, ve, &vq->qchase, 
+	if(!validate_msg_signatures(qstate, qstate->env, ve, &vq->qchase, 
 		vq->chase_reply, vq->key_entry)) {
 		/* workaround bad recursor out there that truncates (even
 		 * with EDNS4k) to 512 by removing RRSIG from auth section
@@ -1502,6 +1559,7 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 			vq->chase_reply->ar_numrrsets = 0;
 			vq->chase_reply->rrset_count = 
 				vq->chase_reply->an_numrrsets;
+			qstate->errinf = NULL;
 		}
 		else {
 			verbose(VERB_DETAIL, "Validate: message contains "
@@ -1579,6 +1637,13 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 			log_err("validate: unhandled response subtype: %d",
 				subtype);
 	}
+	if(vq->chase_reply->security == sec_status_bogus) {
+		if(subtype == VAL_CLASS_POSITIVE)
+			errinf(qstate, "wildcard");
+		else errinf(qstate, val_classification_to_string(subtype));
+		errinf(qstate, "proof failed");
+		errinf_origin(qstate, qstate->reply_origin);
+	}
 
 	return 1;
 }
@@ -1629,6 +1694,8 @@ val_dlv_init(struct module_qstate* qstate, struct val_qstate* vq,
 		/* use qchase */
 		nm = vq->qchase.qname;
 		nm_len = vq->qchase.qname_len;
+		if(vq->qchase.qtype == LDNS_RR_TYPE_DS)
+			dname_remove_label(&nm, &nm_len);
 	}
 	log_nametypeclass(VERB_ALGO, "DLV init look", nm, LDNS_RR_TYPE_DS,
 		vq->qchase.qclass);
@@ -1682,10 +1749,24 @@ val_dlv_init(struct module_qstate* qstate, struct val_qstate* vq,
 
 	/* If we can find the name in the aggressive negative cache,
 	 * give up; insecure is the answer */
-	if(val_neg_dlvlookup(ve->neg_cache, vq->dlv_lookup_name,
+	while(val_neg_dlvlookup(ve->neg_cache, vq->dlv_lookup_name,
 		vq->dlv_lookup_name_len, vq->qchase.qclass,
 		qstate->env->rrset_cache, *qstate->env->now)) {
-		return 1;
+		/* go up */
+		dname_remove_label(&vq->dlv_lookup_name, 
+			&vq->dlv_lookup_name_len);
+		/* too high? */
+		if(!dname_subdomain_c(vq->dlv_lookup_name,
+			qstate->env->anchors->dlv_anchor->name)) {
+			verbose(VERB_ALGO, "ask above dlv repo");
+			return 1; /* Above the repo is insecure */
+		}
+		/* above chain of trust? */
+		if(vq->dlv_insecure_at && !dname_subdomain_c(
+			vq->dlv_lookup_name, vq->dlv_insecure_at)) {
+			verbose(VERB_ALGO, "ask above insecure endpoint");
+			return 1;
+		}
 	}
 
 	/* perform a lookup for the DLV; with validation */
@@ -1795,9 +1876,34 @@ processFinished(struct module_qstate* qstate, struct val_qstate* vq,
 	/* if the result is bogus - set message ttl to bogus ttl to avoid
 	 * endless bogus revalidation */
 	if(vq->orig_msg->rep->security == sec_status_bogus) {
-		vq->orig_msg->rep->ttl = *qstate->env->now + ve->bogus_ttl;
-		if(qstate->env->cfg->val_log_level >= 1) {
-			log_query_info(0, "validation failure", &qstate->qinfo);
+		/* see if we can try again to fetch data */
+		if(vq->restart_count < VAL_MAX_RESTART_COUNT) {
+			int restart_count = vq->restart_count+1;
+			verbose(VERB_ALGO, "validation failed, "
+				"blacklist and retry to fetch data");
+			val_blacklist(&qstate->blacklist, qstate->region, 
+				qstate->reply_origin, 0);
+			qstate->reply_origin = NULL;
+			qstate->errinf = NULL;
+			memset(vq, 0, sizeof(*vq));
+			vq->restart_count = restart_count;
+			vq->state = VAL_INIT_STATE;
+			verbose(VERB_ALGO, "pass back to next module");
+			qstate->ext_state[id] = module_restart_next;
+			return 0;
+		}
+
+		vq->orig_msg->rep->ttl = ve->bogus_ttl;
+		if(qstate->env->cfg->val_log_level >= 1 &&
+			!qstate->env->cfg->val_log_squelch) {
+			if(qstate->env->cfg->val_log_level < 2)
+				log_query_info(0, "validation failure",
+					&qstate->qinfo);
+			else {
+				char* err = errinf_to_str(qstate);
+				if(err) log_info(err);
+				free(err);
+			}
 		}
 		/* If we are in permissive mode, bogus gets indeterminate */
 		if(ve->permissive_mode)
@@ -1874,6 +1980,15 @@ processDLVLookup(struct module_qstate* qstate, struct val_qstate* vq,
 		vq->ds_rrset->rk.dname = nm;
 		vq->ds_rrset->rk.dname_len = nmlen;
 
+		/* create a nullentry for the key so the dnskey lookup
+		 * can be retried after a validation failure for it */
+		vq->key_entry = key_entry_create_null(qstate->region,
+			nm, nmlen, vq->qchase.qclass, 0, 0);
+		if(!vq->key_entry) {
+			log_err("Out of memory in DLVLook");
+			return val_error(qstate, id);
+		}
+
 		if(!generate_request(qstate, id, vq->ds_rrset->rk.dname, 
 			vq->ds_rrset->rk.dname_len, LDNS_RR_TYPE_DNSKEY, 
 			vq->qchase.qclass, BIT_CD)) {
@@ -1909,10 +2024,11 @@ processDLVLookup(struct module_qstate* qstate, struct val_qstate* vq,
 	if(val_neg_dlvlookup(ve->neg_cache, vq->dlv_lookup_name,
 		vq->dlv_lookup_name_len, vq->qchase.qclass,
 		qstate->env->rrset_cache, *qstate->env->now)) {
-		vq->dlv_status = dlv_there_is_no_dlv;
-		/* continue with the insecure result we got */
-		vq->state = VAL_FINISHED_STATE;
-		return 1;
+		/* does not exist, go up one (go higher). */
+		dname_remove_label(&vq->dlv_lookup_name, 
+			&vq->dlv_lookup_name_len);
+		/* limit number of labels, limited number of recursion */
+		return processDLVLookup(qstate, vq, ve, id);
 	}
 
 	if(!generate_request(qstate, id, vq->dlv_lookup_name,
@@ -2013,6 +2129,12 @@ val_operate(struct module_qstate* qstate, enum module_ev event, int id,
 				qstate->ext_state[id] = module_error;
 				return;
 			}
+		} else if(!vq->orig_msg) {
+			if(!val_new_getmsg(qstate, vq)) {
+				log_err("validator: malloc failure");
+				qstate->ext_state[id] = module_error;
+				return;
+			}
 		}
 		val_handle(qstate, vq, ve, id);
 		return;
@@ -2031,8 +2153,8 @@ val_operate(struct module_qstate* qstate, enum module_ev event, int id,
 /**
  * Evaluate the response to a priming request.
  *
- * @param rcode: rcode return value.
- * @param msg: message return value (allocated in a the wrong region).
+ * @param dnskey_rrset: DNSKEY rrset (can be NULL if none) in prime reply.
+ * 	(this rrset is allocated in the wrong region, not the qstate).
  * @param ta: trust anchor.
  * @param qstate: qstate that needs key.
  * @param id: module id.
@@ -2042,40 +2164,35 @@ val_operate(struct module_qstate* qstate, enum module_ev event, int id,
  *	Bad key (validation failed).
  */
 static struct key_entry_key*
-primeResponseToKE(int rcode, struct dns_msg* msg, struct trust_anchor* ta,
-	struct module_qstate* qstate, int id)
+primeResponseToKE(struct ub_packed_rrset_key* dnskey_rrset, 
+	struct trust_anchor* ta, struct module_qstate* qstate, int id)
 {
 	struct val_env* ve = (struct val_env*)qstate->env->modinfo[id];
-	struct ub_packed_rrset_key* dnskey_rrset = NULL;
 	struct key_entry_key* kkey = NULL;
 	enum sec_status sec = sec_status_unchecked;
+	char* reason = NULL;
 
-	if(rcode == LDNS_RCODE_NOERROR) {
-		dnskey_rrset = reply_find_rrset_section_an(msg->rep,
-			ta->name, ta->namelen, LDNS_RR_TYPE_DNSKEY,
-			ta->dclass);
-	}
 	if(!dnskey_rrset) {
 		log_nametypeclass(VERB_OPS, "failed to prime trust anchor -- "
 			"could not fetch DNSKEY rrset", 
 			ta->name, LDNS_RR_TYPE_DNSKEY, ta->dclass);
-		if(qstate->env->cfg->harden_dnssec_stripped)
+		if(qstate->env->cfg->harden_dnssec_stripped) {
+			errinf(qstate, "no DNSKEY rrset");
 			kkey = key_entry_create_bad(qstate->region, ta->name,
 				ta->namelen, ta->dclass);
-		else 	kkey = key_entry_create_null(qstate->region, ta->name,
+		} else 	kkey = key_entry_create_null(qstate->region, ta->name,
 				ta->namelen, ta->dclass, NULL_KEY_TTL,
 				*qstate->env->now);
 		if(!kkey) {
 			log_err("out of memory: allocate fail prime key");
 			return NULL;
 		}
-		key_cache_insert(ve->kcache, kkey);
 		return kkey;
 	}
 	/* attempt to verify with trust anchor DS and DNSKEY */
 	if(ta->ds_rrset) {
 		kkey = val_verify_new_DNSKEYs(qstate->region, qstate->env, ve, 
-			dnskey_rrset, ta->ds_rrset);
+			dnskey_rrset, ta->ds_rrset, &reason);
 		if(!kkey) {
 			log_err("out of memory: verifying prime DS");
 			return NULL;
@@ -2089,7 +2206,7 @@ primeResponseToKE(int rcode, struct dns_msg* msg, struct trust_anchor* ta,
 	}
 	if(sec != sec_status_secure && ta->dnskey_rrset) {
 		sec = val_verify_rrset(qstate->env, ve, dnskey_rrset,
-			ta->dnskey_rrset);
+			ta->dnskey_rrset, &reason);
 		verbose(VERB_DETAIL, "validate keys with anchor(DNSKEY): %s", 
 			sec_status_to_string(sec));
 		if(sec == sec_status_secure) {
@@ -2109,24 +2226,22 @@ primeResponseToKE(int rcode, struct dns_msg* msg, struct trust_anchor* ta,
 			ta->name, LDNS_RR_TYPE_DNSKEY, ta->dclass);
 		/* NOTE: in this case, we should probably reject the trust 
 		 * anchor for longer, perhaps forever. */
-		if(qstate->env->cfg->harden_dnssec_stripped)
+		if(qstate->env->cfg->harden_dnssec_stripped) {
+			errinf(qstate, reason);
 			kkey = key_entry_create_bad(qstate->region, ta->name,
 				ta->namelen, ta->dclass);
-		else 	kkey = key_entry_create_null(qstate->region, ta->name,
+		} else 	kkey = key_entry_create_null(qstate->region, ta->name,
 				ta->namelen, ta->dclass, NULL_KEY_TTL,
 				*qstate->env->now);
 		if(!kkey) {
 			log_err("out of memory: allocate null prime key");
 			return NULL;
 		}
-		key_cache_insert(ve->kcache, kkey);
 		return kkey;
 	}
 
 	log_nametypeclass(VERB_DETAIL, "Successfully primed trust anchor", 
 		ta->name, LDNS_RR_TYPE_DNSKEY, ta->dclass);
-	/* store the freshly primed entry in the cache */
-	key_cache_insert(ve->kcache, kkey);
 	return kkey;
 }
 
@@ -2153,10 +2268,15 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 	struct key_entry_key** ke)
 {
 	struct val_env* ve = (struct val_env*)qstate->env->modinfo[id];
+	char* reason = NULL;
 	enum val_classification subtype;
 	if(rcode != LDNS_RCODE_NOERROR) {
+		char* rc = ldns_pkt_rcode2str(rcode);
 		/* errors here pretty much break validation */
 		verbose(VERB_DETAIL, "DS response was error, thus bogus");
+		errinf(qstate, rc);
+		errinf(qstate, "no DS");
+		free(rc);
 		goto return_bogus;
 	}
 
@@ -2170,15 +2290,17 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 		if(!ds) {
 			log_warn("internal error: POSITIVE DS response was "
 				"missing DS.");
+			errinf(qstate, "no DS record");
 			goto return_bogus;
 		}
 		/* Verify only returns BOGUS or SECURE. If the rrset is 
 		 * bogus, then we are done. */
 		sec = val_verify_rrset_entry(qstate->env, ve, ds, 
-			vq->key_entry);
+			vq->key_entry, &reason);
 		if(sec != sec_status_secure) {
 			verbose(VERB_DETAIL, "DS rrset in DS response did "
 				"not verify");
+			errinf(qstate, reason);
 			goto return_bogus;
 		}
 
@@ -2204,6 +2326,14 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 		/* NODATA means that the qname exists, but that there was 
 		 * no DS.  This is a pretty normal case. */
 		uint32_t proof_ttl = 0;
+		enum sec_status sec;
+
+		/* make sure there are NSECs or NSEC3s with signatures */
+		if(!val_has_signed_nsecs(msg->rep, &reason)) {
+			verbose(VERB_ALGO, "no NSECs: %s", reason);
+			errinf(qstate, reason);
+			goto return_bogus;
+		}
 
 		/* For subtype Name Error.
 		 * attempt ANS 2.8.1.0 compatibility where it sets rcode
@@ -2211,9 +2341,9 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 		 * Find and prove the empty nonterminal in that case */
 
 		/* Try to prove absence of the DS with NSEC */
-		enum sec_status sec = val_nsec_prove_nodata_dsreply(
+		sec = val_nsec_prove_nodata_dsreply(
 			qstate->env, ve, qinfo, msg->rep, vq->key_entry, 
-			&proof_ttl);
+			&proof_ttl, &reason);
 		switch(sec) {
 			case sec_status_secure:
 				verbose(VERB_DETAIL, "NSEC RRset for the "
@@ -2231,6 +2361,7 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 			case sec_status_bogus:
 				verbose(VERB_DETAIL, "NSEC RRset for the "
 					"referral did not prove no DS.");
+				errinf(qstate, reason);
 				goto return_bogus;
 			case sec_status_unchecked:
 			default:
@@ -2240,7 +2371,7 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 
 		sec = nsec3_prove_nods(qstate->env, ve, 
 			msg->rep->rrsets + msg->rep->an_numrrsets,
-			msg->rep->ns_numrrsets, qinfo, vq->key_entry);
+			msg->rep->ns_numrrsets, qinfo, vq->key_entry, &reason);
 		switch(sec) {
 			case sec_status_secure:
 				verbose(VERB_DETAIL, "NSEC3s for the "
@@ -2258,6 +2389,7 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 			case sec_status_bogus:
 				verbose(VERB_DETAIL, "NSEC3s for the "
 					"referral did not prove no DS.");
+				errinf(qstate, reason);
 				goto return_bogus;
 			case sec_status_insecure:
 			case sec_status_unchecked:
@@ -2270,10 +2402,19 @@ ds_response_to_ke(struct module_qstate* qstate, struct val_qstate* vq,
 		 * this is BOGUS. */
 		verbose(VERB_DETAIL, "DS %s ran out of options, so return "
 			"bogus", val_classification_to_string(subtype));
+		errinf(qstate, "no DS but also no proof of that");
 		goto return_bogus;
 	} else {
 		verbose(VERB_QUERY, "Encountered an unhandled type of "
 			"DS response, thus bogus.");
+		errinf(qstate, "no DS and ");
+		if(FLAGS_GET_RCODE(msg->rep->flags) != LDNS_RCODE_NOERROR) {
+			char* rc = ldns_pkt_rcode2str(
+				FLAGS_GET_RCODE(msg->rep->flags));
+			errinf(qstate, rc);
+			free(rc);
+		} else	errinf(qstate, val_classification_to_string(subtype));
+		errinf(qstate, "message fails to prove that");
 		goto return_bogus;
 	}
 return_bogus:
@@ -2295,12 +2436,15 @@ return_bogus:
  * @param rcode: rcode result value.
  * @param msg: result message (if rcode is OK).
  * @param qinfo: from the sub query state, query info.
+ * @param origin: the origin of msg.
  */
 static void
 process_ds_response(struct module_qstate* qstate, struct val_qstate* vq,
-	int id, int rcode, struct dns_msg* msg, struct query_info* qinfo)
+	int id, int rcode, struct dns_msg* msg, struct query_info* qinfo,
+	struct sock_list* origin)
 {
 	struct key_entry_key* dske = NULL;
+	uint8_t* olds = vq->empty_DS_name;
 	vq->empty_DS_name = NULL;
 	if(!ds_response_to_ke(qstate, vq, id, rcode, msg, qinfo, &dske)) {
 			log_err("malloc failure in process_ds_response");
@@ -2318,6 +2462,7 @@ process_ds_response(struct module_qstate* qstate, struct val_qstate* vq,
 			return;
 		}
 		vq->empty_DS_len = qinfo->qname_len;
+		vq->chain_blacklist = NULL;
 		/* ds response indicated that we aren't on a delegation point.
 		 * Keep the forState.state on FINDKEY. */
 	} else if(key_entry_isgood(dske)) {
@@ -2328,8 +2473,19 @@ process_ds_response(struct module_qstate* qstate, struct val_qstate* vq,
 			vq->state = VAL_VALIDATE_STATE;
 			return;
 		}
+		vq->chain_blacklist = NULL; /* fresh blacklist for next part*/
 		/* Keep the forState.state on FINDKEY. */
+	} else if(key_entry_isbad(dske) 
+		&& vq->restart_count < VAL_MAX_RESTART_COUNT) {
+		vq->empty_DS_name = olds;
+		val_blacklist(&vq->chain_blacklist, qstate->region, origin, 1);
+		qstate->errinf = NULL;
+		vq->restart_count++;
 	} else {
+		if(key_entry_isbad(dske)) {
+			errinf_origin(qstate, origin);
+			errinf_dname(qstate, "for DS", qinfo->qname);
+		}
 		/* NOTE: the reason for the DS to be not good (that is, 
 		 * either bad or null) should have been logged by 
 		 * dsResponseToKE. */
@@ -2353,13 +2509,17 @@ process_ds_response(struct module_qstate* qstate, struct val_qstate* vq,
  * @param rcode: rcode result value.
  * @param msg: result message (if rcode is OK).
  * @param qinfo: from the sub query state, query info.
+ * @param origin: the origin of msg.
  */
 static void
 process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
-	int id, int rcode, struct dns_msg* msg, struct query_info* qinfo)
+	int id, int rcode, struct dns_msg* msg, struct query_info* qinfo,
+	struct sock_list* origin)
 {
 	struct val_env* ve = (struct val_env*)qstate->env->modinfo[id];
+	struct key_entry_key* old = vq->key_entry;
 	struct ub_packed_rrset_key* dnskey = NULL;
+	char* reason = NULL;
 
 	if(rcode == LDNS_RCODE_NOERROR)
 		dnskey = reply_find_answer_rrset(qinfo, msg->rep);
@@ -2368,12 +2528,22 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 		/* bad response */
 		verbose(VERB_DETAIL, "Missing DNSKEY RRset in response to "
 			"DNSKEY query.");
+		if(vq->restart_count < VAL_MAX_RESTART_COUNT) {
+			val_blacklist(&vq->chain_blacklist, qstate->region,
+				origin, 1);
+			qstate->errinf = NULL;
+			vq->restart_count++;
+			return;
+		}
 		vq->key_entry = key_entry_create_bad(qstate->region, 
 			qinfo->qname, qinfo->qname_len, qinfo->qclass);
 		if(!vq->key_entry) {
 			log_err("alloc failure in missing dnskey response");
 			/* key_entry is NULL for failure in Validate */
 		}
+		errinf(qstate, "No DNSKEY record");
+		errinf_origin(qstate, origin);
+		errinf_dname(qstate, "for key", qinfo->qname);
 		vq->state = VAL_VALIDATE_STATE;
 		return;
 	}
@@ -2384,7 +2554,7 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 		return;
 	}
 	vq->key_entry = val_verify_new_DNSKEYs(qstate->region, qstate->env,
-		ve, dnskey, vq->ds_rrset);
+		ve, dnskey, vq->ds_rrset, &reason);
 
 	if(!vq->key_entry) {
 		log_err("out of memory in verify new DNSKEYs");
@@ -2394,12 +2564,27 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
 	/* If the key entry isBad or isNull, then we can move on to the next
 	 * state. */
 	if(!key_entry_isgood(vq->key_entry)) {
-		if(key_entry_isbad(vq->key_entry))
+		if(key_entry_isbad(vq->key_entry)) {
+			if(vq->restart_count < VAL_MAX_RESTART_COUNT) {
+				val_blacklist(&vq->chain_blacklist, 
+					qstate->region, origin, 1);
+				qstate->errinf = NULL;
+				vq->restart_count++;
+				vq->key_entry = old;
+				return;
+			}
 			verbose(VERB_DETAIL, "Did not match a DS to a DNSKEY, "
 				"thus bogus.");
+			errinf(qstate, reason);
+			errinf_origin(qstate, origin);
+			errinf_dname(qstate, "for key", qinfo->qname);
+		}
+		vq->chain_blacklist = NULL;
 		vq->state = VAL_VALIDATE_STATE;
 		return;
 	}
+	vq->chain_blacklist = NULL;
+	qstate->errinf = NULL;
 
 	/* The DNSKEY validated, so cache it as a trusted key rrset. */
 	key_cache_insert(ve->kcache, vq->key_entry);
@@ -2417,15 +2602,59 @@ process_dnskey_response(struct module_qstate* qstate, struct val_qstate* vq,
  * @param id: module id.
  * @param rcode: rcode result value.
  * @param msg: result message (if rcode is OK).
+ * @param origin: the origin of msg.
  */
 static void
 process_prime_response(struct module_qstate* qstate, struct val_qstate* vq,
-	int id, int rcode, struct dns_msg* msg)
+	int id, int rcode, struct dns_msg* msg, struct sock_list* origin)
 {
+	struct val_env* ve = (struct val_env*)qstate->env->modinfo[id];
+	struct ub_packed_rrset_key* dnskey_rrset = NULL;
+	struct trust_anchor* ta = anchor_find(qstate->env->anchors, 
+		vq->trust_anchor_name, vq->trust_anchor_labs,
+		vq->trust_anchor_len, vq->qchase.qclass);
+	if(!ta) {
+		/* trust anchor revoked, restart with less anchors */
+		vq->state = VAL_INIT_STATE;
+		if(!vq->trust_anchor_name)
+			vq->state = VAL_VALIDATE_STATE; /* break a loop */
+		vq->trust_anchor_name = NULL;
+		return;
+	}
 	/* Fetch and validate the keyEntry that corresponds to the 
 	 * current trust anchor. */
-	vq->key_entry = primeResponseToKE(rcode, msg, vq->trust_anchor, 
-		qstate, id);
+	if(rcode == LDNS_RCODE_NOERROR) {
+		dnskey_rrset = reply_find_rrset_section_an(msg->rep,
+			ta->name, ta->namelen, LDNS_RR_TYPE_DNSKEY,
+			ta->dclass);
+	}
+	if(ta->autr) {
+		if(!autr_process_prime(qstate->env, ve, ta, dnskey_rrset)) {
+			/* trust anchor revoked, restart with less anchors */
+			vq->state = VAL_INIT_STATE;
+			vq->trust_anchor_name = NULL;
+			return;
+		}
+	}
+	vq->key_entry = primeResponseToKE(dnskey_rrset, ta, qstate, id);
+	lock_basic_unlock(&ta->lock);
+	if(vq->key_entry) {
+		if(key_entry_isbad(vq->key_entry) 
+			&& vq->restart_count < VAL_MAX_RESTART_COUNT) {
+			val_blacklist(&vq->chain_blacklist, qstate->region, 
+				origin, 1);
+			qstate->errinf = NULL;
+			vq->restart_count++;
+			vq->key_entry = NULL;
+			vq->state = VAL_INIT_STATE;
+			return;
+		} 
+		vq->chain_blacklist = NULL;
+		errinf_origin(qstate, origin);
+		errinf_dname(qstate, "for trust anchor", ta->name);
+		/* store the freshly primed entry in the cache */
+		key_cache_insert(ve->kcache, vq->key_entry);
+	}
 
 	/* If the result of the prime is a null key, skip the FINDKEY state.*/
 	if(!vq->key_entry || key_entry_isnull(vq->key_entry) ||
@@ -2550,16 +2779,18 @@ val_inform_super(struct module_qstate* qstate, int id,
 	if(vq->wait_prime_ta) {
 		vq->wait_prime_ta = 0;
 		process_prime_response(super, vq, id, qstate->return_rcode,
-			qstate->return_msg);
+			qstate->return_msg, qstate->reply_origin);
 		return;
 	}
 	if(qstate->qinfo.qtype == LDNS_RR_TYPE_DS) {
 		process_ds_response(super, vq, id, qstate->return_rcode,
-			qstate->return_msg, &qstate->qinfo);
+			qstate->return_msg, &qstate->qinfo, 
+			qstate->reply_origin);
 		return;
 	} else if(qstate->qinfo.qtype == LDNS_RR_TYPE_DNSKEY) {
 		process_dnskey_response(super, vq, id, qstate->return_rcode,
-			qstate->return_msg, &qstate->qinfo);
+			qstate->return_msg, &qstate->qinfo,
+			qstate->reply_origin);
 		return;
 	} else if(qstate->qinfo.qtype == LDNS_RR_TYPE_DLV) {
 		process_dlv_response(super, vq, id, qstate->return_rcode,

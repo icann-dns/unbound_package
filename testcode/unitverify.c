@@ -155,14 +155,16 @@ verifytest_rrset(struct module_env* env, struct val_env* ve,
 	struct query_info* qinfo)
 {
 	enum sec_status sec;
+	char* reason = NULL;
 	if(vsig) {
 		log_nametypeclass(VERB_QUERY, "verify of rrset",
 			rrset->rk.dname, ntohs(rrset->rk.type),
 			ntohs(rrset->rk.rrset_class));
 	}
-	sec = dnskeyset_verify_rrset(env, ve, rrset, dnskey);
+	sec = dnskeyset_verify_rrset(env, ve, rrset, dnskey, &reason);
 	if(vsig) {
-		printf("verify outcome is: %s\n", sec_status_to_string(sec));
+		printf("verify outcome is: %s %s\n", sec_status_to_string(sec),
+			reason?reason:"");
 	}
 	if(should_be_bogus(rrset, qinfo)) {
 		unit_assert(sec == sec_status_bogus);
@@ -475,16 +477,21 @@ verify_test()
 	verifytest_file("testdata/test_signatures.7", "20070829144150");
 	verifytest_file("testdata/test_signatures.8", "20070829144150");
 #if defined(HAVE_EVP_SHA256) && defined(USE_SHA2)
-	verifytest_file("testdata/test_signatures.9", "20070829144150");
-	verifytest_file("testdata/test_signatures.11", "20070829144150");
-	verifytest_file("testdata/test_signatures.14", "20090101000000");
+	verifytest_file("testdata/test_sigs.rsasha256", "20070829144150");
+	verifytest_file("testdata/test_sigs.sha1_and_256", "20070829144150");
+	verifytest_file("testdata/test_sigs.rsasha256_draft", "20090101000000");
 #endif
 #if defined(HAVE_EVP_SHA512) && defined(USE_SHA2)
-	verifytest_file("testdata/test_signatures.10", "20070829144150");
+	verifytest_file("testdata/test_sigs.rsasha512_draft", "20070829144150");
 #endif
-	verifytest_file("testdata/test_signatures.12", "20090107100022");
-	verifytest_file("testdata/test_signatures.13", "20080414005004");
-	dstest_file("testdata/test_ds_sig.1");
+	verifytest_file("testdata/test_sigs.hinfo", "20090107100022");
+	verifytest_file("testdata/test_sigs.revoked", "20080414005004");
+#ifdef USE_GOST
+	if(ldns_key_EVP_load_gost_id())
+	  verifytest_file("testdata/test_sigs.gost", "20090807060504");
+	else printf("Warning: skipped GOST, openssl does not provide gost.\n");
+#endif
+	dstest_file("testdata/test_ds.sha1");
 	nsectest();
 	nsec3_hash_test("testdata/test_nsec3_hash.1");
 }
