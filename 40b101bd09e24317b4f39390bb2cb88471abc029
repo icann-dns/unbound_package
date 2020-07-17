@@ -1,0 +1,6 @@
+  * New upstream release; closes: #674434.
+  * Implement 'status' command in init script; closes: #666388.
+  * Fix build system bug that negated fully hardening the build;
+    closes: #658021. (Patch from Simon Ruderich.)
+  * Disable ECDSA support (for now) as this requires a newer ldns than is in
+    the archive.
