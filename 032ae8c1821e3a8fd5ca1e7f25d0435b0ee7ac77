@@ -1,0 +1,2 @@
+  * Add build-dependency on libexpat1-dev; closes: #612261.
+  * Install unbound-anchor utility in unbound package.
