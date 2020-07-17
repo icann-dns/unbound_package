@@ -1,0 +1,2 @@
+  * Enable unbound by default (Closes: #508884)
+  * Call dh_installinit with --error-handler=true (Closes: #500176)
