@@ -1,0 +1,2 @@
+  * apparmor: permit unbound to notify readiness to systemd
+   (Closes: #867186, LP: #1723900)
