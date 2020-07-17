@@ -1,0 +1,2 @@
+  * Cherry-pick upstream commit ec021e0d, "fix build with nettle-3.5"
+    (Closes: #941041)
