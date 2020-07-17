@@ -1,0 +1,4 @@
+  * Apply patch from upstream to fix DNSSEC-related crashes
+    (CVE-2011-4528)
+  * Fix empty error packet handling assertion failure (CVE-2011-1922)
+    (Not actually exposed due to disabled asserts.)
