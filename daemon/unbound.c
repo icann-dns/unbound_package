@@ -44,6 +44,7 @@
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
+#include <sys/time.h>
 #include "util/log.h"
 #include "daemon/daemon.h"
 #include "daemon/remote.h"
@@ -88,10 +89,58 @@
 /** global debug value to keep track of heap memory allocation */
 void* unbound_start_brk = 0;
 
+#if !defined(HAVE_EVENT_BASE_GET_METHOD) && defined(HAVE_EV_LOOP)
+static const char* ev_backend2str(int b)
+{
+	switch(b) {
+	case EVBACKEND_SELECT:	return "select";
+	case EVBACKEND_POLL:	return "poll";
+	case EVBACKEND_EPOLL:	return "epoll";
+	case EVBACKEND_KQUEUE:	return "kqueue";
+	case EVBACKEND_DEVPOLL: return "devpoll";
+	case EVBACKEND_PORT:	return "evport";
+	}
+	return "unknown";
+}
+#endif
+
+/** get the event system in use */
+static void get_event_sys(const char** n, const char** s, const char** m)
+{
+#ifdef USE_WINSOCK
+	*n = "event";
+	*s = "winsock";
+	*m = "WSAWaitForMultipleEvents";
+#elif defined(USE_MINI_EVENT)
+	*n = "mini-event";
+	*s = "internal";
+	*m = "select";
+#else
+	struct event_base* b;
+	*s = event_get_version();
+#  ifdef HAVE_EVENT_BASE_GET_METHOD
+	*n = "libevent";
+	b = event_base_new();
+	*m = event_base_get_method(b);
+#  elif defined(HAVE_EV_LOOP)
+	*n = "libev";
+	b = (struct event_base*)ev_default_loop(EVFLAG_AUTO);
+	*m = ev_backend2str(ev_backend((struct ev_loop*)b));
+#  else
+	*m = "not obtainable";
+	b = NULL;
+#  endif
+#  ifdef HAVE_EVENT_BASE_FREE
+	event_base_free(b);
+#  endif
+#endif
+}
+
 /** print usage. */
 static void usage()
 {
 	const char** m;
+	const char *evnm="event", *evsys="", *evmethod="";
 	printf("usage:  unbound [options]\n");
 	printf("	start unbound daemon DNS resolver.\n");
 	printf("-h	this help\n");
@@ -105,20 +154,16 @@ static void usage()
 	printf("   	service - used to start from services control panel\n");
 #endif
 	printf("Version %s\n", PACKAGE_VERSION);
-	printf("linked libs: event %s, ldns %s, %s\n", 
-#ifdef USE_WINSOCK
-		"winsock",
-#elif defined(USE_MINI_EVENT)
-		"internal",
-#else
-		event_get_version(), 
-#endif
-		ldns_version(), 
+	get_event_sys(&evnm, &evsys, &evmethod);
+	printf("linked libs: %s %s (it uses %s), ldns %s, %s\n", 
+		evnm, evsys, evmethod, ldns_version(), 
 		SSLeay_version(SSLEAY_VERSION));
 	printf("linked modules:");
 	for(m = module_list_avail(); *m; m++)
 		printf(" %s", *m);
 	printf("\n");
+	printf("configured for %s on %s with options:%s\n",
+		CONFIGURE_TARGET, CONFIGURE_DATE, CONFIGURE_BUILD_WITH);
 	printf("BSD licensed, see LICENSE in source package for details.\n");
 	printf("Report bugs to %s\n", PACKAGE_BUGREPORT);
 }
@@ -159,6 +204,35 @@ checkrlimits(struct config_file* cfg)
 	size_t avail;
 	struct rlimit rlim;
 
+	if(total > 1024 && 
+		strncmp(event_get_version(), "mini-event", 10) == 0) {
+		log_warn("too many file descriptors requested. The builtin"
+			"mini-event cannot handle more than 1024. Config "
+			"for less fds or compile with libevent");
+		if(numthread*perthread_noudp+15 > 1024)
+			fatal_exit("too much tcp. not enough fds.");
+		cfg->outgoing_num_ports = (int)((1024 
+			- numthread*perthread_noudp 
+			- 10 /* safety margin */) /numthread);
+		log_warn("continuing with less udp ports: %u",
+			cfg->outgoing_num_ports);
+		total = 1024;
+	}
+	if(perthread > 64 && 
+		strncmp(event_get_version(), "winsock-event", 13) == 0) {
+		log_err("too many file descriptors requested. The winsock"
+			" event handler cannot handle more than 64 per "
+			" thread. Config for less fds");
+		if(perthread_noudp+2 > 64)
+			fatal_exit("too much tcp. not enough fds.");
+		cfg->outgoing_num_ports = (int)((64 
+			- perthread_noudp 
+			- 2/* safety margin */));
+		log_warn("continuing with less udp ports: %u",
+			cfg->outgoing_num_ports);
+		total = numthread*(perthread_noudp+
+			(size_t)cfg->outgoing_num_ports)+misc;
+	}
 	if(getrlimit(RLIMIT_NOFILE, &rlim) < 0) {
 		log_warn("getrlimit: %s", strerror(errno));
 		return;
@@ -169,8 +243,12 @@ checkrlimits(struct config_file* cfg)
 		avail = (size_t)rlim.rlim_cur;
 		rlim.rlim_cur = (rlim_t)(total + 10);
 		rlim.rlim_max = (rlim_t)(total + 10);
+#ifdef HAVE_SETRLIMIT
 		if(setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
 			log_warn("setrlimit: %s", strerror(errno));
+#else
+		if(1) {
+#endif
 			log_warn("cannot increase max open fds from %u to %u",
 				(unsigned)avail, (unsigned)total+10);
 			/* check that calculation below does not underflow,
@@ -182,26 +260,12 @@ checkrlimits(struct config_file* cfg)
 				- 10 /* safety margin */) /numthread);
 			log_warn("continuing with less udp ports: %u",
 				cfg->outgoing_num_ports);
-			log_warn("increase ulimit or decrease threads, ports in config to remove this warning");
+			log_warn("increase ulimit or decrease threads, "
+				"ports in config to remove this warning");
 			return;
 		}
 		log_warn("increased limit(open files) from %u to %u",
 			(unsigned)avail, (unsigned)total+10);
-	}
-	if(total > 1024 && 
-		strncmp(event_get_version(), "mini-event", 10) == 0) {
-		log_err("too many file descriptors requested. The builtin"
-			"mini-event cannot handle more than 1024. Config "
-			"for less fds or compile with libevent");
-		fatal_exit("configuration needs too many file descriptors");
-	}
-	if(perthread > 64 && 
-		strncmp(event_get_version(), "winsock-event", 13) == 0) {
-		log_err("too many file descriptors requested. The winsock"
-			" event handler cannot handle more than 64 per "
-			" thread. Config for less fds or compile with "
-			" libevent");
-		fatal_exit("configuration needs too many file descriptors");
 	}
 #else	
 	(void)cfg;
@@ -418,7 +482,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 			 * chown to get permissions */
 			if(cfg->username && cfg->username[0]) {
 			  if(chown(daemon->pidfile, uid, gid) == -1) {
-				fatal_exit("cannot chown %u.%u %s: %s",
+				log_err("cannot chown %u.%u %s: %s",
 					(unsigned)uid, (unsigned)gid,
 					daemon->pidfile, strerror(errno));
 			  }

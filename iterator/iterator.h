@@ -55,7 +55,7 @@ struct iter_priv;
 /** max number of query restarts. Determines max number of CNAME chain. */
 #define MAX_RESTART_COUNT       8
 /** max number of referrals. Makes sure resolver does not run away */
-#define MAX_REFERRAL_COUNT	30
+#define MAX_REFERRAL_COUNT	130
 /** how nice is a server without further information, in msec 
  * Equals rtt initial timeout value.
  */
@@ -250,10 +250,10 @@ struct iter_qstate {
 	/**
 	 * The query must store NS records from referrals as parentside RRs
 	 * Enabled once it hits resolution problems, to throttle retries.
+	 * If enabled it is the pointer to the old delegation point with
+	 * the old retry counts for bad-nameserver-addresses.
 	 */
-	int store_parent_NS;
-	/** the old delegation point with retry counts */
-	struct delegpt* parent_NS_old_dp;
+	struct delegpt* store_parent_NS;
 
 	/**
 	 * The query is for parent-side glue(A or AAAA) for a nameserver.
@@ -314,7 +314,7 @@ struct iter_prep_list {
  * Get the iterator function block.
  * @return: function block with function pointers to iterator methods.
  */
-struct module_func_block* iter_get_funcblock();
+struct module_func_block* iter_get_funcblock(void);
 
 /**
  * Get iterator state as a string

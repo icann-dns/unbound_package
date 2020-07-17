@@ -82,14 +82,14 @@ testbound_usage()
 
 /** 
  * Add options from string to passed argc. splits on whitespace.
- * @param optarg: the option argument, "-v -p 12345" or so.
+ * @param args: the option argument, "-v -p 12345" or so.
  * @param pass_argc: ptr to the argc for unbound. Modified.
  * @param pass_argv: the argv to pass to unbound. Modified.
  */
 static void
-add_opts(const char* optarg, int* pass_argc, char* pass_argv[])
+add_opts(const char* args, int* pass_argc, char* pass_argv[])
 {
-	const char *p = optarg, *np;
+	const char *p = args, *np;
 	size_t len;
 	while(p && isspace((int)*p)) 
 		p++;
@@ -263,6 +263,9 @@ main(int argc, char* argv[])
 	char* init_optarg = optarg;
 	struct replay_scenario* scen = NULL;
 
+	/* we do not want the test to depend on the timezone */
+	(void)putenv("TZ=UTC");
+
 	log_init(NULL, 0, NULL);
 	log_info("Start of %s testbound program.", PACKAGE_STRING);
 	/* determine commandline options for the daemon */
@@ -339,8 +342,13 @@ main(int argc, char* argv[])
 	fake_event_cleanup();
 	for(c=1; c<pass_argc; c++)
 		free(pass_argv[c]);
-	if(res == 0)
+	if(res == 0) {
 		log_info("Testbound Exit Success");
+#ifdef HAVE_PTHREAD
+		/* dlopen frees its thread state (dlopen of gost engine) */
+		pthread_exit(NULL);
+#endif
+	}
 	return res;
 }
 
