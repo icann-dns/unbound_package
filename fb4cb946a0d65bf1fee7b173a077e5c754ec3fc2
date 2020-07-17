@@ -1,0 +1,9 @@
+  [ Hideki Yamane (Debian-JP) ]
+  * debian/{unbound.init,unbound.default}
+    + set not start by default, to avoid that port 53 blocking by other name
+      servers will cause install problems
+  * debian/unbound.prerm
+    + fix lintian "unbound: maintainer-script-hides-init-failure prerm:5" error
+  [ Ondřej Surý ]
+  * Non-maintainer upload.
+  * Minor tweaks to patched init.d file to make it work.
