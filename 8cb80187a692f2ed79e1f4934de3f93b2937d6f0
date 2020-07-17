@@ -1,0 +1,5 @@
+  * debian/rules: Set to run unittests.
+  * debian/patches/debian-changes: Removed lingering changes from 1.4.22-1
+    upload.
+  * debian/patches/disable_sldns_str2wire_rr_buf_tests: Disable test files 3
+    and 5 (issue reported upstream #572).
