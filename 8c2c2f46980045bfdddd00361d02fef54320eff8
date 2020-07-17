@@ -1,0 +1,3 @@
+  * debian/apparmor-profile: add capabilities to chown/chmod Unix
+    control socket and allow reading /var/lib/sss/mc/initgroups
+    (Closes: #891705, LP: #1749931)
