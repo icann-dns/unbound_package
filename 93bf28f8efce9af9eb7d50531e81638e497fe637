@@ -1,0 +1,3 @@
+  * New upstream version 1.7.3
+    - Don't count CNAME response types received during qname minimisation as
+      query restart. (Closes: #900800)
