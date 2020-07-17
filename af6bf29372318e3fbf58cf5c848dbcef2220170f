@@ -1,0 +1,4 @@
+  * New upstream version 1.9.0
+  * Team upload
+  * Include dpkg/default.mk instead of only buildflags.mk
+  * Update d/watch to reflect new download location and add signature check
