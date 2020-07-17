@@ -1,0 +1,11 @@
+  * Include python multiarch path in CPPFLAGS; Fixes FTBFS
+    - add debian/patches/fix-python-multiarch.patch
+    - update debian/patches/series
+  * Drop unneeded python-support build-dep and 'XS-Python-Version: all' since
+    the package is using dh_python2
+    - update debian/control
+  * Remove source options as it only contains 'single-debian-patch' since we
+    should have the Ubuntu changes separate from the Debian changes
+    - drop debian/source/options
+  * Switch Vcs-* to XS-Debian-Vcs-*
+    - update debian/control
