@@ -1,0 +1,6 @@
+  * Merge for Debian Testing.  Remaining Ubuntu changes:
+    - Add missing build-dep on libevent-dev and adjust debian/rules to build
+      with libevent support (LP: #459041)
+    - Version build-dep on libldns-dev to (>=1.4.0)
+    - Added util/configparser.h, util/configparser.c information to
+      debian/copyright
