@@ -461,3 +461,30 @@ addr_in_common(struct sockaddr_storage* addr1, int net1,
 	if(match > min) match = min;
 	return match;
 }
+
+void 
+addr_to_str(struct sockaddr_storage* addr, socklen_t addrlen, 
+	char* buf, size_t len)
+{
+	int af = (int)((struct sockaddr_in*)addr)->sin_family;
+	void* sinaddr = &((struct sockaddr_in*)addr)->sin_addr;
+	if(addr_is_ip6(addr, addrlen))
+		sinaddr = &((struct sockaddr_in6*)addr)->sin6_addr;
+	if(inet_ntop(af, sinaddr, buf, (socklen_t)len) == 0) {
+		snprintf(buf, len, "(inet_ntop_error)");
+	}
+}
+
+int 
+addr_is_ip4mapped(struct sockaddr_storage* addr, socklen_t addrlen)
+{
+	/* prefix for ipv4 into ipv6 mapping is ::ffff:x.x.x.x */
+	const uint8_t map_prefix[16] = 
+		{0,0,0,0,  0,0,0,0, 0,0,0xff,0xff, 0,0,0,0};
+	uint8_t* s;
+	if(!addr_is_ip6(addr, addrlen))
+		return 0;
+	/* s is 16 octet ipv6 address string */
+	s = (uint8_t*)&((struct sockaddr_in6*)addr)->sin6_addr;
+	return (memcmp(s, map_prefix, 12) == 0);
+}

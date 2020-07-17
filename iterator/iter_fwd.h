@@ -43,7 +43,6 @@
 #ifndef ITERATOR_ITER_FWD_H
 #define ITERATOR_ITER_FWD_H
 #include "util/rbtree.h"
-struct iter_env;
 struct config_file;
 struct delegpt;
 struct regional;
@@ -76,7 +75,9 @@ struct iter_forward_zone {
 	size_t namelen;
 	/** number of labels in name */
 	int namelabs;
-	/** delegation point with forward server information for this zone. */
+	/** delegation point with forward server information for this zone. 
+	 * If NULL then this forward entry is used to indicate that a
+	 * stub-zone with the same name exists, and should be used. */
 	struct delegpt* dp;
 	/** pointer to parent in tree (or NULL if none) */
 	struct iter_forward_zone* parent;
@@ -127,5 +128,29 @@ size_t forwards_get_mem(struct iter_forwards* fwd);
 
 /** compare two fwd entries */
 int fwd_cmp(const void* k1, const void* k2);
+
+/**
+ * Add zone to forward structure. For external use since it recalcs 
+ * the tree parents.
+ * @param fwd: the forward data structure
+ * @param c: class of zone
+ * @param dp: delegation point with name and target nameservers for new
+ *	forward zone. This delegation point and all its data must be
+ *	malloced in the fwd->region. (then it is freed when the fwd is
+ *	deleted).
+ * @return false on failure (out of memory);
+ */
+int forwards_add_zone(struct iter_forwards* fwd, uint16_t c, 
+	struct delegpt* dp);
+
+/**
+ * Remove zone from forward structure. For external use since it 
+ * recalcs the tree parents. Does not actually release any memory, the region 
+ * is unchanged.
+ * @param fwd: the forward data structure
+ * @param c: class of zone
+ * @param nm: name of zone (in uncompressed wireformat).
+ */
+void forwards_delete_zone(struct iter_forwards* fwd, uint16_t c, uint8_t* nm);
 
 #endif /* ITERATOR_ITER_FWD_H */

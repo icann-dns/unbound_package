@@ -45,6 +45,10 @@
 #include "iterator/iterator.h"
 #include "validator/validator.h"
 
+#ifdef WITH_PYTHONMODULE
+#include "pythonmod/pythonmod.h"
+#endif
+
 /** count number of modules (words) in the string */
 static int
 count_modules(const char* s)
@@ -105,25 +109,54 @@ modstack_config(struct module_stack* stack, const char* module_conf)
         return 1;
 }
 
+/** The list of module names */
+const char**
+module_list_avail(void)
+{
+        /* these are the modules available */
+        static const char* names[] = {
+#ifdef WITH_PYTHONMODULE
+		"python", 
+#endif
+		"validator", 
+		"iterator", 
+		NULL};
+	return names;
+}
+
+/** func block get function type */
+typedef struct module_func_block* (*fbgetfunctype)(void);
+
+/** The list of module func blocks */
+static fbgetfunctype*
+module_funcs_avail(void)
+{
+        static struct module_func_block* (*fb[])(void) = {
+#ifdef WITH_PYTHONMODULE
+		&pythonmod_get_funcblock, 
+#endif
+		&val_get_funcblock, 
+		&iter_get_funcblock, 
+		NULL};
+	return fb;
+}
+
 struct 
 module_func_block* module_factory(const char** str)
 {
-        /* these are the modules available */
-        int num = 2;
-        const char* names[] = {"iterator", "validator", NULL};
-        struct module_func_block* (*fb[])(void) = 
-                {&iter_get_funcblock, &val_get_funcblock, NULL};
-
-        int i;
+        int i = 0;
         const char* s = *str;
+	const char** names = module_list_avail();
+	fbgetfunctype* fb = module_funcs_avail();
         while(*s && isspace((int)*s))
                 s++;
-        for(i=0; i<num; i++) {
+	while(names[i]) {
                 if(strncmp(names[i], s, strlen(names[i])) == 0) {
                         s += strlen(names[i]);
                         *str = s;
                         return (*fb[i])();
                 }
+		i++;
         }
         return NULL;
 }

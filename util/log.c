@@ -54,6 +54,9 @@
 #  define LOG_INFO 6
 #  define LOG_DEBUG 7
 #endif
+#ifdef UB_ON_WINDOWS
+#  include "winrc/win_svc.h"
+#endif
 
 /* default verbosity */
 enum verbosity_value verbosity = 0;
@@ -65,12 +68,14 @@ static int key_created = 0;
 static ub_thread_key_t logkey;
 /** the identity of this executable/process */
 static const char* ident="unbound";
-#ifdef HAVE_SYSLOG_H
+#if defined(HAVE_SYSLOG_H) || defined(UB_ON_WINDOWS)
 /** are we using syslog(3) to log to */
 static int logging_to_syslog = 0;
 #endif /* HAVE_SYSLOG_H */
 /** time to print in log, if NULL, use time(2) */
 static uint32_t* log_now = NULL;
+/** print time in UTC or in secondsfrom1970 */
+static int log_time_asc = 0;
 
 void
 log_init(const char* filename, int use_syslog, const char* chrootdir)
@@ -81,7 +86,7 @@ log_init(const char* filename, int use_syslog, const char* chrootdir)
 		ub_thread_key_create(&logkey, NULL);
 	}
 	if(logfile 
-#ifdef HAVE_SYSLOG_H
+#if defined(HAVE_SYSLOG_H) || defined(UB_ON_WINDOWS)
 	|| logging_to_syslog
 #endif
 	)
@@ -98,6 +103,14 @@ log_init(const char* filename, int use_syslog, const char* chrootdir)
 		/* do not delay opening until first write, because we may
 		 * chroot and no longer be able to access dev/log and so on */
 		openlog(ident, LOG_NDELAY, LOG_DAEMON);
+		logging_to_syslog = 1;
+		return;
+	}
+#elif defined(UB_ON_WINDOWS)
+	if(logging_to_syslog) {
+		logging_to_syslog = 0;
+	}
+	if(use_syslog) {
 		logging_to_syslog = 1;
 		return;
 	}
@@ -139,13 +152,22 @@ void log_set_time(uint32_t* t)
 	log_now = t;
 }
 
+void log_set_time_asc(int use_asc)
+{
+	log_time_asc = use_asc;
+}
+
 void
 log_vmsg(int pri, const char* type,
 	const char *format, va_list args)
 {
 	char message[MAXSYSLOGMSGLEN];
 	unsigned int* tid = (unsigned int*)ub_thread_key_get(logkey);
-	uint32_t now;
+	time_t now;
+#if defined(HAVE_STRFTIME) && defined(HAVE_LOCALTIME_R) 
+	char tmbuf[32];
+	struct tm tm;
+#endif
 	(void)pri;
 	vsnprintf(message, sizeof(message), format, args);
 #ifdef HAVE_SYSLOG_H
@@ -154,11 +176,45 @@ log_vmsg(int pri, const char* type,
 			(int)getpid(), tid?*tid:0, type, message);
 		return;
 	}
+#elif defined(UB_ON_WINDOWS)
+	if(logging_to_syslog) {
+		char m[32768];
+		HANDLE* s;
+		LPCTSTR str = m;
+		DWORD tp = MSG_GENERIC_ERR;
+		WORD wt = EVENTLOG_ERROR_TYPE;
+		if(strcmp(type, "info") == 0) {
+			tp=MSG_GENERIC_INFO;
+			wt=EVENTLOG_INFORMATION_TYPE;
+		} else if(strcmp(type, "warning") == 0) {
+			tp=MSG_GENERIC_WARN;
+			wt=EVENTLOG_WARNING_TYPE;
+		} else if(strcmp(type, "notice") == 0 
+			|| strcmp(type, "debug") == 0) {
+			tp=MSG_GENERIC_SUCCESS;
+			wt=EVENTLOG_SUCCESS;
+		}
+		snprintf(m, sizeof(m), "[%s:%x] %s: %s", 
+			ident, tid?*tid:0, type, message);
+		s = RegisterEventSource(NULL, SERVICE_NAME);
+		if(!s) return;
+		ReportEvent(s, wt, 0, tp, NULL, 1, 0, &str, NULL);
+		DeregisterEventSource(s);
+		return;
+	}
 #endif /* HAVE_SYSLOG_H */
 	if(!logfile) return;
 	if(log_now)
-		now = *log_now;
-	else	now = (uint32_t)time(NULL);
+		now = (time_t)*log_now;
+	else	now = (time_t)time(NULL);
+#if defined(HAVE_STRFTIME) && defined(HAVE_LOCALTIME_R) 
+	if(log_time_asc && strftime(tmbuf, sizeof(tmbuf), "%b %d %H:%M:%S",
+		localtime_r(&now, &tm))%(sizeof(tmbuf)) != 0) {
+		/* %sizeof buf!=0 because old strftime returned max on error */
+		fprintf(logfile, "%s %s[%d:%x] %s: %s\n", tmbuf, 
+			ident, (int)getpid(), tid?*tid:0, type, message);
+	} else
+#endif
 	fprintf(logfile, "[%u] %s[%d:%x] %s: %s\n", (unsigned)now, 
 		ident, (int)getpid(), tid?*tid:0, type, message);
 	fflush(logfile);

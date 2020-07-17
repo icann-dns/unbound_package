@@ -10,6 +10,9 @@
    */
 #undef DARWIN_BROKEN_SETREUID
 
+/* Whether daemon is deprecated */
+#undef DEPRECATED_DAEMON
+
 /* Define if you want to use debug lock checking (slow). */
 #undef ENABLE_LOCK_CHECKS
 
@@ -28,14 +31,23 @@
 /* Define to 1 if you have the `chroot' function. */
 #undef HAVE_CHROOT
 
+/* Define to 1 if you have the `daemon' function. */
+#undef HAVE_DAEMON
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
+
+/* Define to 1 if you have the `ENGINE_load_gost' function. */
+#undef HAVE_ENGINE_LOAD_GOST
 
 /* Define to 1 if you have the `event_base_free' function. */
 #undef HAVE_EVENT_BASE_FREE
 
 /* Define to 1 if you have the `event_base_get_method' function. */
 #undef HAVE_EVENT_BASE_GET_METHOD
+
+/* Define to 1 if you have the `event_base_new' function. */
+#undef HAVE_EVENT_BASE_NEW
 
 /* Define to 1 if you have the `event_base_once' function. */
 #undef HAVE_EVENT_BASE_ONCE
@@ -85,6 +97,9 @@
 /* Define to 1 if you have the `gmtime_r' function. */
 #undef HAVE_GMTIME_R
 
+/* Define to 1 if you have the <grp.h> header file. */
+#undef HAVE_GRP_H
+
 /* If you have HMAC_CTX_init */
 #undef HAVE_HMAC_CTX_INIT
 
@@ -97,6 +112,9 @@
 /* Define to 1 if you have the `inet_pton' function. */
 #undef HAVE_INET_PTON
 
+/* Define to 1 if you have the `initgroups' function. */
+#undef HAVE_INITGROUPS
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -108,6 +126,12 @@
 
 /* Define to 1 if you have the `ldns' library (-lldns). */
 #undef HAVE_LIBLDNS
+
+/* Define to 1 if you have the `localtime_r' function. */
+#undef HAVE_LOCALTIME_R
+
+/* Define to 1 if you have the <login_cap.h> header file. */
+#undef HAVE_LOGIN_CAP_H
 
 /* Define to 1 if your system has a GNU libc compatible `malloc' function, and
    to 0 otherwise. */
@@ -146,6 +170,9 @@
 /* Define to 1 if you have the <pwd.h> header file. */
 #undef HAVE_PWD_H
 
+/* Define if you have Python libraries and header files. */
+#undef HAVE_PYTHON
+
 /* Define to 1 if you have the `random' function. */
 #undef HAVE_RANDOM
 
@@ -172,6 +199,9 @@
 
 /* Define to 1 if you have the `setsid' function. */
 #undef HAVE_SETSID
+
+/* Define to 1 if you have the `setusercontext' function. */
+#undef HAVE_SETUSERCONTEXT
 
 /* Define to 1 if you have the `sigprocmask' function. */
 #undef HAVE_SIGPROCMASK
@@ -203,6 +233,9 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
+/* Define to 1 if you have the `strftime' function. */
+#undef HAVE_STRFTIME
+
 /* Define to 1 if you have the <strings.h> header file. */
 #undef HAVE_STRINGS_H
 
@@ -211,6 +244,9 @@
 
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
+
+/* Define if you have Swig libraries and header files. */
+#undef HAVE_SWIG
 
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H
@@ -275,6 +311,13 @@
 /* Define to 1 if you have the <ws2tcpip.h> header file. */
 #undef HAVE_WS2TCPIP_H
 
+/* Define to 1 if you have the `_beginthreadex' function. */
+#undef HAVE__BEGINTHREADEX
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
+
 /* Define to the maximum message length to pass to syslog. */
 #undef MAXSYSLOGMSGLEN
 
@@ -284,6 +327,30 @@
 /* Define if the network stack does not fully support nonblocking io (causes
    lower performance). */
 #undef NONBLOCKING_IS_BROKEN
+
+/* Put -D_ALL_SOURCE define in config.h */
+#undef OMITTED__D_ALL_SOURCE
+
+/* Put -D_BSD_SOURCE define in config.h */
+#undef OMITTED__D_BSD_SOURCE
+
+/* Put -D_GNU_SOURCE define in config.h */
+#undef OMITTED__D_GNU_SOURCE
+
+/* Put -D_LARGEFILE_SOURCE=1 define in config.h */
+#undef OMITTED__D_LARGEFILE_SOURCE_1
+
+/* Put -D_POSIX_C_SOURCE=200112 define in config.h */
+#undef OMITTED__D_POSIX_C_SOURCE_200112
+
+/* Put -D_XOPEN_SOURCE=600 define in config.h */
+#undef OMITTED__D_XOPEN_SOURCE_600
+
+/* Put -D_XOPEN_SOURCE_EXTENDED=1 define in config.h */
+#undef OMITTED__D_XOPEN_SOURCE_EXTENDED_1
+
+/* Put -D__EXTENSIONS__ define in config.h */
+#undef OMITTED__D__EXTENSIONS__
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
@@ -310,11 +377,20 @@
 /* Define as the return type of signal handlers (`int' or `void'). */
 #undef RETSIGTYPE
 
+/* version number for resource files */
+#undef RSRC_PACKAGE_VERSION
+
 /* Directory to chdir to */
 #undef RUN_DIR
 
+/* Shared data */
+#undef SHARE_DIR
+
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* Use win32 resources and API */
+#undef UB_ON_WINDOWS
 
 /* default username */
 #undef UB_USERNAME
@@ -328,22 +404,46 @@
 /* Define if you want to use internal select based events */
 #undef USE_MINI_EVENT
 
+/* Define this to enable SHA256 and SHA512 support. */
+#undef USE_SHA2
+
+/* Enable extensions on AIX 3, Interix.  */
+#ifndef _ALL_SOURCE
+# undef _ALL_SOURCE
+#endif
+/* Enable GNU extensions on systems that have them.  */
+#ifndef _GNU_SOURCE
+# undef _GNU_SOURCE
+#endif
+/* Enable threading extensions on Solaris.  */
+#ifndef _POSIX_PTHREAD_SEMANTICS
+# undef _POSIX_PTHREAD_SEMANTICS
+#endif
+/* Enable extensions on HP NonStop.  */
+#ifndef _TANDEM_SOURCE
+# undef _TANDEM_SOURCE
+#endif
+/* Enable general extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# undef __EXTENSIONS__
+#endif
+
+
 /* Whether the windows socket API is used */
 #undef USE_WINSOCK
 
 /* the version of the windows API enabled */
 #undef WINVER
 
+/* Define if you want Python module. */
+#undef WITH_PYTHONMODULE
+
+/* Define if you want PyUnbound. */
+#undef WITH_PYUNBOUND
+
 /* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
    `char[]'. */
 #undef YYTEXT_POINTER
-
-/* Define to 1 if on AIX 3.
-   System headers sometimes define this.
-   We just want to avoid a redefinition error message.  */
-#ifndef _ALL_SOURCE
-# undef _ALL_SOURCE
-#endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
@@ -353,6 +453,16 @@
 
 /* Define for large files, on AIX-style hosts. */
 #undef _LARGE_FILES
+
+/* Define to 1 if on MINIX. */
+#undef _MINIX
+
+/* Define to 2 if the system does not provide POSIX.1 features except with
+   this defined. */
+#undef _POSIX_1_SOURCE
+
+/* Define to 1 if you need to in order for `stat' and other things to work. */
+#undef _POSIX_SOURCE
 
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
@@ -381,7 +491,7 @@
 /* Define to `long long' if <sys/types.h> does not define. */
 #undef int64_t
 
-/* Define to `char' if <sys/types.h> does not define. */
+/* Define to `signed char' if <sys/types.h> does not define. */
 #undef int8_t
 
 /* Define to rpl_malloc if the replacement function should be used. */
@@ -425,6 +535,40 @@
 
 /* Define as `fork' if `vfork' does not work. */
 #undef vfork
+
+#if defined(OMITTED__D_GNU_SOURCE) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1
+#endif 
+
+#if defined(OMITTED__D_BSD_SOURCE) && !defined(_BSD_SOURCE)
+#define _BSD_SOURCE 1
+#endif 
+
+#if defined(OMITTED__D__EXTENSIONS__) && !defined(__EXTENSIONS__)
+#define __EXTENSIONS__ 1
+#endif 
+
+#if defined(OMITTED__D_POSIX_C_SOURCE_200112) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200112
+#endif 
+
+#if defined(OMITTED__D_XOPEN_SOURCE_600) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 600
+#endif 
+
+#if defined(OMITTED__D_XOPEN_SOURCE_EXTENDED_1) && !defined(_XOPEN_SOURCE_EXTENDED)
+#define _XOPEN_SOURCE_EXTENDED 1
+#endif 
+
+#if defined(OMITTED__D_ALL_SOURCE) && !defined(_ALL_SOURCE)
+#define _ALL_SOURCE 1
+#endif 
+
+#if defined(OMITTED__D_LARGEFILE_SOURCE_1) && !defined(_LARGEFILE_SOURCE)
+#define _LARGEFILE_SOURCE 1
+#endif 
+
+
 
 
 #ifndef UNBOUND_DEBUG
@@ -487,12 +631,16 @@
 #include <openssl/rand.h>
 #endif
 
+
+ 
 #ifdef HAVE_ATTR_FORMAT
 #  define ATTR_FORMAT(archetype, string_index, first_to_check) \
     __attribute__ ((format (archetype, string_index, first_to_check)))
 #else /* !HAVE_ATTR_FORMAT */
 #  define ATTR_FORMAT(archetype, string_index, first_to_check) /* empty */
 #endif /* !HAVE_ATTR_FORMAT */
+
+
 #if defined(DOXYGEN)
 #  define ATTR_UNUSED(x)  x
 #elif defined(__cplusplus)
@@ -502,26 +650,107 @@
 #else /* !HAVE_ATTR_UNUSED */
 #  define ATTR_UNUSED(x)  x
 #endif /* !HAVE_ATTR_UNUSED */
+
+
 #ifndef HAVE_FSEEKO
 #define fseeko fseek
 #define ftello ftell
 #endif /* HAVE_FSEEKO */
-#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
-   /* using version of libevent that is not threadsafe. */
-#  define LIBEVENT_SIGNAL_PROBLEM 1
-#endif
+
 
 #ifndef RAND_MAX
 #define RAND_MAX	2147483647
 #endif
 
+
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN 256
 #endif
 
+
+#ifndef HAVE_SNPRINTF
+#define snprintf snprintf_unbound
+#define vsnprintf vsnprintf_unbound
+#include <stdarg.h>
+int snprintf (char *str, size_t count, const char *fmt, ...);
+int vsnprintf (char *str, size_t count, const char *fmt, va_list arg);
+#endif /* HAVE_SNPRINTF */
+
+
+#ifndef HAVE_INET_PTON
+#define inet_pton inet_pton_unbound
+int inet_pton(int af, const char* src, void* dst);
+#endif /* HAVE_INET_PTON */
+
+
+#ifndef HAVE_INET_NTOP
+#define inet_ntop inet_ntop_unbound
+const char *inet_ntop(int af, const void *src, char *dst, size_t size);
+#endif
+
+
+#ifndef HAVE_INET_ATON
+#define inet_aton inet_aton_unbound
+int inet_aton(const char *cp, struct in_addr *addr);
+#endif
+
+
+#ifndef HAVE_MEMMOVE
+#define memmove memmove_unbound
+void *memmove(void *dest, const void *src, size_t n);
+#endif
+
+
+#ifndef HAVE_STRLCPY
+#define strlcpy strlcpy_unbound
+size_t strlcpy(char *dst, const char *src, size_t siz);
+#endif
+
+
+#ifndef HAVE_GMTIME_R
+#define gmtime_r gmtime_r_unbound
+struct tm *gmtime_r(const time_t *timep, struct tm *result);
+#endif
+
+
+#ifndef HAVE_SLEEP
+#define sleep(x) Sleep((x)*1000) /* on win32 */
+#endif /* HAVE_SLEEP */
+
+
+#ifndef HAVE_USLEEP
+#define usleep(x) Sleep((x)/1000 + 1) /* on win32 */
+#endif /* HAVE_USLEEP */
+
+
+#ifndef HAVE_RANDOM
+#define random rand /* on win32, for tests only (bad random) */
+#endif /* HAVE_RANDOM */
+
+
+#ifndef HAVE_SRANDOM
+#define srandom(x) srand(x) /* on win32, for tests only (bad random) */
+#endif /* HAVE_SRANDOM */
+
+
+/* detect if we need to cast to unsigned int for FD_SET to avoid warnings */
+#ifdef HAVE_WINSOCK2_H
+#define FD_SET_T (u_int)
+#else
+#define FD_SET_T 
+#endif
+
+
 #ifndef IPV6_MIN_MTU
 #define IPV6_MIN_MTU 1280
 #endif /* IPV6_MIN_MTU */
+
+
+
+#if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
+   /* using version of libevent that is not threadsafe. */
+#  define LIBEVENT_SIGNAL_PROBLEM 1
+#endif
 
 #ifndef CHECKED_INET6
 #  define CHECKED_INET6
@@ -534,60 +763,9 @@
 
 /* maximum nesting of included files */
 #define MAXINCLUDES 10
-
-#ifndef HAVE_SNPRINTF
-#define snprintf snprintf_unbound
-#define vsnprintf vsnprintf_unbound
-#include <stdarg.h>
-int snprintf (char *str, size_t count, const char *fmt, ...);
-int vsnprintf (char *str, size_t count, const char *fmt, va_list arg);
-#endif /* HAVE_SNPRINTF */
-#ifndef HAVE_INET_PTON
-#define inet_pton inet_pton_unbound
-int inet_pton(int af, const char* src, void* dst);
-#endif /* HAVE_INET_PTON */
-#ifndef HAVE_INET_NTOP
-#define inet_ntop inet_ntop_unbound
-const char *inet_ntop(int af, const void *src, char *dst, size_t size);
-#endif
-#ifndef HAVE_INET_ATON
-#define inet_aton inet_aton_unbound
-int inet_aton(const char *cp, struct in_addr *addr);
-#endif
-#ifndef HAVE_MEMMOVE
-#define memmove memmove_unbound
-void *memmove(void *dest, const void *src, size_t n);
-#endif
-#ifndef HAVE_STRLCPY
-#define strlcpy strlcpy_unbound
-size_t strlcpy(char *dst, const char *src, size_t siz);
-#endif
-#ifndef HAVE_GMTIME_R
-#define gmtime_r gmtime_r_unbound
-struct tm *gmtime_r(const time_t *timep, struct tm *result);
-#endif
 #ifndef HAVE_GETADDRINFO
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
-#endif
-#ifndef HAVE_SLEEP
-#define sleep(x) Sleep((x)*1000) /* on win32 */
-#endif /* HAVE_SLEEP */
-#ifndef HAVE_USLEEP
-#define usleep(x) Sleep((x)/1000 + 1) /* on win32 */
-#endif /* HAVE_USLEEP */
-#ifndef HAVE_RANDOM
-#define random rand /* on win32, for tests only (bad random) */
-#endif /* HAVE_RANDOM */
-#ifndef HAVE_SRANDOM
-#define srandom(x) srand(x) /* on win32, for tests only (bad random) */
-#endif /* HAVE_SRANDOM */
-
-/* detect if we need to cast to unsigned int for FD_SET to avoid warnings */
-#ifdef HAVE_WINSOCK2_H
-#define FD_SET_T (u_int)
-#else
-#define FD_SET_T 
 #endif
 
 #include "ldns/ldns.h"

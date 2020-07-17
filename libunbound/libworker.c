@@ -61,6 +61,7 @@
 #include "util/data/msgreply.h"
 #include "util/data/msgencode.h"
 #include "util/tube.h"
+#include "iterator/iter_fwd.h"
 
 /** handle new query command for bg worker */
 static void handle_newq(struct libworker* w, uint8_t* buf, uint32_t len);
@@ -71,11 +72,13 @@ libworker_delete(struct libworker* w)
 {
 	if(!w) return;
 	if(w->env) {
+		outside_network_quit_prepare(w->back);
 		mesh_delete(w->env->mesh);
 		context_release_alloc(w->ctx, w->env->alloc, 
 			!w->is_bg || w->is_bg_thread);
 		ldns_buffer_free(w->env->scratch_buffer);
 		regional_destroy(w->env->scratch);
+		forwards_delete(w->env->fwds);
 		ub_randfree(w->env->rnd);
 		free(w->env);
 	}
@@ -114,10 +117,15 @@ libworker_setup(struct ub_ctx* ctx, int is_bg)
 	}
 	w->env->scratch = regional_create_custom(cfg->msg_buffer_size);
 	w->env->scratch_buffer = ldns_buffer_new(cfg->msg_buffer_size);
+	w->env->fwds = forwards_create();
+	if(w->env->fwds && !forwards_apply_cfg(w->env->fwds, cfg)) { 
+		forwards_delete(w->env->fwds);
+		w->env->fwds = NULL;
+	}
 	if(!w->is_bg || w->is_bg_thread) {
 		lock_basic_unlock(&ctx->cfglock);
 	}
-	if(!w->env->scratch || !w->env->scratch_buffer) {
+	if(!w->env->scratch || !w->env->scratch_buffer || !w->env->fwds) {
 		libworker_delete(w);
 		return NULL;
 	}
@@ -450,8 +458,7 @@ libworker_fillup_fg(struct ctx_query* q, int rcode, ldns_buffer* buf,
 	libworker_enter_result(q->res, buf, q->w->env->scratch, s);
 }
 
-/** callback with fg results */
-static void
+void
 libworker_fg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s)
 {
 	struct ctx_query* q = (struct ctx_query*)arg;
@@ -566,8 +573,7 @@ add_bg_result(struct libworker* w, struct ctx_query* q, ldns_buffer* pkt,
 	}
 }
 
-/** callback with bg results */
-static void
+void
 libworker_bg_done_cb(void* arg, int rcode, ldns_buffer* buf, enum sec_status s)
 {
 	struct ctx_query* q = (struct ctx_query*)arg;
@@ -840,3 +846,16 @@ codeline_cmp(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
 	return 0;
 }
 
+#ifdef UB_ON_WINDOWS
+void
+worker_win_stop_cb(int ATTR_UNUSED(fd), short ATTR_UNUSED(ev), void* 
+        ATTR_UNUSED(arg)) {
+        log_assert(0);
+}
+
+void
+wsvc_cron_cb(void* ATTR_UNUSED(arg))
+{
+        log_assert(0);
+}
+#endif /* UB_ON_WINDOWS */

@@ -1,8 +1,465 @@
+13 July 2009: Wouter
+	- Fix for crash at start on windows.
+
+9 July 2009: Wouter
+	- tag for release 1.3.1.
+	- trunk has version 1.3.2.
+
+7 July 2009: Wouter
+	- iana portlist updated.
+
+6 July 2009: Wouter
+	- prettier error handling in SSL setup.
+	- makedist.sh uname fix (same as ldns).
+	- updated fedora spec file.
+
+3 July 2009: Wouter
+	- fixup linking when ldnsdir is "".
+
+30 June 2009: Wouter
+	- more lenient truncation checks.
+
+29 June 2009: Wouter
+	- ldns trunk r2959 imported as tarball, because of solaris cc compile
+	  support for c99.  r2960 for better configure.
+	- better wrongly_truncated check.
+	- On Linux, fragment IPv6 datagrams to the IPv6 minimum MTU, to
+	  avoid dropped packets at routers.
+
+26 June 2009: Wouter
+	- Fix EDNS fallback when EDNS works for short answers but long answers
+	  are dropped.
+
+22 June 2009: Wouter
+	- fixup iter priv strict aliasing while preserving size of sockaddr.
+	- iana portlist updated.  (one less port allocated, one more fraction
+	  of a bit for security!)
+	- updated fedora specfile in contrib from Paul Wouters.
+	
+19 June 2009: Wouter
+	- Fixup strict aliasing warning in iter priv code.
+	  and config_file code.
+	- iana portlist updated.
+	- harden-referral-path: handle cases where NS is in answer section.
+
+18 June 2009: Wouter
+	- Fix of message parse bug where (specifically) an NSEC and RRSIG
+	  in the wrong order would be parsed, but put wrongly into internal
+	  structures so that later validation would fail.
+	- Extreme lenience for wrongly truncated replies where a positive
+	  reply has an NS in the authority but no signatures.  They are
+	  turned into minimal responses with only the (secure) answer.
+	- autoconf 2.63 for configure.
+	- python warnings suppress.  Keep python API away from header files.
+
+17 June 2009: Wouter
+	- CREDITS entry for cz.nic, sponsoring a 'summer of code' that was
+	  used for the python code in unbound. (http://www.nic.cz/vip/ in cz).
+
+16 June 2009: Wouter
+	- Fixup opportunistic target query generation to it does not
+	  generate queries that are known to fail.
+	- Touchup on munin total memory report.
+	- messages picked out of the cache by the iterator are checked
+	  if their cname chain is still correct and if validation status
+	  has to be reexamined.
+
+15 June 2009: Wouter
+	- iana portlist updated.
+
+14 June 2009: Wouter
+	- Fixed bug where cached responses would lose their security
+	  status on second validation, which especially impacted dlv
+	  lookups.  Reported by Hauke Lampe.
+
+13 June 2009: Wouter
+	- bug #254. removed random whitespace from example.conf.
+
+12 June 2009: Wouter
+	- Fixup potential wrong NSEC picked out of the cache.
+	- If unfulfilled callbacks are deleted they are called with an error.
+	- fptr wlist checks for mesh callbacks.
+	- fwd above stub in configuration works.
+
+11 June 2009: Wouter
+	- Fix queries for type DS when forward or stub zones are there.
+	  They are performed to higherup domains, and thus treated as if
+	  going to higher zones when looking up the right forward or stub
+	  server.  This makes a stub pointing to a local server that has
+	  a local view of example.com signed with the same keys as are
+	  publicly used work.  Reported by Johan Ihren.
+	- Added build-unbound-localzone-from-hosts.pl to contrib, from
+	  Dennis DeDonatis.  It converts /etc/hosts into config statements.
+	- same thing fixed for forward-zone and DS, chain of trust from
+	  public internet into the forward-zone works now.  Added unit test.
+
+9 June 2009: Wouter
+	- openssl key files are opened apache-style, when user is root and
+	  before chrooting.  This makes permissions on remote-control key 
+	  files easier to set up.  Fixes bug #251.
+	- flush_type and flush_name remove msg cache entries.
+	- codereview - dp copy bogus setting fix.
+
+8 June 2009: Wouter
+	- Removed RFC5011 REVOKE flag support. Partial 5011 support may cause
+	  inadvertant behaviour.
+	- 1.3.0 tarball for release created.
+	- 1.3.1 development in svn trunk.
+	- iana portlist updated.
+	- fix lint from complaining on ldns/sha.h.
+	- help compiler figure out aliasing in priv_rrset_bad() routine.
+	- fail to configure with python if swig is not found.
+	- unbound_munin_ in contrib uses ps to show rss if sbrk does not work.
+
+3 June 2009: Wouter
+	- fixup bad free() when wrongly encoded DSA signature is seen.
+	  Reported by Paul Wouters.
+	- review comments from Matthijs.
+
+2 June 2009: Wouter
+	- --enable-sha2 option. The draft rsasha256 changed its algorithm
+	  numbers too often.  Therefore it is more prudent to disable the
+	  RSASHA256 and RSASHA512 support by default.
+	- ldns trunk included as new tarball.
+	- recreated the 1.3.0 tag in svn. rc1 tarball generated at this point.
+
+29 May 2009: Wouter
+	- fixup doc bug in README reported by Matthew Dempsky.
+
+28 May 2009: Wouter
+	- update iana port list
+	- update ldns lib tarball
+
+27 May 2009: Wouter
+	- detect lack of IPv6 support on XP (with a different error code).
+	- Fixup a crash-on-exit which was triggered by a very long queue.
+	  Unbound would try to re-use ports that came free, but this is
+	  of course not really possible because everything is deleted.
+	  Most easily triggered on XP (not Vista), maybe because of the
+	  network stack encouraging large messages backlogs.
+	- change in debug statements.
+	- Fixed bug that could cause a crash if root prime failed when there
+	  were message backlogs.
+
+26 May 2009: Wouter
+	- Thanks again to Brett Carr, found an assertion that was not true.
+	  Assertion checked if recursion parent query still existed.
+
+29 April 2009: Wouter
+	- Thanks to Brett Carr, caught windows resource leak, use 
+	  closesocket() and not close() on sockets or else the network stack
+	  starts to leak handles.
+	- Removed usage of windows Mutex because windows cannot handle enough
+	  mutexes open.  Provide own mutex implementation using primitives.
+
+28 April 2009: Wouter
+	- created svn tag for 1.3.0.
+
+27 April 2009: Wouter
+	- optimised cname from cache.
+	- ifdef windows functions in testbound.
+
+23 April 2009: Wouter
+	- fix for threadsafety in solaris thr_key_create() in tests.
+	- iana portlist updated.
+	- fix pylib test for Darwin.
+	- fix pymod test for Darwin and a python threading bug in pymod init.
+	- check python >= 2.4 in configure.
+	- -ldl check for libcrypto 1.0.0beta.
+
+21 April 2009: Wouter
+	- fix for build outside sourcedir.
+	- fix for configure script swig detection.
+
+17 April 2009: Wouter
+	- Fix reentrant in minievent handler for unix. Could have resulted
+	  in spurious event callbacks.
+	- timers do not take up a fd slot for winsock handler.
+	- faster fix for winsock reentrant check.
+	- fix rsasha512 unit test for new (interim) algorithm number.
+	- fix test:ldns doesn't like DOS line endings in keyfiles on unix.
+	- fix compile warning on ubuntu (configlexer fwrite return value).
+	- move python include directives into CPPFLAGS instead of CFLAGS.
+
+16 April 2009: Wouter
+	- winsock event handler exit very quickly on signal, even if
+	  under heavy load.
+	- iana portlist updated.
+	- fixup windows winsock handler reentrant problem.
+
+14 April 2009: Wouter
+	- bug #245: fix munin plugin, perform cleanup of stale lockfiles.
+	- makedist.sh; better help text.
+	- cache-min-ttl option and tests.
+	- mingw detect error condition on TCP sockets (NOTCONN).
+
+9 April 2009: Wouter
+	- Fix for removal of RSASHA256_NSEC3 protonumber from ldns.
+	- ldns tarball updated.
+	- iana portlist update.
+	- detect GOST support in openssl-1.0.0-beta1, and fix compile problem
+	  because that openssl defines the name STRING for itself.
+
+6 April 2009: Wouter
+	- windows compile fix.
+	- Detect FreeBSD jail without ipv6 addresses assigned.
+	- python libunbound wrapper unit test.
+	- installs the following files. Default is to not build them.
+	  	from configure --with-pythonmodule:
+	  /usr/lib/python2.x/site-packages/unboundmodule.py
+	  	from configure --with-pyunbound:
+	  /usr/lib/python2.x/site-packages/unbound.py
+	  /usr/lib/python2.x/site-packages/_unbound.so*
+	  The example python scripts (pythonmod/examples and
+	  libunbound/python/examples) are not installed.
+	- python invalidate routine respects packed rrset ids and locks.
+	- clock skew checks in unbound, config statements.
+	- nxdomain ttl considerations in requirements.txt
+
+3 April 2009: Wouter
+	- Fixed a bug that caused messages to be stored in the cache too 
+	  long.  Hard to trigger, but NXDOMAINs for nameservers or CNAME
+	  targets have been more vulnerable to the TTL miscalculation bug. 
+	- documentation test fixed for python addition.
+
+2 April 2009: Wouter
+	- pyunbound (libunbound python plugin) compiles using libtool.
+	- documentation for pythonmod and pyunbound is generated in doc/html.
+	- iana portlist updated.
+	- fixed bug in unbound-control flush_zone where it would not flush
+	  every message in the target domain.  This especially impacted 
+	  NXDOMAIN messages which could remain in the cache regardless.
+	- python module test package.
+
+1 April 2009: Wouter
+	- suppress errors when trying to contact authority servers that gave
+	  ipv6 AAAA records for their nameservers with ipv4 mapped contents.
+	  Still tries to do so, could work when deployed in intranet.
+	  Higher verbosity shows the error.
+	- new libunbound calls documented.
+	- pyunbound in libunbound/python. Removed compile warnings.
+	  Makefile to make it.
+
+30 March 2009: Wouter
+	- Fixup LDFLAGS from libevent sourcedir compile configure restore.
+	- Fixup so no non-absolute rpaths are added.
+	- Fixup validation of RRSIG queries, they are let through.
+	- read /dev/random before chroot
+	- checkconf fix no python checks when no python module enabled.
+	- fix configure, pthread first, so other libs do not change outcome.
+
+27 March 2009: Wouter
+	- nicer -h output. report linked libraries and modules.
+	- prints modules in intuitive order (config file friendly).
+	- python compiles easily on BSD.
+
+26 March 2009: Wouter
+	- ignore swig varargs warnings with gcc.
+	- remove duplicate example.conf text from python example configs.
+	- outofdir compile fix for python.
+	- pyunbound works.
+	- print modules compiled in on -h. manpage.
+
+25 March 2009: Wouter
+	- initial import of the python contribution from Zdenek Vasicek and
+	  Marek Vavrusa.
+	- pythonmod in Makefile; changes to remove warnings/errors for 1.3.0.
+
+24 March 2009: Wouter
+	- more neat configure.ac. Removed duplicate config.h includes.
+	- neater config.h.in.
+	- iana portlist updated.
+	- fix util/configlexer.c and solaris -std=c99 flag.
+	- fix postcommit aclocal errors.
+	- spaces stripped. Makefile cleaner, /usr omitted from -I, -L, -R.
+	- swap order of host detect and libtool generation.
+
+23 March 2009: Wouter
+	- added launchd plist example file for MacOSX to contrib.
+	- deprecation test for daemon(3).
+	- moved common configure actions to m4 include, prettier Makefile.
+
+20 March 2009: Wouter
+	- bug #239: module-config entries order is important. Documented.
+	- build fix for test asynclook.
+
+19 March 2009: Wouter
+	- winrc/README.txt dos-format text file.
+	- iana portlist updated.
+	- use _beginthreadex() when available (performs stack alignment).
+	- defaults for windows baked into configure.ac (used if on mingw).
+
+18 March 2009: Wouter
+	- Added tests, unknown algorithms become insecure. fallback works.
+	- Fix for and test for unknown algorithms in a trust anchor
+	  definition.  Trust anchors with no supported algos are ignored.
+	  This means a (higher)DS or DLV entry for them could succeed, and
+	  otherwise they are treated as insecure.
+	- domain-insecure: "example.com" statement added. Sets domain
+	  insecure regardless of chain of trust DSs or DLVs. The inverse
+	  of a trust-anchor.
+
+17 March 2009: Wouter
+	- unit test for unsupported algorithm in anchor warning.
+	- fixed so queries do not fail on opportunistic target queries.
+
+16 March 2009: Wouter
+	- fixup diff error printout in contrib/update-itar.sh.
+	- added contrib/unbound_cacti for statistics support in cacti,
+	  contributed by Dmitriy Demidov.
+
+13 March 2009: Wouter
+	- doxygen and lex/yacc on linux.
+	- strip update-anchor on makedist -w.
+	- fix testbound on windows.
+	- default log to syslog for windows.
+	- uninstaller can stop unbound - changed text on it to reflect that.
+	- remove debugging from windows 'cron' actions.
+
+12 March 2009: Wouter
+	- log to App.logs on windows prints executable identity.
+	- fixup tests.
+	- munin plugin fix benign locking error printout.
+	- anchor-update for windows, called every 24 hours; unbound reloads.
+
+11 March 2009: Wouter
+	- winsock event handler resets WSAevents after signalled.
+	- winsock event handler tests if signals are really signalled.
+	- install and service with log to file works on XP and Vista on 
+	  default install location.
+	- on windows logging to the Application logbook works (as a service).
+	- fix RUN_DIR on windows compile setting in makedist.
+	- windows registry has Software\Unbound\ConfigFile element.
+	  If does not exist, the default is used. The -c switch overrides it.
+	- fix makedist version cleanup function.
+
+10 March 2009: Wouter
+	- makedist -w strips out old rc.. and snapshot info from version.
+	- setup.exe starts and stops unbound after install, before uninstall.
+	- unbound-checkconf recognizes absolute pathnames on windows (C:...).
+
+9 March 2009: Wouter
+	- Nullsoft NSIS installer creation script.
+
+5 March 2009: Wouter
+	- fixup memory leak introduced on 18feb in mesh reentrant fix.
+
+3 March 2009: Wouter
+	- combined icon with 16x16(4) 32x32(4) 48x48(8) 64x64(8).
+	- service works on xp/vista, no config necessary (using defaults).
+	- windows registry settings.
+
+2 March 2009: Wouter
+	- fixup --export-symbols to be -export-symbls for libtool.
+	  This should fix extraneous symbols exported from libunbound.
+	  Thanks to Ondrej Sury and Robert Edmonds for finding it.
+	- iana portlist updated.
+	- document FAQ entry on stub/forward zones and default blocking.
+	- fix asynclook test app for libunbound not exporting symbols.
+	- service install and remove utils that work with vista UAC.
+		
+27 February 2009: Wouter
+	- Fixup lexer, to not give warnings about fwrite. Appeared in
+	  new lexer features.
+	- makedistro functionality for mingw. Has RC support.
+	- support spaces and backslashes in configured defaults paths.
+	- register, deregister in service control manager.
+
+25 February 2009: Wouter
+	- windres usage for application resources.
+
+24 February 2009: Wouter
+	- isc moved their dlv key download location.
+	- fixup warning on vista/mingw.
+	- makedist -w for window zip distribution first version.
+
+20 February 2009: Wouter
+	- Fixup contrib/update-itar.sh, the exit codes 1 and 0 were swapped.
+	  Nicer script layout.  Added url to site in -h output.
+
+19 February 2009: Wouter
+	- unbound-checkconf and unbound print warnings when trust anchors
+	  have unsupported algorithms.
+	- added contrib/update-itar.sh  This script is similar to
+	  update-anchor.sh, and updates from the IANA ITAR repository.
+	  You can provide your own PGP key and trust repo, or can use the
+	  builtin.  The program uses wget and gpg to work.
+	- iana portlist updated.
+	- update-itar.sh: using ftp:// urls because https godaddy certificate
+	  is not available everywhere and then gives fatal errors.  The 
+	  security is provided by pgp signature.
+
+18 February 2009: Wouter
+	- more cycle detection. Also for target queries.
+	- fixup bug where during deletion of the mesh queries the callbacks
+	  that were reentrant caused assertion failures. Keep the mesh in 
+	  a reentrant safe state.  Affects libunbound, reload of server,
+	  on quit and flush_requestlist.
+	- iana portlist updated.
+
+13 February 2009: Wouter
+	- forwarder information now per-thread duplicated.
+	  This keeps it read only for speed, with no locking necessary.
+	- forward command for unbound control to change forwarders to use
+	  on the fly.
+	- document that unbound-host reads no config file by default.
+	- updated iana portlist.
+
+12 February 2009: Wouter
+	- call setusercontext if available (on BSD).
+	- small refactor of stats clearing.
+	- #227: flush_stats feature for unbound-control.
+	- stats_noreset feature for unbound-control.
+	- flush_requestlist feature for unbound-control.
+	- libunbound version upped API (was changed 5 feb).
+	- unbound-control status shows if root forwarding is in use.
+	- slightly nicer memory management in iter-fwd code.
+
+10 February 2009: Wouter
+	- keys with rfc5011 REVOKE flag are skipped and not considered when
+	  validating data.
+	- iana portlist updated
+	- #226: dump_requestlist feature for unbound-control.
+
+6 February 2009: Wouter
+	- contrib contains specfile for fedora 1.2.1 (from Paul Wouters).
+	- iana portlist updated.
+	- fixup EOL in include directive (reported by Paul Wouters).
+	  You can no longer specify newlines in the names of included files.
+	- config parser changed. Gives some syntax errors closer to where they 
+	  occurred. Does not enforce a space after keyword anymore.
+	  Does not allow literal newlines inside quoted strings anymore.
+	- verbosity level 5 logs customer IP for new requestlist entries.
+	- test fix, lexer and cancel test.
+	- new option log-time-ascii: yes  if you enable it prints timestamps
+	  in the log file as Feb 06 13:45:26 (like syslog does).
+	- detect event_base_new in libevent-1.4.1 and later and use it.
+	- #231 unbound-checkconf -o option prints that value from config file.
+	  Useful for scripting in management scripts and the like.
+
 5 February 2009: Wouter
 	- ldns 1.5.0 rc as tarball included.
+	- 1.3.0 development continues:
+	  change in libunbound API: ub_cancel can return an error, that
+	  the async_id did not exist, or that it was already delivered.
+	  The result could have been delivered just before the cancel 
+	  routine managed to acquire the lock, so a caller may get the
+	  result at the same time they call cancel.  For this case, 
+	  ub_cancel tries to return an error code.
+	  Fixes race condition in ub_cancel() libunbound function.
+	- MacOSX Leopard cleaner text output from configure.
+	- initgroups(3) is called to drop secondary group permissions, if
+	  applicable.
+	- configure option --with-ldns-builtin forces the use of the 
+	  inluded ldns package with the unbound source.  The -I include
+	  is put before the others, so it avoids bad include files from
+	  an older ldns install.
+	- daemon(3) posix call is used when available.
+	- testbound test for older fix added.
 
 4 February 2009: Wouter
 	- tag for release 1.2.1.
+	- trunk setup for 1.3.0 development.
 
 3 February 2009: Wouter
 	- noted feature requests in doc/TODO.

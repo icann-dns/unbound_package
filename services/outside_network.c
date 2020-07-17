@@ -39,7 +39,7 @@
  * This file has functions to send queries to authoritative servers and
  * wait for the pending answer events.
  */
-
+#include "config.h"
 #include "services/outside_network.h"
 #include "services/listen_dnsport.h"
 #include "services/cache/infra.h"
@@ -162,12 +162,13 @@ outnet_tcp_take_into_use(struct waiting_tcp* w, uint8_t* pkt, size_t pkt_len)
 		if(1) {
 #endif
 			log_err("outgoing tcp: connect: %s", strerror(errno));
+			close(s);
 #else /* USE_WINSOCK */
 		if(WSAGetLastError() != WSAEINPROGRESS &&
 			WSAGetLastError() != WSAEWOULDBLOCK) {
+			closesocket(s);
 #endif
 			log_addr(0, "failed address", &w->addr, w->addrlen);
-			close(s);
 			return 0;
 		}
 	}
@@ -193,7 +194,8 @@ static void
 use_free_buffer(struct outside_network* outnet)
 {
 	struct waiting_tcp* w;
-	while(outnet->tcp_free && outnet->tcp_wait_first) {
+	while(outnet->tcp_free && outnet->tcp_wait_first 
+		&& !outnet->want_to_quit) {
 		w = outnet->tcp_wait_first;
 		outnet->tcp_wait_first = w->next_waiting;
 		if(outnet->tcp_wait_last == w)
@@ -275,7 +277,8 @@ outnet_send_wait_udp(struct outside_network* outnet)
 {
 	struct pending* pend;
 	/* process waiting queries */
-	while(outnet->udp_wait_first && outnet->unused_fds) {
+	while(outnet->udp_wait_first && outnet->unused_fds 
+		&& !outnet->want_to_quit) {
 		pend = outnet->udp_wait_first;
 		outnet->udp_wait_first = pend->next_waiting;
 		if(!pend->next_waiting) outnet->udp_wait_last = NULL;
@@ -482,6 +485,7 @@ outside_network_create(struct comm_base *base, size_t bufsize,
 	outnet->infra = infra;
 	outnet->rnd = rnd;
 	outnet->svcd_overhead = 0;
+	outnet->want_to_quit = 0;
 	outnet->unwanted_threshold = unwanted_threshold;
 	outnet->unwanted_action = unwanted_action;
 	outnet->unwanted_param = unwanted_param;
@@ -608,10 +612,20 @@ serviced_node_del(rbnode_t* node, void* ATTR_UNUSED(arg))
 }
 
 void 
+outside_network_quit_prepare(struct outside_network* outnet)
+{
+	if(!outnet)
+		return;
+	/* prevent queued items from being sent */
+	outnet->want_to_quit = 1; 
+}
+
+void 
 outside_network_delete(struct outside_network* outnet)
 {
 	if(!outnet)
 		return;
+	outnet->want_to_quit = 1;
 	/* check every element, since we can be called on malloc error */
 	if(outnet->pending) {
 		/* free pending elements, but do no unlink from tree. */
@@ -1116,6 +1130,8 @@ serviced_delete(struct serviced_query* sq)
 			if(p->pc)
 				portcomm_loweruse(sq->outnet, p->pc);
 			pending_delete(sq->outnet, p);
+			/* this call can cause reentrant calls back into the
+			 * mesh */
 			outnet_send_wait_udp(sq->outnet);
 		} else {
 			struct waiting_tcp* p = (struct waiting_tcp*)
@@ -1218,7 +1234,8 @@ serviced_udp_send(struct serviced_query* sq, ldns_buffer* buff)
 		&edns_lame_known, &rtt))
 		return 0;
 	if(sq->status == serviced_initial) {
-		if(edns_lame_known == 0 && rtt > 5000) {
+		if((vs != -1 || edns_lame_known == 0) && 
+			rtt > 5000 && rtt < 10001) {
 			/* perform EDNS lame probe - check if server is
 			 * EDNS lame (EDNS queries to it are dropped) */
 			verbose(VERB_ALGO, "serviced query: send probe to see "

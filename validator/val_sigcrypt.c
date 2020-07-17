@@ -370,13 +370,11 @@ dnskey_algo_id_is_supported(int id)
 	case LDNS_RSASHA1:
 	case LDNS_RSASHA1_NSEC3:
 	case LDNS_RSAMD5:
-#ifdef HAVE_EVP_SHA256
+#if defined(HAVE_EVP_SHA256) && defined(USE_SHA2)
 	case LDNS_RSASHA256:
-	case LDNS_RSASHA256_NSEC3:
 #endif
-#ifdef HAVE_EVP_SHA512
+#if defined(HAVE_EVP_SHA512) && defined(USE_SHA2)
 	case LDNS_RSASHA512:
-	case LDNS_RSASHA512_NSEC3:
 #endif
 		return 1;
 	default:
@@ -523,8 +521,8 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 		if(algo != dnskey_get_algo(dnskey, i) ||
 			tag != dnskey_calc_keytag(dnskey, i))
 			continue;
-
 		numchecked ++;
+
 		/* see if key verifies */
 		sec = dnskey_verify_rrset_sig(env->scratch, 
 			env->scratch_buffer, ve, now, rrset, dnskey, i, 
@@ -1070,16 +1068,31 @@ check_dates(struct val_env* ve, uint32_t unow,
 		return 0;
 	}
 	if(incep - now > 0) {
-		sigdate_error("verify: signature bad, current time is"
-			" before inception date", expi, incep, now);
-		return 0;
+		/* within skew ? (calc here to avoid calculation normally) */
+		int32_t skew = (expi-incep)/10;
+		if(skew < ve->skew_min) skew = ve->skew_min;
+		if(skew > ve->skew_max) skew = ve->skew_max;
+		if(incep - now > skew) {
+			sigdate_error("verify: signature bad, current time is"
+				" before inception date", expi, incep, now);
+			return 0;
+		}
+		sigdate_error("verify warning suspicious signature inception "
+			" or bad local clock", expi, incep, now);
 	}
 	if(now - expi > 0) {
-		sigdate_error("verify: signature expired", expi, incep, now);
-		return 0;
+		int32_t skew = (expi-incep)/10;
+		if(skew < ve->skew_min) skew = ve->skew_min;
+		if(skew > ve->skew_max) skew = ve->skew_max;
+		if(now - expi > skew) {
+			sigdate_error("verify: signature expired", expi, 
+				incep, now);
+			return 0;
+		}
+		sigdate_error("verify warning suspicious signature expiration "
+			" or bad local clock", expi, incep, now);
 	}
 	return 1;
-
 }
 
 /** adjust rrset TTL for verified rrset, compare to original TTL and expi */
@@ -1177,7 +1190,7 @@ setup_dsa_sig(unsigned char** sig, unsigned int* len)
 	*sig = NULL;
 	newlen = i2d_DSA_SIG(dsasig, sig);
 	if(newlen < 0) {
-		free(sig);
+		free(*sig);
 		return 0;
 	}
 	*len = (unsigned int)newlen;
@@ -1221,13 +1234,11 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 			break;
 		case LDNS_RSASHA1:
 		case LDNS_RSASHA1_NSEC3:
-#ifdef HAVE_EVP_SHA256
+#if defined(HAVE_EVP_SHA256) && defined(USE_SHA2)
 		case LDNS_RSASHA256:
-		case LDNS_RSASHA256_NSEC3:
 #endif
-#ifdef HAVE_EVP_SHA512
+#if defined(HAVE_EVP_SHA512) && defined(USE_SHA2)
 		case LDNS_RSASHA512:
-		case LDNS_RSASHA512_NSEC3:
 #endif
 			rsa = ldns_key_buf2rsa_raw(key, keylen);
 			if(!rsa) {
@@ -1242,15 +1253,13 @@ setup_key_digest(int algo, EVP_PKEY* evp_key, const EVP_MD** digest_type,
 			}
 
 			/* select SHA version */
-#ifdef HAVE_EVP_SHA256
-			if(algo == LDNS_RSASHA256 || 
-				algo == LDNS_RSASHA256_NSEC3)
+#if defined(HAVE_EVP_SHA256) && defined(USE_SHA2)
+			if(algo == LDNS_RSASHA256)
 				*digest_type = EVP_sha256();
 			else
 #endif
-#ifdef HAVE_EVP_SHA512
-				if(algo == LDNS_RSASHA512 || 
-					algo == LDNS_RSASHA512_NSEC3)
+#if defined(HAVE_EVP_SHA512) && defined(USE_SHA2)
+				if(algo == LDNS_RSASHA512)
 				*digest_type = EVP_sha512();
 			else
 #endif

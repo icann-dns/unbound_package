@@ -449,6 +449,11 @@ int ub_resolve_async(struct ub_ctx* ctx, char* name, int rrtype,
  * @param ctx: context.
  * @param async_id: which query to cancel.
  * @return 0 if OK, else error.
+ * This routine can return an error if the async_id passed does not exist
+ * or has already been delivered. If another thread is processing results
+ * at the same time, the result may be delivered at the same time and the
+ * cancel fails with an error.  Also the cancel can fail due to a system
+ * error, no memory or socket failures.
  */
 int ub_cancel(struct ub_ctx* ctx, int async_id);
 
@@ -464,5 +469,50 @@ void ub_resolve_free(struct ub_result* result);
  * @return pointer to constant text string, zero terminated.
  */
 const char* ub_strerror(int err);
+
+/**
+ * Debug routine.  Print the local zone information to debug output.
+ * @param ctx: context.  Is finalized by the routine.
+ * @return 0 if OK, else error.
+ */
+int ub_ctx_print_local_zones(struct ub_ctx* ctx);
+
+/**
+ * Add a new zone with the zonetype to the local authority info of the 
+ * library.
+ * @param ctx: context.  Is finalized by the routine.
+ * @param zone_name: name of the zone in text, "example.com"
+ *	If it already exists, the type is updated.
+ * @param zone_type: type of the zone (like for unbound.conf) in text.
+ * @return 0 if OK, else error.
+ */
+int ub_ctx_zone_add(struct ub_ctx* ctx, char *zone_name, char *zone_type);
+
+/**
+ * Remove zone from local authority info of the library.
+ * @param ctx: context.  Is finalized by the routine.
+ * @param zone_name: name of the zone in text, "example.com"
+ *	If it does not exist, nothing happens.
+ * @return 0 if OK, else error.
+ */
+int ub_ctx_zone_remove(struct ub_ctx* ctx, char *zone_name);
+
+/**
+ * Add localdata to the library local authority info.
+ * Similar to local-data config statement.
+ * @param ctx: context.  Is finalized by the routine.
+ * @param data: the resource record in text format, for example
+ *	"www.example.com IN A 127.0.0.1"
+ * @return 0 if OK, else error.
+ */
+int ub_ctx_data_add(struct ub_ctx* ctx, char *data);
+
+/**
+ * Remove localdata from the library local authority info.
+ * @param ctx: context.  Is finalized by the routine.
+ * @param data: the name to delete all data from, like "www.example.com".
+ * @return 0 if OK, else error.
+ */
+int ub_ctx_data_remove(struct ub_ctx* ctx, char *data);
 
 #endif /* _UB_UNBOUND_H */

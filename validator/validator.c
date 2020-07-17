@@ -122,6 +122,8 @@ val_apply_cfg(struct module_env* env, struct val_env* val_env,
 		return 0;
 	}
 	val_env->date_override = cfg->val_date_override;
+	val_env->skew_min = cfg->val_sig_skew_min;
+	val_env->skew_max = cfg->val_sig_skew_max;
 	c = cfg_count_numbers(cfg->val_nsec3_key_iterations);
 	if(c < 1 || (c&1)) {
 		log_err("validator: unparseable or odd nsec3 key "
@@ -249,9 +251,8 @@ val_error(struct module_qstate* qstate, int id)
 /** 
  * Check to see if a given response needs to go through the validation
  * process. Typical reasons for this routine to return false are: CD bit was
- * on in the original request, the response was already validated, or the
- * response is a kind of message that is unvalidatable (i.e., SERVFAIL,
- * REFUSED, etc.)
+ * on in the original request, or the response is a kind of message that 
+ * is unvalidatable (i.e., SERVFAIL, REFUSED, etc.)
  *
  * @param qstate: query state.
  * @param ret_rc: rcode for this message (if noerror - examine ret_msg).
@@ -283,13 +284,32 @@ needs_validation(struct module_qstate* qstate, int ret_rc,
 		return 0;
 	}
 
-	/* validate unchecked, and re-validate bogus messages */
-	if (ret_msg && ret_msg->rep->security > sec_status_bogus)
-	{
-		verbose(VERB_ALGO, "response has already been validated");
+	/* cannot validate positive RRSIG response. (negatives can) */
+	if(qstate->qinfo.qtype == LDNS_RR_TYPE_RRSIG &&
+		rcode == LDNS_RCODE_NOERROR && ret_msg &&
+		ret_msg->rep->an_numrrsets > 0) {
+		verbose(VERB_ALGO, "cannot validate RRSIG, no sigs on sigs.");
 		return 0;
 	}
 	return 1;
+}
+
+/**
+ * Check to see if the response has already been validated.
+ * @param ret_msg: return msg, can be NULL
+ * @return true if the response has already been validated
+ */
+static int
+already_validated(struct dns_msg* ret_msg)
+{
+	/* validate unchecked, and re-validate bogus messages */
+	if (ret_msg && ret_msg->rep->security > sec_status_bogus)
+	{
+		verbose(VERB_ALGO, "response has already been validated: %s",
+			sec_status_to_string(ret_msg->rep->security));
+		return 1;
+	}
+	return 0;
 }
 
 /**
@@ -457,6 +477,37 @@ validate_msg_signatures(struct module_env* env, struct val_env* ve,
 
 	return 1;
 }
+
+/**
+ * Detect wrong truncated response (say from BIND 9.6.1 that is forwarding
+ * and saw the NS record without signatures from a referral).
+ * The positive response has a mangled authority section.
+ * Remove that authority section and the additional section.
+ * @param rep: reply
+ * @return true if a wrongly truncated response.
+ */
+static int
+detect_wrongly_truncated(struct reply_info* rep)
+{
+	size_t i;
+	/* only NS in authority, and it is bogus */
+	if(rep->ns_numrrsets != 1 || rep->an_numrrsets == 0)
+		return 0;
+	if(ntohs(rep->rrsets[ rep->an_numrrsets ]->rk.type) != LDNS_RR_TYPE_NS)
+		return 0;
+	if(((struct packed_rrset_data*)rep->rrsets[ rep->an_numrrsets ]
+		->entry.data)->security == sec_status_secure)
+		return 0;
+	/* answer section is present and secure */
+	for(i=0; i<rep->an_numrrsets; i++) {
+		if(((struct packed_rrset_data*)rep->rrsets[ i ]
+			->entry.data)->security != sec_status_secure)
+			return 0;
+	}
+	verbose(VERB_ALGO, "truncating to minimal response");
+	return 1;
+}
+
 
 /**
  * Given a "positive" response -- a response that contains an answer to the
@@ -1209,6 +1260,18 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 	else if(vq->key_entry == NULL || (vq->trust_anchor &&
 		dname_strict_subdomain_c(vq->trust_anchor->name, 
 		vq->key_entry->name))) {
+		/* trust anchor is an 'unsigned' trust anchor */
+		if(vq->trust_anchor && vq->trust_anchor->numDS == 0 &&
+			vq->trust_anchor->numDNSKEY == 0) {
+			vq->chase_reply->security = sec_status_insecure;
+			val_mark_insecure(vq->chase_reply, 
+				vq->trust_anchor->name, 
+				qstate->env->rrset_cache, qstate->env);
+			vq->dlv_checked=1; /* skip DLV check */
+			/* go to finished state to cache this result */
+			vq->state = VAL_FINISHED_STATE;
+			return 1;
+		}
 		/* fire off a trust anchor priming query. */
 		verbose(VERB_DETAIL, "prime trust anchor");
 		if(!prime_trust_anchor(qstate, vq, id, vq->trust_anchor))
@@ -1222,7 +1285,7 @@ processInit(struct module_qstate* qstate, struct val_qstate* vq,
 		 * However, we do set the status to INSECURE, since it is 
 		 * essentially proven insecure. */
 		vq->chase_reply->security = sec_status_insecure;
-		val_mark_insecure(vq->chase_reply, vq->key_entry, 
+		val_mark_insecure(vq->chase_reply, vq->key_entry->name, 
 			qstate->env->rrset_cache, qstate->env);
 		/* go to finished state to cache this result */
 		vq->state = VAL_FINISHED_STATE;
@@ -1394,7 +1457,7 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 		verbose(VERB_DETAIL, "Verified that %sresponse is INSECURE",
 			vq->signer_name?"":"unsigned ");
 		vq->chase_reply->security = sec_status_insecure;
-		val_mark_insecure(vq->chase_reply, vq->key_entry, 
+		val_mark_insecure(vq->chase_reply, vq->key_entry->name, 
 			qstate->env->rrset_cache, qstate->env);
 		return 1;
 	}
@@ -1417,17 +1480,36 @@ processValidate(struct module_qstate* qstate, struct val_qstate* vq,
 		vq->chase_reply->security = sec_status_bogus;
 		return 1;
 	}
+	subtype = val_classify_response(qstate->query_flags, &qstate->qinfo,
+		&vq->qchase, vq->orig_msg->rep, vq->rrset_skip);
 
 	/* check signatures in the message; 
 	 * answer and authority must be valid, additional is only checked. */
 	if(!validate_msg_signatures(qstate->env, ve, &vq->qchase, 
 		vq->chase_reply, vq->key_entry)) {
-		verbose(VERB_DETAIL, "Validate: message contains bad rrsets");
-		return 1;
+		/* workaround bad recursor out there that truncates (even
+		 * with EDNS4k) to 512 by removing RRSIG from auth section
+		 * for positive replies*/
+		if((subtype == VAL_CLASS_POSITIVE || subtype == VAL_CLASS_ANY
+			|| subtype == VAL_CLASS_CNAME) &&
+			detect_wrongly_truncated(vq->orig_msg->rep)) {
+			/* truncate the message some more */
+			vq->orig_msg->rep->ns_numrrsets = 0;
+			vq->orig_msg->rep->ar_numrrsets = 0;
+			vq->orig_msg->rep->rrset_count = 
+				vq->orig_msg->rep->an_numrrsets;
+			vq->chase_reply->ns_numrrsets = 0;
+			vq->chase_reply->ar_numrrsets = 0;
+			vq->chase_reply->rrset_count = 
+				vq->chase_reply->an_numrrsets;
+		}
+		else {
+			verbose(VERB_DETAIL, "Validate: message contains "
+				"bad rrsets");
+			return 1;
+		}
 	}
 
-	subtype = val_classify_response(qstate->query_flags, &qstate->qinfo,
-		&vq->qchase, vq->orig_msg->rep, vq->rrset_skip);
 	switch(subtype) {
 		case VAL_CLASS_POSITIVE:
 			verbose(VERB_ALGO, "Validating a positive response");
@@ -1909,6 +1991,13 @@ val_operate(struct module_qstate* qstate, enum module_ev event, int id,
 		if(!needs_validation(qstate, qstate->return_rcode, 
 			qstate->return_msg)) {
 			/* no need to validate this */
+			if(qstate->return_msg)
+				qstate->return_msg->rep->security =
+					sec_status_indeterminate;
+			qstate->ext_state[id] = module_finished;
+			return;
+		}
+		if(already_validated(qstate->return_msg)) {
 			qstate->ext_state[id] = module_finished;
 			return;
 		}
@@ -2372,7 +2461,8 @@ process_dlv_response(struct module_qstate* qstate, struct val_qstate* vq,
 	}
 	if(msg->rep->security != sec_status_secure) {
 		vq->dlv_status = dlv_error;
-		verbose(VERB_ALGO, "response is not secure");
+		verbose(VERB_ALGO, "response is not secure, %s",
+			sec_status_to_string(msg->rep->security));
 		return;
 	}
 	/* was the lookup a success? validated DLV? */

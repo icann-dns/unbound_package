@@ -45,6 +45,9 @@
 #include "util/locks.h"
 #include "util/alloc.h"
 #include "services/modstack.h"
+#ifdef UB_ON_WINDOWS
+#  include "util/winsock_event.h"
+#endif
 struct config_file;
 struct worker;
 struct listen_port;
@@ -54,6 +57,7 @@ struct rrset_cache;
 struct acl_list;
 struct local_zones;
 struct ub_randstate;
+struct daemon_remote;
 
 /**
  * Structure holding worker list.
@@ -70,10 +74,12 @@ struct daemon {
 	int listening_port;
 	/** listening ports, opened, to be shared by threads */
 	struct listen_port* ports;
-	/** port number fore remote that has ports opened. */
+	/** port number for remote that has ports opened. */
 	int rc_port;
 	/** listening ports for remote control */
 	struct listen_port* rc_ports;
+	/** remote control connections management (for first worker) */
+	struct daemon_remote* rc;
 	/** num threads allocated */
 	int num;
 	/** the worker entries */
@@ -131,5 +137,12 @@ void daemon_cleanup(struct daemon* daemon);
  * @param daemon: the daemon.
  */
 void daemon_delete(struct daemon* daemon);
+
+/**
+ * Apply config settings.
+ * @param daemon: the daemon.
+ * @param cfg: new config settings.
+ */
+void daemon_apply_cfg(struct daemon* daemon, struct config_file* cfg);
 
 #endif /* DAEMON_H */

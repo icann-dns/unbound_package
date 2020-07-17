@@ -38,7 +38,7 @@
  *
  * This file has functions to get queries from clients.
  */
-
+#include "config.h"
 #include "services/listen_dnsport.h"
 #include "services/outside_network.h"
 #include "util/netevent.h"
@@ -92,11 +92,15 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
         socklen_t addrlen, int v6only, int* inuse, int* noproto)
 {
 	int s;
-# if defined(IPV6_USE_MIN_MTU)
+#if defined(IPV6_USE_MIN_MTU)
 	int on=1;
-# else
+#endif
+#ifdef IPV6_MTU
+	int mtu = IPV6_MIN_MTU;
+#endif
+#ifndef IPV6_V6ONLY
 	(void)v6only;
-# endif
+#endif
 	if((s = socket(family, socktype, 0)) == -1) {
 		*inuse = 0;
 #ifndef USE_WINSOCK
@@ -126,12 +130,13 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 #ifndef USE_WINSOCK
 				log_err("setsockopt(..., IPV6_V6ONLY"
 					", ...) failed: %s", strerror(errno));
+				close(s);
 #else
 				log_err("setsockopt(..., IPV6_V6ONLY"
 					", ...) failed: %s", 
 					wsa_strerror(WSAGetLastError()));
+				closesocket(s);
 #endif
-				close(s);
 				*noproto = 0;
 				*inuse = 0;
 				return -1;
@@ -149,42 +154,72 @@ create_udp_sock(int family, int socktype, struct sockaddr* addr,
 		 */
 		if (setsockopt(s, IPPROTO_IPV6, IPV6_USE_MIN_MTU,
 			(void*)&on, (socklen_t)sizeof(on)) < 0) {
-#ifndef USE_WINSOCK
+#  ifndef USE_WINSOCK
 			log_err("setsockopt(..., IPV6_USE_MIN_MTU, "
 				"...) failed: %s", strerror(errno));
-#else
+			close(s);
+#  else
 			log_err("setsockopt(..., IPV6_USE_MIN_MTU, "
 				"...) failed: %s", 
 				wsa_strerror(WSAGetLastError()));
-#endif
-			close(s);
+			closesocket(s);
+#  endif
 			*noproto = 0;
 			*inuse = 0;
 			return -1;
 		}
-# endif
+# elif defined(IPV6_MTU)
+		/*
+		 * On Linux, to send no larger than 1280, the PMTUD is
+		 * disabled by default for datagrams anyway, so we set
+		 * the MTU to use.
+		 */
+		if (setsockopt(s, IPPROTO_IPV6, IPV6_MTU,
+			(void*)&mtu, (socklen_t)sizeof(mtu)) < 0) {
+#  ifndef USE_WINSOCK
+			log_err("setsockopt(..., IPV6_MTU, ...) failed: %s", 
+				strerror(errno));
+			close(s);
+#  else
+			log_err("setsockopt(..., IPV6_MTU, ...) failed: %s", 
+				wsa_strerror(WSAGetLastError()));
+			closesocket(s);
+#  endif
+			*noproto = 0;
+			*inuse = 0;
+			return -1;
+		}
+# endif /* IPv6 MTU */
 	}
 	if(bind(s, (struct sockaddr*)addr, addrlen) != 0) {
 		*noproto = 0;
 #ifndef USE_WINSOCK
 #ifdef EADDRINUSE
 		*inuse = (errno == EADDRINUSE);
-		if(errno != EADDRINUSE)
+		/* detect freebsd jail with no ipv6 permission */
+		if(family==AF_INET6 && errno==EINVAL)
+			*noproto = 1;
+		else if(errno != EADDRINUSE)
 			log_err("can't bind socket: %s", strerror(errno));
-#endif
+#endif /* EADDRINUSE */
+		close(s);
 #else /* USE_WINSOCK */
 		if(WSAGetLastError() != WSAEADDRINUSE &&
 			WSAGetLastError() != WSAEADDRNOTAVAIL)
 			log_err("can't bind socket: %s", 
 				wsa_strerror(WSAGetLastError()));
+		closesocket(s);
 #endif
-		close(s);
 		return -1;
 	}
 	if(!fd_set_nonblock(s)) {
 		*noproto = 0;
 		*inuse = 0;
+#ifndef USE_WINSOCK
 		close(s);
+#else
+		closesocket(s);
+#endif
 		return -1;
 	}
 	return s;
@@ -249,7 +284,10 @@ create_tcp_accept_sock(struct addrinfo *addr, int v6only, int* noproto)
 #endif /* IPV6_V6ONLY */
 	if(bind(s, addr->ai_addr, addr->ai_addrlen) != 0) {
 #ifndef USE_WINSOCK
-		log_err("can't bind socket: %s", strerror(errno));
+		/* detect freebsd jail with no ipv6 permission */
+		if(addr->ai_family==AF_INET6 && errno==EINVAL)
+			*noproto = 1;
+		else log_err("can't bind socket: %s", strerror(errno));
 #else
 		log_err("can't bind socket: %s", 
 			wsa_strerror(WSAGetLastError()));
@@ -282,6 +320,12 @@ make_sock(int stype, const char* ifname, const char* port,
 	hints->ai_socktype = stype;
 	*noip6 = 0;
 	if((r=getaddrinfo(ifname, port, hints, &res)) != 0 || !res) {
+#ifdef USE_WINSOCK
+		if(r == EAI_NONAME && hints->ai_family == AF_INET6){
+			*noip6 = 1; /* 'Host not found' for IP6 on winXP */
+			return -1;
+		}
+#endif
 		log_err("node %s:%s getaddrinfo: %s %s", 
 			ifname?ifname:"default", port, gai_strerror(r),
 #ifdef EAI_SYSTEM
@@ -420,7 +464,11 @@ ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp,
 		if(!set_recvpktinfo(s, hints->ai_family))
 			return 0;
 		if(!port_insert(list, s, listen_type_udpancil)) {
+#ifndef USE_WINSOCK
 			close(s);
+#else
+			closesocket(s);
+#endif
 			return 0;
 		}
 	} else if(do_udp) {
@@ -434,7 +482,11 @@ ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp,
 			return 0;
 		}
 		if(!port_insert(list, s, listen_type_udp)) {
+#ifndef USE_WINSOCK
 			close(s);
+#else
+			closesocket(s);
+#endif
 			return 0;
 		}
 	}
@@ -448,7 +500,11 @@ ports_create_if(const char* ifname, int do_auto, int do_udp, int do_tcp,
 			return 0;
 		}
 		if(!port_insert(list, s, listen_type_tcp)) {
+#ifndef USE_WINSOCK
 			close(s);
+#else
+			closesocket(s);
+#endif
 			return 0;
 		}
 	}
@@ -655,8 +711,13 @@ void listening_ports_free(struct listen_port* list)
 	struct listen_port* nx;
 	while(list) {
 		nx = list->next;
-		if(list->fd != -1)
+		if(list->fd != -1) {
+#ifndef USE_WINSOCK
 			close(list->fd);
+#else
+			closesocket(list->fd);
+#endif
+		}
 		free(list);
 		list = nx;
 	}
