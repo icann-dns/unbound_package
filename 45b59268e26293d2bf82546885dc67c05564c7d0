@@ -1,0 +1,2 @@
+   * Fix CVE-2014-8602: denial of service by making resolver chase endless
+     series of delegations; closes: #772622.
