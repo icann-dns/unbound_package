@@ -1,0 +1,2 @@
+  [ Helmut Grohne ]
+  * Fix crash when using DNSSEC and num-threads > 1; closes: #691528.
