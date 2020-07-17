@@ -1,0 +1,2 @@
+  * Cherry-pick upstream commit svn r4000, "Include root trust anchor id
+    20326 in unbound-anchor". (Closes: #855484)
