@@ -1,0 +1,5 @@
+  * Merge from Debian (LP: #1556308):
+    - Revert dnstap support (dependencies not in main)
+  * Drop:
+    - Fix build failure with swig -Wdate-time.
+      [ Fixed in Debian 1.5.7-2 ]
