@@ -1,0 +1,4 @@
+  * Imported Upstream version 1.5.8
+  * debian/libunbound2.symbols: Add new symbol 'ub_ctx_set_stub'
+  * debian/unbound.postinst: Clean up permissions on the resolvconf
+    forwarder hook on upgrades (Closes: #816425)
