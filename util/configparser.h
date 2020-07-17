@@ -1,9 +1,8 @@
-/* A Bison parser, made by GNU Bison 2.4.3.  */
+/* A Bison parser, made by GNU Bison 2.5.  */
 
-/* Skeleton interface for Bison's Yacc-like parsers in C
+/* Bison interface for Yacc-like parsers in C
    
-      Copyright (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2009, 2010 Free Software Foundation, Inc.
+      Copyright (C) 1984, 1989-1990, 2000-2011 Free Software Foundation, Inc.
    
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -156,7 +155,11 @@
      VAR_HARDEN_BELOW_NXDOMAIN = 373,
      VAR_IGNORE_CD_FLAG = 374,
      VAR_LOG_QUERIES = 375,
-     VAR_TCP_UPSTREAM = 376
+     VAR_TCP_UPSTREAM = 376,
+     VAR_SSL_UPSTREAM = 377,
+     VAR_SSL_SERVICE_KEY = 378,
+     VAR_SSL_SERVICE_PEM = 379,
+     VAR_SSL_PORT = 380
    };
 #endif
 /* Tokens.  */
@@ -279,6 +282,10 @@
 #define VAR_IGNORE_CD_FLAG 374
 #define VAR_LOG_QUERIES 375
 #define VAR_TCP_UPSTREAM 376
+#define VAR_SSL_UPSTREAM 377
+#define VAR_SSL_SERVICE_KEY 378
+#define VAR_SSL_SERVICE_PEM 379
+#define VAR_SSL_PORT 380
 
 
 
@@ -287,15 +294,15 @@
 typedef union YYSTYPE
 {
 
-/* Line 1685 of yacc.c  */
+/* Line 2068 of yacc.c  */
 #line 64 "util/configparser.y"
 
 	char*	str;
 
 
 
-/* Line 1685 of yacc.c  */
-#line 299 "util/configparser.h"
+/* Line 2068 of yacc.c  */
+#line 306 "util/configparser.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
