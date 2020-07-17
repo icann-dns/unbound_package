@@ -1,0 +1,3 @@
+  * [3cf7971b] debian/control: Vcs-Browser should point to cgit
+    (Closes: #804437)
+  * [66955294] Imported Upstream version 1.5.7
