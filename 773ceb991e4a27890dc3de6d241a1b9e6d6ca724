@@ -1,0 +1,2 @@
+  * debian/unbound.install: Install usr/sbin/unbound-checkconf
+    (Closes: #842797)
