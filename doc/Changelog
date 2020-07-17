@@ -1,5 +1,140 @@
+15 June 2010: Wouter
+	- tag 1.4.5 created.
+
+11 June 2010: Wouter
+	- When retry to parent the retrycount is not wiped, so failed 
+	  nameservers are not tried again.
+	- iana portlist updated.
+
+10 June 2010: Wouter
+	- Fix bug where a long loop could be entered, now cycle detection
+	  has a loop-counter and maximum search amount.
+
+4 June 2010: Wouter
+	- iana portlist updated.
+	- 1.4.5rc1 tag created.
+
+3 June 2010: Wouter
+	- ldns tarball updated, 1.6.5.
+	- review comments, split dependency cycle tracking for parentside
+	  last resort lookups for A and AAAA so there are more lookup options.
+
+2 June 2010: Wouter
+	- Fix compile warning if compiled without threads.
+	- updated ldns-tarball with current ldns svn (pre 1.6.5).
+	- GOST disabled-by-default, the algorithm number is allocated but the
+	  RFC is still has to pass AUTH48 at the IETF.
+
+1 June 2010: Wouter
+	- Ignore Z flag in incoming messages too.
+	- Fix storage of negative parent glue if that last resort fails.
+	- libtoolize 2.2.6b, autoconf 2.65 applied to configure.
+	- new splint flags for newer splint install.
+
+31 May 2010: Wouter
+	- Fix AD flag handling, it could in some cases mistakenly copy the AD 
+	  flag from upstream servers.
+	- alloc_special_obtain out of memory is not a fatal error any more,
+	  enabling unbound to continue longer in out of memory conditions.
+	- parentside names are dispreferred but not said to be dnssec-lame.
+	- parentside check for cached newname glue.
+	- fix parentside and querytargets modulestate, for dump_requestlist.
+	- unbound-control-setup makes keys -rw-r--- so not all users permitted.
+	- fix parentside from cache to be marked dispreferred for bad names.
+
+28 May 2010: Wouter
+	- iana portlist updated.
+	- parent-child disagreement approach altered.  Older fixes are
+	  removed in place of a more exhaustive search for misconfigured data
+	  available via the parent of a delegation.
+	  This is designed to be throttled by cache entries, with TTL from the
+	  parent if possible.  Additionally the loop-counter is used.
+	  It also tests for NS RRset differences between parent and child.
+	  The fetch of misconfigured data should be more reliable and thorough.
+	  It should work reliably even with no or only partial data in cache.
+	  Data received from the child (as always) is deemed more
+	  authoritative than information received from the delegation parent.
+	  The search for misconfigured data is not performed normally.
+
+26 May 2010: Wouter
+	- Contribution from Migiel de Vos (Surfnet): nagios patch for
+	  unbound-host, in contrib/ (in the source tarball).  Makes
+	  unbound-host suitable for monitoring dnssec(-chain) status.
+
+21 May 2010: Wouter
+	- EDNS timeout code will not fire if EDNS status already known.
+	- EDNS failure not stored if EDNS status known to work.
+
+19 May 2010: Wouter
+	- Fix resolution for domains like safesvc.com.cn.  If the iterator
+	  can not recurse further and it finds the delegation in a state
+	  where it would otherwise have rejected it outhand if so received
+	  from a cache lookup, then it can try to ask higherup (with loop
+	  protection).
+	- Fix comments in iter_utils:dp_is_useless.
+
+18 May 2010: Wouter
+	- Fix various compiler warnings from the clang llvm compiler.
+	- iana portlist updated.
+
+6 May 2010: Wouter
+	- Fix bug#308: spelling error in variable name in parser and lexer.
+
+4 May 2010: Wouter
+	- Fix dnssec-missing detection that was turned off by server selection.
+	- Conforms to draft-ietf-dnsop-default-local-zones-13.  Added default
+	  reverse lookup blocks for IPv4 test nets 100.51.198.in-addr.arpa,
+	  113.0.203.in-addr.arpa and Orchid prefix 0.1.1.0.0.2.ip6.arpa.
+
+29 April 2010: Wouter
+	- Fix for dnssec lameness detection to use the key cache.
+	- infra cache entries that are expired are wiped clean.  Previously
+	  it was possible to not expire host data (if accessed often).
+
+28 April 2010: Wouter
+	- ldns tarball updated and GOST support is detected and then enabled. 
+	- iana portlist updated.
+	- Fix detection of gost support in ldns (reported by Chris Smith).
+
+27 April 2010: Wouter
+	- unbound-control get_option domain-insecure shows config file items.
+	- fix retry sequence if prime hints are recursion-lame.
+	- autotrust anchor file can be initialized with a ZSK key as well.
+	- harden-referral-path does not result in failures due to max-depth.
+	  You can increase the max-depth by adding numbers (' 0') after the
+	  target-fetch-policy, this increases the depth to which is checked.
+
+26 April 2010: Wouter
+	- Compile fix using Sun Studio 12 compiler on Solaris 5.9, use
+	  CPPFLAGS during configure process.
+	- if libev is installed on the base system (not libevent), detect
+	  it from the event.h header file and link with -lev.
+	- configlexer.lex gets config.h, and configyyrename.h added by make,
+	  no more double include.
+	- More strict scrubber (Thanks to George Barwood for the idea):
+	  NS set must be pertinent to the query (qname subdomain nsname).
+	- Fix bug#307: In 0x20 backoff fix fallback so the number of 
+	  outstanding queries does not become -1 and block the request.
+	  Fixed handling of recursion-lame in combination with 0x20 fallback.
+	  Fix so RRsets are compared canonicalized and sorted if the immediate
+	  comparison fails, this makes it work around round-robin sites.
+
+23 April 2010: Wouter
+	- Squelch log message: sendto failed permission denied for
+	  255.255.255.255, it is visible in VERB_DETAIL (verbosity 2).
+	- Fix to fetch data as last resort more tenaciously.  When cycle
+	  targets cause the server selection to believe there are more options
+	  when they really are not there, the server selection is reinitiated.
+	- Fix fetch from blacklisted dnssec lame servers as last resort.  The
+	  server's IP address is then given in validator errors as well.
+	- Fix local-zone type redirect that did not use the query name for
+	  the answer rrset.
+
 22 April 2010: Wouter
 	- tag 1.4.4.
+	- trunk contains 1.4.5 in development.
+	- Fix validation failure for qtype ANY caused by a RRSIG parse failure.
+	  The validator error message was 'no signatures from ...'.
 
 16 April 2010: Wouter
 	- more portability defines for CMSG_SPACE, CMSG_ALIGN, CMSG_LEN.
