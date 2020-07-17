@@ -1,0 +1,2 @@
+  * Source backport to fix FTBFS (LP: #315701)
+    - Drop --install flag for libtoolize so it works with Hardy
