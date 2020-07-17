@@ -1,4 +1,4 @@
-.TH "unbound-anchor" "8" "Jan 24, 2011" "NLnet Labs" "unbound 1.4.8"
+.TH "unbound-anchor" "8" "Mar 24, 2011" "NLnet Labs" "unbound 1.4.9"
 .\"
 .\" unbound-anchor.8 -- unbound anchor maintenance utility manual
 .\"
@@ -26,6 +26,9 @@ Suggested usage:
 	# in the init scripts.
 	# provide or update the root anchor (if necessary)
 	unbound-anchor -a "@UNBOUND_ROOTKEY_FILE@"
+	# Please note usage of this root anchor is at your own risk
+	# and under the terms of our LICENSE (see source).
+	#
 	# start validating resolver
 	# the unbound.conf contains:
 	#   auto-trust-anchor-file: "@UNBOUND_ROOTKEY_FILE@"
