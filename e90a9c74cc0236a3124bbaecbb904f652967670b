@@ -1,0 +1,6 @@
+  * New upstream release.
+  * Only install forwarders learned from resolvconf into unbound if
+    RESOLVCONF_FORWARDERS is enabled in /etc/default/unbound; closes: #637198.
+  * Split unbound-anchor utility into separate binary package.
+  * Support multi-arch.
+  * Fix FTBFS with dpkg-dev 1.16.1.
