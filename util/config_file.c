@@ -277,7 +277,7 @@ config_create(void)
 	cfg->insecure_lan_zones = 0;
 	cfg->python_script = NULL;
 	cfg->dynlib_file = NULL;
-	cfg->remote_control_enable = 0;
+	cfg->remote_control_enable = 1; /* Debian specific */
 	cfg->control_ifs.first = NULL;
 	cfg->control_ifs.last = NULL;
 	cfg->control_port = UNBOUND_CONTROL_PORT;
