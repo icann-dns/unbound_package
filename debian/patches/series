@@ -1,4 +1,14 @@
 CVE-2017-15105.patch
 lp-1788622-fix-systemd-reload.patch
 CVE-2020-1226x.patch
-debian-changes
+misc-changes.patch
+CVE-2019-25031.patch
+CVE-2019-25032.patch
+CVE-2019-25034.patch
+CVE-2019-25035.patch
+CVE-2019-25036.patch
+CVE-2019-25037.patch
+CVE-2019-25038.patch
+CVE-2019-25040.patch
+CVE-2019-25042.patch
+CVE-2020-28935.patch
