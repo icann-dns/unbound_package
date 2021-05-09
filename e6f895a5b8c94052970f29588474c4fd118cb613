@@ -1,0 +1,44 @@
+  * SECURITY UPDATE: configuration injection via MITM
+    - debian/patches/CVE-2019-25031.patch: use https, remove special
+      characters in contrib/create_unbound_ad_servers.sh.
+    - CVE-2019-25031
+  * SECURITY UPDATE: integer overflows in the regional allocator
+    - debian/patches/CVE-2019-25032.patch: fix overflows in config.h.in,
+      configure, configure.ac, util/regional.c.
+    - CVE-2019-25032
+    - CVE-2019-25033
+  * SECURITY UPDATE: integer overflow in sldns_str2wire_dname_buf_origin
+    - debian/patches/CVE-2019-25034.patch: check lengths in
+      sldns/str2wire.c.
+    - CVE-2019-25034
+  * SECURITY UPDATE: out-of-bounds write in sldns_bget_token_par
+    - debian/patches/CVE-2019-25035.patch: check for space in
+      sldns/parse.c.
+    - CVE-2019-25035
+  * SECURITY UPDATE: assertion failure and denial of service
+    - debian/patches/CVE-2019-25036.patch: validate lengths in
+      iterator/iter_scrub.c.
+    - CVE-2019-25036
+  * SECURITY UPDATE: assertion failure and denial of service
+    - debian/patches/CVE-2019-25037.patch: validate length in
+      util/data/dname.c.
+    - CVE-2019-25037
+  * SECURITY UPDATE: integer overflow in a size calculation
+    - debian/patches/CVE-2019-25038.patch: check for overflows in
+      dnscrypt/dnscrypt.c, respip/respip.c.
+    - CVE-2019-25038
+    - CVE-2019-25039
+  * SECURITY UPDATE: infinite loop and assertion fail via compressed name
+    - debian/patches/CVE-2019-25040.patch: validate compression pointers in
+      util/data/dname.c.
+    - CVE-2019-25040
+    - CVE-2019-25041
+  * SECURITY UPDATE: out-of-bounds write via a compressed name
+    - debian/patches/CVE-2019-25042.patch: move assert in
+      util/data/msgreply.c.
+    - CVE-2019-25042
+  * SECURITY UPDATE: incorrect PID file handling
+    - debian/patches/CVE-2020-28935.patch: check for symlinks in
+      daemon/unbound.c.
+    - CVE-2020-28935
+  * debian/patches: rename debian-changes to misc-changes.patch.
