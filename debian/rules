@@ -39,6 +39,7 @@ ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
 		--with-pidfile=/run/unbound.pid \
 		--with-rootkey-file=/var/lib/unbound/root.key \
 		--with-libevent \
+		--with-libnghttp2 \
 		--with-pythonmodule \
 		--enable-subnet \
 		--enable-dnstap \

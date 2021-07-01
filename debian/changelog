@@ -1,3 +1,11 @@
+unbound (1.13.1-1ubuntu1) impish; urgency=medium
+
+  * Enable DNS-over-HTTPS support (LP: #1927877)
+    - d/control: add Build-Depends on libnghttp2-dev
+    - d/rules: compile with libnghttp2
+
+ -- Athos Ribeiro <athos.ribeiro@canonical.com>  Thu, 01 Jul 2021 11:16:26 -0300
+
 unbound (1.13.1-1) unstable; urgency=medium
 
   * New upstream version 1.13.1
