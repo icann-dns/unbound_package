@@ -15,6 +15,7 @@ Build-Depends:
  libbsd-dev (>= 0.8.1~) [!linux-any],
  libevent-dev,
  libexpat1-dev,
+ libnghttp2-dev,
  libprotobuf-c-dev <!pkg.unbound.libonly>,
  libssl-dev <!pkg.unbound.libonly>,
  libsystemd-dev <!pkg.unbound.libonly>,
