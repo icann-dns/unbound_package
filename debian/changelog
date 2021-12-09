@@ -1,3 +1,9 @@
+unbound (1.13.1-1ubuntu2) jammy; urgency=medium
+
+  * No-change rebuild against libssl3
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 09 Dec 2021 00:22:14 +0000
+
 unbound (1.13.1-1ubuntu1) impish; urgency=medium
 
   * Enable DNS-over-HTTPS support (LP: #1927877)
