@@ -1,0 +1,20 @@
+Description: compatibility with OpenSSL 3
+Author: Steve Langasek <steve.langasek@ubuntu.com>
+Last-Update: 2021-12-09
+Forwarded: no
+
+Index: unbound-1.13.1/smallapp/unbound-control.c
+===================================================================
+--- unbound-1.13.1.orig/smallapp/unbound-control.c
++++ unbound-1.13.1/smallapp/unbound-control.c
+@@ -492,9 +492,7 @@
+ {
+ 	unsigned long err;
+ 	err = ERR_peek_error();
+-	if (ERR_GET_LIB(err) == ERR_LIB_SYS &&
+-		(ERR_GET_FUNC(err) == SYS_F_FOPEN ||
+-		 ERR_GET_FUNC(err) == SYS_F_FREAD) ) {
++	if (ERR_GET_LIB(err) == ERR_LIB_SYS) {
+ 		fprintf(stderr, "error: %s\n%s: %s\n",
+ 			s, path, ERR_reason_error_string(err));
+ 		exit(1);
