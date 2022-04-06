@@ -1,3 +1,13 @@
+unbound (1.13.1-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload
+
+  [ Rico Tzschichholz ]
+  * Cherry-pick upstream commits for Python 3.10 compatibility (Closes:
+    #1008641)
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 06 Apr 2022 21:37:02 +0200
+
 unbound (1.13.1-1) unstable; urgency=medium
 
   * New upstream version 1.13.1
