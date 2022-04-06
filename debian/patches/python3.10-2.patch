@@ -1,0 +1,26 @@
+From 92d01d82658ffc3992e4468472d3c8c080f8b16c Mon Sep 17 00:00:00 2001
+From: Victor Stinner <vstinner@python.org>
+Date: Tue, 16 Feb 2021 11:11:06 +0100
+Subject: [PATCH] Fix #426: Replace _Py_fopen() with fopen() in pythonmod.c
+
+The private _Py_fopen() function has been removed in Python 3.10.
+
+Fix build on Python 3.10.
+---
+ doc/Changelog         | 1 +
+ pythonmod/pythonmod.c | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pythonmod/pythonmod.c b/pythonmod/pythonmod.c
+index 040ff7051..6e60d02fe 100644
+--- a/pythonmod/pythonmod.c
++++ b/pythonmod/pythonmod.c
+@@ -338,7 +338,7 @@ int pythonmod_init(struct module_env* env, int id)
+    PyFileObject = PyFile_FromString((char*)pe->fname, "r");
+    script_py = PyFile_AsFile(PyFileObject);
+ #else
+-   script_py = _Py_fopen(pe->fname, "r");
++   script_py = fopen(pe->fname, "r");
+ #endif
+    if (script_py == NULL)
+    {
