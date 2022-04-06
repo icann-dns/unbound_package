@@ -1,0 +1,4 @@
+  * Non-maintainer upload
+  [ Rico Tzschichholz ]
+  * Cherry-pick upstream commits for Python 3.10 compatibility (Closes:
+    #1008641)
