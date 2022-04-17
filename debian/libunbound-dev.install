@@ -1,3 +1,6 @@
-debian/tmp-lib/usr/include/unbound.h usr/include
-debian/tmp-lib/usr/include/unbound-event.h usr/include
-debian/tmp-lib/usr/share/man/man3/libunbound.3 usr/share/man/man3
+usr/include/unbound.h
+usr/include/unbound-event.h
+usr/share/man/man3/*.3
+usr/lib/${DEB_HOST_MULTIARCH}/libunbound.a
+usr/lib/${DEB_HOST_MULTIARCH}/libunbound.so
+usr/lib/${DEB_HOST_MULTIARCH}/pkgconfig/libunbound.pc
