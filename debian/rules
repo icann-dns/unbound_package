@@ -1,147 +1,108 @@
 #!/usr/bin/make -f
+.NOTPARALLEL:
 #export DH_VERBOSE=1
+SHELL = /bin/sh -e
 
-include /usr/share/dpkg/architecture.mk
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/buildflags.mk
+# Fast version of dpkg/architecture.mk defining all vars in one go
+ifeq (${DEB_HOST_MULTIARCH},)
+   $(foreach d, $(shell dpkg-architecture | sed 's/=/?=/'), $(eval export $d))
+endif
+
+libonly := $(filter pkg.unbound.libonly,${DEB_BUILD_PROFILES})
+
+CONFIGURE_ARGS = \
+	--disable-rpath \
+	--with-rootkey-file=/var/lib/unbound/root.key \
+	--with-pidfile=/run/unbound.pid \
+	--with-libevent \
 
 ifneq ($(DEB_HOST_ARCH), amd64)
-CONFIGURE_ARGS = --disable-flto
+CONFIGURE_ARGS += --disable-flto
 endif
 
 ifneq ($(DEB_HOST_ARCH_OS), linux)
-CONFIGURE_ARGS = --with-libbsd
+CONFIGURE_ARGS += --with-libbsd
 endif
 
-LIBRARY = libunbound8
-DOPACKAGES = $(shell dh_listpackages)
+build-arch build-indep build \
+install-arch install-indep install \
+binary-arch binary-indep binary \
+clean \
+: %:
+	dh $@
 
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-DPKG_EXPORT_BUILDFLAGS = 1
-include /usr/share/dpkg/default.mk
-
-clean:
-	dh_autoreconf_clean
-	dh clean
-
-build:
-build-arch:
-build-indep:
-
-binary-arch: build
-	dh_testdir
-	dh_autoreconf
-
-ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
-	# first build -- build unbound daemon
+# first build -- build unbound daemon, support progs and python library
+unbound-config: b/unbound/config.h
+b/unbound/config.h:
 	PYTHON_VERSION="$(shell py3versions -vd)" \
 	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
-		dh_auto_configure -- \
-		--disable-rpath \
-		--with-pidfile=/run/unbound.pid \
-		--with-rootkey-file=/var/lib/unbound/root.key \
-		--with-libevent \
+	    dh_auto_configure -Bb/unbound -- \
 		--with-pythonmodule \
+		--with-pyunbound \
 		--enable-subnet \
 		--enable-dnstap \
 		--enable-systemd \
 		--with-chroot-dir="" \
 		--with-dnstap-socket-path=/run/dnstap.sock \
-		--libdir=/usr/lib \
-		$(CONFIGURE_ARGS)
-	$(MAKE)
-	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp"
-	$(MAKE) clean
-endif
+		${CONFIGURE_ARGS}
+unbound-build: b/unbound/build-stamp
+b/unbound/build-stamp: b/unbound/config.h
+	${MAKE} -Cb/unbound
+	touch $@
 
-	# second build -- build libunbound only, against nettle
+# second build: libunbound only, with nettle
+libunbound-config: b/libunbound/config.h
+b/libunbound/config.h:
 	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
-		dh_auto_configure -- \
-		--disable-rpath \
+	    dh_auto_configure -Bb/libunbound -- \
 		--with-libunbound-only \
 		--with-nettle \
-		--with-rootkey-file=/var/lib/unbound/root.key \
-		--with-libevent \
 		--without-pythonmodule \
 		--without-pyunbound \
 		--enable-event-api \
-		$(CONFIGURE_ARGS)
-	$(MAKE)
-	$(MAKE) install DESTDIR="$(CURDIR)/debian/tmp-lib"
-	install -D -m 0644 contrib/libunbound.pc \
-		$(CURDIR)/debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)/pkgconfig/libunbound.pc
-	$(MAKE) clean
+		${CONFIGURE_ARGS}
+libunbound-build: b/libunbound/stamp-build
+b/libunbound/stamp-build: b/libunbound/config.h
+	${MAKE} -Cb/libunbound lib
+	touch $@
 
-ifneq (,$(filter python3-unbound,$(DOPACKAGES)))
-	# third build -- pyunbound for Python 3
-	PYTHON_VERSION="$(shell py3versions -vd)" \
-	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
-		dh_auto_configure -- \
-		--disable-rpath \
-		--with-pythonmodule \
-		--with-pyunbound \
-		$(CONFIGURE_ARGS)
-	$(MAKE) _unbound.la
-	install -D -m 0644 .libs/_unbound.so \
-		debian/python3-unbound/usr/lib/$(shell py3versions -d)/dist-packages/_unbound.so
-	install -m 0644 \
-		pythonmod/unboundmodule.py \
-		libunbound/python/unbound.py \
-		debian/python3-unbound/usr/lib/$(shell py3versions -d)/dist-packages
-	$(MAKE) clean
+override_dh_auto_configure: $(if ${libonly},, unbound-config) libunbound-config
+
+override_dh_auto_build: $(if ${libonly},, unbound-build) libunbound-build
+
+override_dh_auto_test: $(if ${libonly},, unbound-build)
+ifeq (,$(filter nocheck,${DEB_BUILD_OPTIONS}))
+	$(if ${libonly},, ${MAKE} -Cb/unbound test)
 endif
 
-	dh_installdirs
+override_dh_auto_install: override_dh_auto_build
+	$(if ${libonly},, ${MAKE} -Cb/unbound install DESTDIR=${CURDIR}/debian/tmp)
+	# this overrides the library (static & shared), headers and the manpages
+	${MAKE} -Cb/libunbound install-lib DESTDIR=${CURDIR}/debian/tmp
 
-ifneq (,$(filter unbound unbound-anchor unbound-host,$(DOPACKAGES)))
-	mkdir -p debian/unbound/etc/apparmor.d
-	cp debian/apparmor-profile debian/unbound/etc/apparmor.d/usr.sbin.unbound
+ifeq (,${libonly})
+	install -Dp -m 0644 debian/apparmor-profile debian/unbound/etc/apparmor.d/usr.sbin.unbound
 	dh_apparmor --profile-name=usr.sbin.unbound -punbound
 
-	dh_systemd_enable -p unbound
-	dh_systemd_enable -p unbound --name=unbound-resolvconf
-	dh_systemd_start -p unbound unbound.service
-
+	dh_installsystemd -punbound
+	dh_installsystemd -punbound --name=unbound-resolvconf
 	dh_installinit --error-handler=true --restart-after-upgrade
 
+	install -d debian/unbound/etc/insserv.conf.d
 	echo '$$named unbound' > debian/unbound/etc/insserv.conf.d/unbound
-	install -m 0644 debian/resolvconf debian/unbound/etc/resolvconf/update.d/unbound
-	install -m 0755 debian/resolvconf-package debian/unbound/usr/lib/resolvconf/dpkg-event.d/unbound
-	install -m 0644 doc/example.conf debian/unbound/usr/share/doc/unbound/examples/unbound.conf
-	install -m 0644 contrib/update-anchor.sh debian/unbound/usr/share/doc/unbound/contrib
-	install -D -m 0755 contrib/unbound_munin_ debian/unbound/usr/share/munin/plugins/unbound_munin_
+	install -Dp -m 0644 debian/resolvconf debian/unbound/etc/resolvconf/update.d/unbound
+	install -Dp -m 0755 debian/resolvconf-package debian/unbound/usr/lib/resolvconf/dpkg-event.d/unbound
+	install -Dp -m 0644 contrib/update-anchor.sh -t debian/unbound/usr/share/doc/unbound/contrib/
+	install -Dp -m 0755 contrib/unbound_munin_ -t debian/unbound/usr/share/munin/plugins/
 endif
 
-	mkdir -p debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)
-	mv \
-		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.a \
-		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/libunbound.so \
-		debian/libunbound-dev/usr/lib/$(DEB_HOST_MULTIARCH)
+override_dh_installsystemd:
+override_dh_installinit:
 
-	mkdir -p debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)
-	mv \
-		debian/tmp-lib/usr/lib/$(DEB_HOST_MULTIARCH)/*.so.* \
-		debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)
-	chmod 0644 debian/$(LIBRARY)/usr/lib/$(DEB_HOST_MULTIARCH)/*
-
-	dh_install
-	dh_installchangelogs
-	dh_installdocs
-	dh_installman
-ifneq (,$(filter python-unbound,$(DOPACKAGES)))
-	dh_python2 --no-guessing-versions
-endif
-ifneq (,$(filter python3-unbound,$(DOPACKAGES)))
-	dh_python3
-endif
-	dh_strip
+override_dh_compress:
 	dh_compress -Xusr/share/doc/unbound/examples/unbound.conf
 
-	dh_fixperms
-	dh_makeshlibs
-	dh_installdeb
-	dh_shlibdeps
-	dh_gencontrol
-	dh_md5sums
-	dh_builddeb
-
-binary-indep:
-binary: binary-arch binary-indep
+override_dh_auto_clean:
+	rm -rf b/

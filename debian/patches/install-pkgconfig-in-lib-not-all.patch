@@ -1,0 +1,29 @@
+From: Michael Tokarev <mjt@tls.msk.ru>
+Subject: install pkgconfig in lib not all
+Date: Mon, 18 Apr 2022 00:38:51 +0300
+To: unbound-users@lists.nlnetlabs.nl
+Forwarded: yes
+
+The libunbound.pc pkgconfig file is being installed
+as part of "all" procedure only. But it is not "all-specific",
+it is specific to the libunbound library, and, in particular,
+should be installed in --with-libunbound-only build too.
+Move installation of this file from install-all to install-lib
+target of the Makefile.
+
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+diff --git a/Makefile.in b/Makefile.in
+index 55125a44..c907e791 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -573,2 +573,4 @@ install-lib:	lib $(UNBOUND_EVENT_INSTALL)
+ 	$(INSTALL) -m 755 -d $(DESTDIR)$(mandir)/man3
++	$(INSTALL) -m 755 -d $(DESTDIR)$(libdir)/pkgconfig
++	$(INSTALL) -m 644 contrib/libunbound.pc $(DESTDIR)$(libdir)/pkgconfig
+ 	$(INSTALL) -c -m 644 doc/libunbound.3 $(DESTDIR)$(mandir)/man3
+@@ -594,4 +596,2 @@ install-all:	all $(PYTHONMOD_INSTALL) $(PYUNBOUND_INSTALL) $(UNBOUND_EVENT_INSTA
+ 	$(INSTALL) -m 755 -d $(DESTDIR)$(mandir)/man1
+-	$(INSTALL) -m 755 -d $(DESTDIR)$(libdir)/pkgconfig
+-	$(INSTALL) -m 644 contrib/libunbound.pc $(DESTDIR)$(libdir)/pkgconfig
+ 	$(LIBTOOL) --mode=install cp -f unbound$(EXEEXT) $(DESTDIR)$(sbindir)/unbound$(EXEEXT)
