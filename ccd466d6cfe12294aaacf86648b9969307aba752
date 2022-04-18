@@ -1,0 +1,34 @@
+  * Acknowledge the NMU
+  * New upstream release (1.15.0)
+    Closes: #997694, #1001430, #1008918
+  * remove python3.10-related patches (included upstream)
+  * add myself to Uploaders
+  * redo the whole packag build procedure
+   - switch to dh sequence
+   - switch to debhelper-compat=13
+   - switch to dh-sequence-python3
+   - move configure/build/install parts out of binary target
+     into the right places
+   - move different builds into subdirs of b/ to stop building
+     them one by one replacing results
+   - perform 2 builds, one main (daemon & tools) and one libunbound
+     --with-nettle (daemon can't be built with nettle);
+     when installing, install libunbound build on top of the main
+     install in d/tmp, replacing only the library
+   - use pkg.unbound.libonly build profile in d/rules
+   - use normal d/*.install way to install files instead of a lot
+     of custom renaming in d/rules (Closes: #632096)
+   - enable dh_missing (automatic with dh=13), with actual filelist
+     and two *.la files in d/not-installed
+   - include only required dpkg *.mk files (else it is slow)
+  * install all *.3 manpages (for individual functions too)
+  * install unbound-control-setup.8
+  * enable-python-build-in-subdir.patch: fix 2 probs with python
+    module building in a subdir (needs to go upstream)
+  * d/onttrol: bump Standards-Version to 4.6.0 (no changes needed)
+  * d/control: add Pre-Depends: ${misc:Pre-Depends} to unbound package
+    to satisfy current dh_installsystemd & dh_installinit maintscript
+    fragments
+  * d/control: Rules-Requires-Root: no
+  * d/unbound.init: add short description to the init file
+  * added simple d/salsa-ci.yml file
