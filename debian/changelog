@@ -1,8 +1,65 @@
+unbound (1.15.0-2) experimental; urgency=medium
+
+  [ Michael Stella ]
+  * Add clarifying description to resolvconf hook
+
+  [ Simon Deziel ]
+  * debian/unbound.init: ask start-stop-daemon to remove the PID file
+    when stopping the daemon. Closes: #947771
+
+  [ Michael Tokarev ]
+  * d/changelog: mention #1000201 closed by 1.15.0-1
+  * d/changelog: mention install-pkgconfig-in-lib-not-all.patch in 1.15.0-1
+  * stop resetting permissions of unbound resovconf hook from ancient
+    pre-jessie (<<1.5.8-1) version
+  * stop removing ancient pre-jessie (<<1.5.7-2) /etc/default/unbound conffile
+  * add DEP12 d/upstream/metadata
+  * d/rules: stop adding --as-needed linker flag (it is the default now)
+  * stop flipping default value for remote-control: control-enable to "yes"
+    (see the NEWS file) (Closes: #991017)
+  * enable TCP Fast-Open (TFO) for both client and server (Closes: #903390)
+    This can be configured in /proc/sys/net/ipv4/tcp_fastopen (bitmask):
+    0x01 is client-side (enabled by default), 0x02 is server-side (disabled).
+    To enable tfo for both client and server, enable both bits.
+  * enable DNS over HTTP (DoH) for the server. This adds libnghttp2-dev
+    to Build-Depends (Closes: #973793)
+  * add source lintian-override to shut up a false positive (windows binary)
+  * d/unbound-helper: rename from package-helper and move it from subdir in
+    /usr/lib/unbound/ to /usr/libexec/unbound-helper.
+  * d/unbound-helper: rework updating of the unbound copy of the root.key file:
+    copy it to /var/lib/unbound/root.key.tmp first and rename to ..../root.key
+    only when done.  Also do not do it as root in an untrusted directory.
+    (Closes: #989959)
+  * d/unbound-helper: do not perform chroot setup operations if chroot is
+    not configured in the config file
+  * d/unbound-helper: perform /run/systemd/notify bind-mount for any chroot
+    if configured, not only for non-standard chroot which needs a copy of
+    all config files.  Closes: #931583, Actually closes: #828699.
+  * d/unbound-helper: other cleanups
+  * d/unbound.init: set PATH={,/usr}/{,s}bin.  Closes: #900751
+  * d/unbound.init: stop hiding update_trust_anchor messages and use "unbound"
+    tag for logging them
+  * d/control: since unbound does not use unbound-anchor directly anymore,
+    drop the Depends
+  * d/control: move openssl from Depends to Recommends. It is used only to
+    generate remove-control keys for unbound-control, once, usually at the
+    install time (in postinst) and never used after install. Also check if
+    openssl is installed and print a friendly error message in
+    unbound-control-setup if it is not. This is done in a new patch,
+    unbound-control-setup-check-openssl.patch
+  * d/control: move dns-root-data from Depends to Recommends. It is only
+    used for root.key currently (in unbound-helper) and even there, once
+    it is initially copied to unbound library directory, this file will
+    be managed by unbound itself using RFC 5011 trust anchor tracking.
+    So this package can be removed if necessary, without harming unbound.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 19 Apr 2022 20:39:12 +0300
+
 unbound (1.15.0-1) experimental; urgency=medium
 
   * Acknowledge the NMU
   * New upstream release (1.15.0)
-    Closes: #997694, #1001430, #1008918
+    Closes: #997694, #1001430, #1008918, #1000201
   * remove python3.10-related patches (included upstream)
   * add myself to Uploaders
   * redo the whole packag build procedure
@@ -27,6 +84,8 @@ unbound (1.15.0-1) experimental; urgency=medium
   * install unbound-control-setup.8
   * enable-python-build-in-subdir.patch: fix 2 probs with python
     module building in a subdir (needs to go upstream)
+  * add install-pkgconfig-in-lib-not-all.patch to fix another small
+    install prob in Makefile.in (pkgconfig is installed in wrong place)
   * d/onttrol: bump Standards-Version to 4.6.0 (no changes needed)
   * d/control: add Pre-Depends: ${misc:Pre-Depends} to unbound package
     to satisfy current dh_installsystemd & dh_installinit maintscript

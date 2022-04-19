@@ -1,4 +1,18 @@
 #!/bin/sh -e
+#
+# This update hook is **disabled** by default: the execute bit is not set.
+#
+# This hook can be problematic, especially if the
+# upstream nameservers do not perform DNSSEC validation, or if a
+# "forward-zone" declaration for the root zone has been statically
+# configured by the administrator. In previous versions, the hook was
+# enabled by default, but it is now disabled by default. It can be
+# explicitly enabled by running "chmod +x /etc/resolvconf/update.d/unbound".
+#
+# If enabled (by setting the execute bit), upstream nameservers
+# supplied by resolvconf will be configured into the running Unbound instance
+# via the "unbound-control forward" command.
+#
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
