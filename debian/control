@@ -84,7 +84,7 @@ Depends:
  lsb-base (>= 3.0-6),
  ${misc:Depends},
  ${shlibs:Depends},
-Recomments:
+Recommends:
  dns-root-data,
  openssl,
 Enhances:

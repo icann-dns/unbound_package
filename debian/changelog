@@ -1,3 +1,12 @@
+unbound (1.15.0-3) unstable; urgency=medium
+
+  * modify the default unbound.conf to include control-enale: yes so
+    the remote control is enabled by default even if the default value
+    is not flipped by a patch (upstream sets it to "no")
+  * d/control: use the right spelling for Recommends:
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 20 Apr 2022 00:37:17 +0300
+
 unbound (1.15.0-2) experimental; urgency=medium
 
   [ Michael Stella ]
