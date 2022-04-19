@@ -13,4 +13,8 @@ unbound (1.15.0-2) unstable; urgency=medium
      remote-control:
        control-enable: yes
 
+    New /etc/unbound/unbound.conf ships includes this change, so if your
+    unbound.conf file has not been modified it will be re-enabled
+    automatically.
+
  -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 18 Apr 2022 10:42:57 +0300
