@@ -1,0 +1,22 @@
+From: Michael Tokarev <mjt@tls.msk.ru>
+Date: Tue, 19 Apr 2022 18:14:01 +0300
+Subject: unbound-control-setup: check openssl
+
+Before doing anything, check if openssl binary (which we will use)
+is available, and print a useful error message if it is not found.
+
+diff --git a/smallapp/unbound-control-setup.sh.in b/smallapp/unbound-control-setup.sh.in
+index eaf1d082..be804879 100644
+--- a/smallapp/unbound-control-setup.sh.in
++++ b/smallapp/unbound-control-setup.sh.in
+@@ -104,6 +104,10 @@ while getopts 'd:hr' arg; do
+ done
+ shift $((OPTIND - 1))
+ 
++if ! command -v openssl >/dev/null; then
++    echo "$0 requires openssl package to be installed to generate the keys." >&2
++    exit 1
++fi
+ 
+ echo "setup in directory $DESTDIR"
+ cd "$DESTDIR"

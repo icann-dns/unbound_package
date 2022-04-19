@@ -6,8 +6,8 @@ ConditionFileIsExecutable=/sbin/resolvconf
 
 [Service]
 RemainAfterExit=yes
-ExecStart=/usr/lib/unbound/package-helper resolvconf_start
-ExecStop=/usr/lib/unbound/package-helper resolvconf_stop
+ExecStart=/usr/libexec/unbound-helper resolvconf_start
+ExecStop=/usr/libexec/unbound-helper resolvconf_stop
 
 [Install]
 WantedBy=unbound.service

@@ -1,4 +1,4 @@
-debian/package-helper usr/lib/unbound
+debian/unbound-helper usr/libexec
 debian/unbound.conf etc/unbound
 debian/unbound.conf.d/root-auto-trust-anchor-file.conf etc/unbound/unbound.conf.d
 etc/unbound/unbound.conf usr/share/doc/unbound/examples

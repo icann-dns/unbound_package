@@ -17,6 +17,8 @@ CONFIGURE_ARGS = \
 	--with-rootkey-file=/var/lib/unbound/root.key \
 	--with-pidfile=/run/unbound.pid \
 	--with-libevent \
+	--enable-tfo-client \
+	--enable-tfo-server \
 
 ifneq ($(DEB_HOST_ARCH), amd64)
 CONFIGURE_ARGS += --disable-flto
@@ -37,13 +39,14 @@ clean \
 unbound-config: b/unbound/config.h
 b/unbound/config.h:
 	PYTHON_VERSION="$(shell py3versions -vd)" \
-	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+	CFLAGS="${CFLAGS}" CPPFLAGS="${CPPFLAGS}" LDFLAGS="${LDFLAGS}" \
 	    dh_auto_configure -Bb/unbound -- \
 		--with-pythonmodule \
 		--with-pyunbound \
 		--enable-subnet \
 		--enable-dnstap \
 		--enable-systemd \
+		--with-libnghttp2 \
 		--with-chroot-dir="" \
 		--with-dnstap-socket-path=/run/dnstap.sock \
 		${CONFIGURE_ARGS}
@@ -55,7 +58,7 @@ b/unbound/build-stamp: b/unbound/config.h
 # second build: libunbound only, with nettle
 libunbound-config: b/libunbound/config.h
 b/libunbound/config.h:
-	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="-Wl,--as-needed $(LDFLAGS)" \
+	CFLAGS="${CFLAGS}" CPPFLAGS="${CPPFLAGS}" LDFLAGS="${LDFLAGS}" \
 	    dh_auto_configure -Bb/libunbound -- \
 		--with-libunbound-only \
 		--with-nettle \

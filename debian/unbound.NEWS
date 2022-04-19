@@ -1,0 +1,16 @@
+unbound (1.15.0-2) unstable; urgency=medium
+
+    Starting with 1.15.0-2, we removed the debian-specific patch which
+    flipped the default value for the remote-control: control-enable
+    from "no" to "yes". Upstream default value for this parameter is "no"
+    but since Debian version 1.9.6-1, the default value in Debian was
+    set to "yes" (without mentioning this in NEWS and without fixing the
+    manual page). This was unexpected and confusing, and differs from the
+    upstream.  Starting 1.15.0-2, we're now back to the upstream default,
+    which means unbound-control will not work unless explicitly enabled
+    in the config file like this:
+
+     remote-control:
+       control-enable: yes
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 18 Apr 2022 10:42:57 +0300
