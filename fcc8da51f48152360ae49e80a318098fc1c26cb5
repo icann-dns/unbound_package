@@ -1,0 +1,6 @@
+  * d/unbound.conf: move and fix the remote-control section
+    Move the remote-control section above the include directive so it is
+    possible to override it there, and fix comment.  Do this remote-control
+    section in unbound.conf directly (instead of in new unbound.conf.d/
+    fragment), so it is more obvious that the default were flipped and
+    the default value is changed.
