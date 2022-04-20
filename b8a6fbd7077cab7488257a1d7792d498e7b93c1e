@@ -1,0 +1,4 @@
+  * modify the default unbound.conf to include control-enale: yes so
+    the remote control is enabled by default even if the default value
+    is not flipped by a patch (upstream sets it to "no")
+  * d/control: use the right spelling for Recommends:
