@@ -1,3 +1,39 @@
+unbound (1.15.0-6) unstable; urgency=medium
+
+  * actually install the forgotten remote-control.conf.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 28 Apr 2022 20:15:21 +0300
+
+unbound (1.15.0-5) unstable; urgency=medium
+
+  * use unix-domain socket /run/unbound.ctl for the control interface
+    instead of tcp localhost socket. This makes the keys/certs files
+    for the remote contol to be unnecessary, so stop running
+    unbound-control-setup in postinst too.
+    (Closes: #1010271)
+  * move remote-control section out of main unbound.conf file into
+    unbound.conf.d/remote-control.conf. Main file now becomes the
+    same as before version 1.15. There was no need to mess with the
+    main config file since the NEWS file already gives the user
+    enough information.
+  * do-not-chown-control-socket.patch: stop chowning control socket
+    to the unprivileged user, only group ownership is needed.
+  * do-not-look-at-pidfile.patch: stop messing up with the pidfile.
+    Unbound does not need to look at its pid file for the previous
+    instance, since it will not be able to open listening sockets
+    if the daemon is already running.  Remove whole reading of the
+    pid file, and especially remove setting ownership of the pid file
+    to the unprivileged user (done in order to be able to clean it up),
+    since this is a potential security issue.
+  * unbound.postrm: stop removing the unbound system user
+  * fix wording and reformat the previous unbound.NEWS entry, and merge
+    old NEWS file into unbound.NEWS, since all news in there are actually
+    about the unbound package, not about all other binary packages we build.
+  * a few more tweaks for d/unbound-helper, in do_resolvconf_{start|stop}.
+    Thank you Simon Deziel for the ideas.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 28 Apr 2022 19:15:23 +0300
+
 unbound (1.15.0-4) unstable; urgency=medium
 
   * d/unbound.conf: move and fix the remote-control section

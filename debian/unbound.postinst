@@ -1,20 +1,12 @@
 #!/bin/sh
 set -e
 
-action="$1"
-oldversion="$2"
-
-if [ "$action" = configure ]; then
+if [ configure = "$action" ]; then
     if ! getent passwd unbound >/dev/null; then
-        adduser --quiet --system --group --no-create-home --home /var/lib/unbound unbound
+        adduser --quiet --system --group --no-create-home \
+            --home /var/lib/unbound unbound
     fi
     chown unbound:unbound /var/lib/unbound
-
-    if [ ! -f /etc/unbound/unbound_control.key ] &&
-       command -v openssl >/dev/null; then
-        unbound-control-setup 1>/dev/null 2>&1 || true
-    fi
-
 fi
 
 #DEBHELPER#

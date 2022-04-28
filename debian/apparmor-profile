@@ -7,7 +7,7 @@
   #include <abstractions/nameservice>
   #include <abstractions/openssl>
 
-  # chown the PID/Unix control socket
+  # chown (chgrp) the Unix control socket
   capability chown,
   # chmod the Unix control socket
   capability fowner,

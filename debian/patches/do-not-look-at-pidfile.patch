@@ -1,0 +1,161 @@
+diff --git a/daemon/unbound.c b/daemon/unbound.c
+index 457a0803..9d8491b3 100644
+--- a/daemon/unbound.c
++++ b/daemon/unbound.c
+@@ -318,51 +318,6 @@ apply_settings(struct daemon* daemon, struct config_file* cfg,
+ 	log_ident_set_or_default(cfg->log_identity);
+ }
+ 
+-#ifdef HAVE_KILL
+-/** Read existing pid from pidfile. 
+- * @param file: file name of pid file.
+- * @return: the pid from the file or -1 if none.
+- */
+-static pid_t
+-readpid (const char* file)
+-{
+-	int fd;
+-	pid_t pid;
+-	char pidbuf[32];
+-	char* t;
+-	ssize_t l;
+-
+-	if ((fd = open(file, O_RDONLY)) == -1) {
+-		if(errno != ENOENT)
+-			log_err("Could not read pidfile %s: %s",
+-				file, strerror(errno));
+-		return -1;
+-	}
+-
+-	if (((l = read(fd, pidbuf, sizeof(pidbuf)))) == -1) {
+-		if(errno != ENOENT)
+-			log_err("Could not read pidfile %s: %s",
+-				file, strerror(errno));
+-		close(fd);
+-		return -1;
+-	}
+-
+-	close(fd);
+-
+-	/* Empty pidfile means no pidfile... */
+-	if (l == 0) {
+-		return -1;
+-	}
+-
+-	pidbuf[sizeof(pidbuf)-1] = 0;
+-	pid = (pid_t)strtol(pidbuf, &t, 10);
+-	
+-	if (*t && *t != '\n') {
+-		return -1;
+-	}
+-	return pid;
+-}
+-
+ /** write pid to file. 
+  * @param pidfile: file name of pid file.
+  * @param pid: pid to write to file.
+@@ -406,28 +361,6 @@ writepid (const char* pidfile, pid_t pid)
+ 	return 1;
+ }
+ 
+-/**
+- * check old pid file.
+- * @param pidfile: the file name of the pid file.
+- * @param inchroot: if pidfile is inchroot and we can thus expect to
+- *	be able to delete it.
+- */
+-static void
+-checkoldpid(char* pidfile, int inchroot)
+-{
+-	pid_t old;
+-	if((old = readpid(pidfile)) != -1) {
+-		/* see if it is still alive */
+-		if(kill(old, 0) == 0 || errno == EPERM)
+-			log_warn("unbound is already running as pid %u.", 
+-				(unsigned)old);
+-		else	if(inchroot)
+-			log_warn("did not exit gracefully last time (%u)", 
+-				(unsigned)old);
+-	}
+-}
+-#endif /* HAVE_KILL */
+-
+ /** detach from command line */
+ static void
+ detach(void)
+@@ -470,9 +403,6 @@ static void
+ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
+ 	const char** cfgfile, int need_pidfile)
+ {
+-#ifdef HAVE_KILL
+-	int pidinchroot;
+-#endif
+ #ifdef HAVE_GETPWNAM
+ 	struct passwd *pwd = NULL;
+ 
+@@ -529,14 +459,12 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
+ 	 * So, using a logfile, the user does not see errors unless -d is
+ 	 * given to unbound on the commandline. */
+ 
+-#ifdef HAVE_KILL
+-	/* true if pidfile is inside chrootdir, or nochroot */
+-	pidinchroot = need_pidfile && (!(cfg->chrootdir && cfg->chrootdir[0]) ||
+-				(cfg->chrootdir && cfg->chrootdir[0] &&
+-				strncmp(cfg->pidfile, cfg->chrootdir,
+-				strlen(cfg->chrootdir))==0));
++	/* daemonize because pid is needed by the writepid func */
++	if(!debug_mode && cfg->do_daemonize) {
++		detach();
++	}
+ 
+-	/* check old pid file before forking */
++	/* write new pidfile (while still root, so can be outside chroot) */
+ 	if(cfg->pidfile && cfg->pidfile[0] && need_pidfile) {
+ 		/* calculate position of pidfile */
+ 		if(cfg->pidfile[0] == '/')
+@@ -545,35 +473,8 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
+ 				cfg, 1);
+ 		if(!daemon->pidfile)
+ 			fatal_exit("pidfile alloc: out of memory");
+-		checkoldpid(daemon->pidfile, pidinchroot);
++		writepid(daemon->pidfile, getpid());
+ 	}
+-#endif
+-
+-	/* daemonize because pid is needed by the writepid func */
+-	if(!debug_mode && cfg->do_daemonize) {
+-		detach();
+-	}
+-
+-	/* write new pidfile (while still root, so can be outside chroot) */
+-#ifdef HAVE_KILL
+-	if(cfg->pidfile && cfg->pidfile[0] && need_pidfile) {
+-		if(writepid(daemon->pidfile, getpid())) {
+-			if(cfg->username && cfg->username[0] && cfg_uid != (uid_t)-1 &&
+-				pidinchroot) {
+-#  ifdef HAVE_CHOWN
+-				if(chown(daemon->pidfile, cfg_uid, cfg_gid) == -1) {
+-					verbose(VERB_QUERY, "cannot chown %u.%u %s: %s",
+-						(unsigned)cfg_uid, (unsigned)cfg_gid,
+-						daemon->pidfile, strerror(errno));
+-				}
+-#  endif /* HAVE_CHOWN */
+-			}
+-		}
+-	}
+-#else
+-	(void)daemon;
+-	(void)need_pidfile;
+-#endif /* HAVE_KILL */
+ 
+ 	/* Set user context */
+ #ifdef HAVE_GETPWNAM
+@@ -690,7 +591,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
+  * @param cmdline_verbose: verbosity resulting from commandline -v.
+  *    These increase verbosity as specified in the config file.
+  * @param debug_mode: if set, do not daemonize.
+- * @param need_pidfile: if false, no pidfile is checked or created.
++ * @param need_pidfile: if false, no pidfile is created.
+  */
+ static void 
+ run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode, int need_pidfile)
