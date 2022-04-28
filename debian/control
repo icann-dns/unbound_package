@@ -86,10 +86,9 @@ Depends:
  ${shlibs:Depends},
 Recommends:
  dns-root-data,
- openssl,
 Enhances:
  munin-node,
-Suggests: apparmor
+Suggests: apparmor, openssl
 Build-Profiles: <!pkg.unbound.libonly>
 Description: validating, recursive, caching DNS resolver
  Unbound is a recursive-only caching DNS server which can perform DNSSEC

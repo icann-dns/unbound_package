@@ -24,33 +24,29 @@ if [ -f /etc/default/unbound ]; then
 fi
 
 do_resolvconf_start() {
-    if $RESOLVCONF; then
-        if [ -x /sbin/resolvconf ]; then
-            unbound-checkconf $CHROOT_DIR/$UNBOUND_CONF -o interface | (
-                default=yes
-                while read interface; do
-                    default=no
-                    if [ "x$interface" = x0.0.0.0 -o "x$interface" = x127.0.0.1 ]; then
-                        echo "nameserver 127.0.0.1"
-                    elif [ "x$interface" = x::0 -o "x$interface" = x::1 ]; then
-                        echo "nameserver ::1"
-                    fi
-                done
-                if [ $default = yes ]; then
-                    # unbound defaults to listening on localhost
-                    echo "nameserver 127.0.0.1"
-                fi
-            ) | /sbin/resolvconf -a lo.unbound
-        fi
-    fi
+    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return
+
+    unbound-checkconf $CHROOT_DIR/$UNBOUND_CONF -o interface | {
+        default=yes
+        while read interface; do
+            default=
+            # XXXX here, only localhost and all-zero addresses are handled
+            # in case some other IP is specified it will not work
+            case "$interface" in
+              ( 0.0.0.0 | 127.0.0.1 ) echo "nameserver 127.0.0.1" ;;
+              ( ::0 | ::1 ) echo "nameserver ::1" ;;
+            esac
+        done
+        [ -z "$default" ] ||
+            # unbound defaults to listening on localhost
+            echo "nameserver 127.0.0.1"
+    } | /sbin/resolvconf -a lo.unbound
 }
 
 do_resolvconf_stop() {
-    if $RESOLVCONF; then
-        if [ -x /sbin/resolvconf ]; then
-            /sbin/resolvconf -d lo.unbound
-        fi
-    fi
+    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return
+
+    /sbin/resolvconf -d lo.unbound
 }
 
 do_chroot_setup() {

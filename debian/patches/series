@@ -1,3 +1,5 @@
 enable-python-build-in-subdir.patch
 install-pkgconfig-in-lib-not-all.patch
 unbound-control-setup-check-openssl.patch
+do-not-chown-control-socket.patch
+do-not-look-at-pidfile.patch
