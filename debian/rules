@@ -14,11 +14,13 @@ libonly := $(filter pkg.unbound.libonly,${DEB_BUILD_PROFILES})
 
 CONFIGURE_ARGS = \
 	--disable-rpath \
-	--with-rootkey-file=/var/lib/unbound/root.key \
 	--with-pidfile=/run/unbound.pid \
 	--with-libevent \
 	--enable-tfo-client \
 	--enable-tfo-server \
+
+# this is used by unbound-host and unbound-anchor
+CONFIGURE_ARGS += --with-rootkey-file=/usr/share/dns/root.key
 
 ifneq ($(DEB_HOST_ARCH), amd64)
 CONFIGURE_ARGS += --disable-flto
@@ -90,12 +92,12 @@ ifeq (,${libonly})
 	dh_apparmor --profile-name=usr.sbin.unbound -punbound
 
 	dh_installsystemd -punbound
-	dh_installsystemd -punbound --name=unbound-resolvconf
+	dh_installsystemd -punbound --name=unbound-resolvconf --no-start --no-stop-on-upgrade
 	dh_installinit --error-handler=true --restart-after-upgrade
 
 	install -d debian/unbound/etc/insserv.conf.d
 	echo '$$named unbound' > debian/unbound/etc/insserv.conf.d/unbound
-	install -Dp -m 0644 debian/resolvconf debian/unbound/etc/resolvconf/update.d/unbound
+	install -Dp -m 0755 debian/resolvconf-forwards debian/unbound/etc/resolvconf/update.d/unbound
 	install -Dp -m 0755 debian/resolvconf-package debian/unbound/usr/lib/resolvconf/dpkg-event.d/unbound
 	install -Dp -m 0644 contrib/update-anchor.sh -t debian/unbound/usr/share/doc/unbound/contrib/
 	install -Dp -m 0755 contrib/unbound_munin_ -t debian/unbound/usr/share/munin/plugins/

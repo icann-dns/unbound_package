@@ -1,3 +1,36 @@
+unbound (1.15.0-8) unstable; urgency=medium
+
+  * fix the brown-paper bag bug in the previous upload. I did it again:
+    it is var += newvalue, not var := newvalue.  This made the previous
+    upload to built without many build options
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 29 Apr 2022 18:33:16 +0300
+
+unbound (1.15.0-7) unstable; urgency=medium
+
+  * unbound-resolvconf.service:
+   - do not (re)start it explicitly from the postinst script, it should
+     only be started as a part of unbound.service. Closes: #1009928
+   - add comments to this service file to clarify its purpose
+   - add lintian overrides for this service file
+  * /etc/resolvconf/update.d/unbound resolvconf hook script:
+   - ship it enabled for new installs. Closes: #1003135
+   - but do not re-enable it for previous installs
+   - add more comments to this file clarifying its purpose and possible issues
+   - add comments about various ways to enable/disable this hook,
+   - implement ability to disable it by setting USE_RESOLVCONF_FORWARDS=false
+     in /etc/default/unbound
+   - multiple other small changes and cleanups
+   - rename it in debian packaging from d/resolvconf to d/resolvconf-forwards
+     to make it's purpose more explicit
+  * use dns root.key stored in /usr/share/dns/ (as provided by dns-root-data
+    package) instead of the unbound-owned /var/lib/unbound/root.key (which is
+    managed by an untrusted user). This changes defaults for unbound-host and
+    unbound-anchor.  Add Recommends: dns-root-data for unbound-host so it can
+    find this root.key in the default install. Closes: #641704
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 29 Apr 2022 16:53:50 +0300
+
 unbound (1.15.0-6) unstable; urgency=medium
 
   * actually install the forgotten remote-control.conf.
