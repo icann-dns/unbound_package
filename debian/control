@@ -120,6 +120,7 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends: dns-root-data
 Build-Profiles: <!pkg.unbound.libonly>
 Description: reimplementation of the 'host' command
  This package provides the 'unbound-host' program that is bundled with the
