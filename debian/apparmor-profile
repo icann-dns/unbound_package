@@ -28,22 +28,29 @@
   # non-chrooted paths
   /etc/unbound/** r,
   owner /etc/unbound/*.key* rw,
+  # explicitly deny (and audit) attempts to write to the key files
+  # this should be unnecessary after switch to /run/unbound.ctl control socket
+  # (here and below)
   audit deny /etc/unbound/unbound_control.{key,pem} rw,
   audit deny /etc/unbound/unbound_server.key w,
 
   # chrooted paths
-  /var/lib/unbound/** r,
-  owner /var/lib/unbound/** rw,
-  audit deny /var/lib/unbound/**/unbound_control.{key,pem} rw,
-  audit deny /var/lib/unbound/**/unbound_server.key w,
+  # unbound can be chrooted into /etc/unbound (upstream default) with
+  #  /var/lib/unbound/ bind-mounted to /etc/unbound/var/lib/unbound/,
+  # or it can be chrooted into /var/lib/unbound/ with /etc/unbound/ copied
+  # into there (previous debian package default).
+  /{,etc/unbound/}var/lib/unbound/** r,
+  owner /{,etc/unbound/}var/lib/unbound/** rw,
+  audit deny /{,etc/unbound/}var/lib/unbound/**/unbound_control.{key,pem} rw,
+  audit deny /{,etc/unbound/}var/lib/unbound/**/unbound_server.key w,
 
   /usr/sbin/unbound mr,
 
-  /{,var/}run/systemd/notify w,
-  /{,var/}run/{unbound/,}unbound.pid rw,
+  /run/systemd/notify w,
+  /run/unbound.pid rw,
 
   # Unix control socket
-  /{,var/}run/unbound.ctl rw,
+  /run/unbound.ctl rw,
 
   #include <local/usr.sbin.unbound>
 }

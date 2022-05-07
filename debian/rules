@@ -4,7 +4,7 @@
 SHELL = /bin/sh -e
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-include /usr/share/dpkg/buildflags.mk
+
 # Fast version of dpkg/architecture.mk defining all vars in one go
 ifeq (${DEB_HOST_MULTIARCH},)
    $(foreach d, $(shell dpkg-architecture | sed 's/=/?=/'), $(eval export $d))
@@ -17,17 +17,24 @@ CONFIGURE_ARGS = \
 	--with-pidfile=/run/unbound.pid \
 	--with-libevent \
 	--enable-tfo-client \
-	--enable-tfo-server \
 
 # this is used by unbound-host and unbound-anchor
 CONFIGURE_ARGS += --with-rootkey-file=/usr/share/dns/root.key
 
 ifneq ($(DEB_HOST_ARCH), amd64)
+# Link-Time Optimization https://wiki.debian.org/ToolChain/LTO
+# can be disabled here but enabled globally in DEB_BUILD_MAINT_OPTIONS
 CONFIGURE_ARGS += --disable-flto
 endif
 
 ifneq ($(DEB_HOST_ARCH_OS), linux)
+# both kfreebsd and hurd have -lbsd (#853751)
 CONFIGURE_ARGS += --with-libbsd
+endif
+
+ifneq (${DEB_HOST_ARCH_OS}, kfreebsd)
+# tfo-server does not work on kfreebsd due to no TCP_FASTOPEN
+CONFIGURE_ARGS += --enable-tfo-server
 endif
 
 build-arch build-indep build \
@@ -41,7 +48,6 @@ clean \
 unbound-config: b/unbound/config.h
 b/unbound/config.h:
 	PYTHON_VERSION="$(shell py3versions -vd)" \
-	CFLAGS="${CFLAGS}" CPPFLAGS="${CPPFLAGS}" LDFLAGS="${LDFLAGS}" \
 	    dh_auto_configure -Bb/unbound -- \
 		--with-pythonmodule \
 		--with-pyunbound \
@@ -60,7 +66,6 @@ b/unbound/build-stamp: b/unbound/config.h
 # second build: libunbound only, with nettle
 libunbound-config: b/libunbound/config.h
 b/libunbound/config.h:
-	CFLAGS="${CFLAGS}" CPPFLAGS="${CPPFLAGS}" LDFLAGS="${LDFLAGS}" \
 	    dh_auto_configure -Bb/libunbound -- \
 		--with-libunbound-only \
 		--with-nettle \
