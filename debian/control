@@ -24,6 +24,7 @@ Build-Depends:
  nettle-dev,
  pkg-config,
  protobuf-c-compiler <!pkg.unbound.libonly>,
+# autodep8 bug #904999:
  python3-dev:any <!pkg.unbound.libonly>,
  libpython3-dev <!pkg.unbound.libonly>,
  swig <!pkg.unbound.libonly>,

@@ -1,3 +1,17 @@
+unbound (1.15.0-9) unstable; urgency=medium
+
+  * d/apparmor-profile: remove old /var/run/ alternatives for /run
+  * d/apparmor-profile: allow /etc/unbound/var/lib/unbound/ access too,
+    for chrooting to upstream-preferred /etc/unbound (Closes: #1010517)
+  * d/rules: stop explicitly exporting CFLAGS/LDFLAGS, dh_auto_* does this
+    automatically since dh-compat 9
+  * d/rules: do not enable --with-lto-server on kfreebsd (this fixes FTBFS)
+    It is a good candicate for an autoconf test.
+  * d/rules: add comments for --disable-lto, --with-libbsd
+  * d/tests/: add simple autopkgtest (verify www.debian.org record with DNSSEC)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 07 May 2022 10:34:09 +0300
+
 unbound (1.15.0-8) unstable; urgency=medium
 
   * fix the brown-paper bag bug in the previous upload. I did it again:
