@@ -1,0 +1,2 @@
+  * d/tests/: fix the test to not rely on presence of unbound.pid after
+    daemon start. Apparently unbound creates the pid file at a wrong time
