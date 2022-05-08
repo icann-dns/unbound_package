@@ -38,12 +38,24 @@ doit "Checking config file with unbound-checkconf" \
 	unbound-checkconf unbound.conf
 
 > unbound.log
+> unbound.pid
+
+trap 'echo Cleaning up
+if [ -f unbound.pid ]; then
+  kill $(cat unbound.pid); sleep 1
+fi
+echo -- unbound.log:
+cat unbound.log
+' 0
 
 doit "Attempting to start daemon" \
 	unbound -c unbound.conf
-read pid < unbound.pid
-echo unbound pid = $pid
-trap "echo Cleaning up; kill $pid; sleep 1; echo -- unbound.log:; cat unbound.log" 0
+if [ -f unbound.pid ]; then
+  read pid < unbound.pid
+  echo unbound pid = $pid
+else
+  echo "Warning: no unbound.pid file, condinuing anyway"
+fi
 
 doit "Checking status of running daemon" \
 	unbound-control -c unbound.conf status
