@@ -1,3 +1,10 @@
+unbound (1.15.0-10) unstable; urgency=medium
+
+  * d/tests/: fix the test to not rely on presence of unbound.pid after
+    daemon start. Apparently unbound creates the pid file at a wrong time
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 08 May 2022 10:17:45 +0300
+
 unbound (1.15.0-9) unstable; urgency=medium
 
   * d/apparmor-profile: remove old /var/run/ alternatives for /run
