@@ -50,8 +50,9 @@ cat unbound.log
 
 doit "Attempting to start daemon" \
 	unbound -c unbound.conf
+sleep 1
 if [ -f unbound.pid ]; then
-  read pid < unbound.pid
+  read pid < unbound.pid || :
   echo unbound pid = $pid
 else
   echo "Warning: no unbound.pid file, condinuing anyway"
