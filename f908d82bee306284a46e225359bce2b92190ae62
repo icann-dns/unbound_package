@@ -1,0 +1,6 @@
+  [ Simon Deziel ]
+  * d/unbound.postinst: fix configure action to have unbound user/group created
+  * d/apparmor-profile: use profile name specifier
+  [ Michael Tokarev ]
+  * tests/runzones: add 1s delay after starting daemon:
+    apparently the pid file is created/written too late
