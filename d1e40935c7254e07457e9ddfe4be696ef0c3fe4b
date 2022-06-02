@@ -1,0 +1,6 @@
+  * revert the python path change in previous upload, and set python
+    module directory explicitly to /usr/lib/python3/dist-packages/.
+  * update to the new upstream release.
+    Highlight this time is basic support for EDE (RFC8914)
+  * removed patches applied upstream
+  * updated paths for python modules (usr/lib/python3.M/site-packages/)
