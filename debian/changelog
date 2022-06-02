@@ -1,3 +1,19 @@
+unbound (1.16.0-2) unstable; urgency=medium
+
+  * revert the python path change in previous upload, and set python
+    module directory explicitly to /usr/lib/python3/dist-packages/.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 02 Jun 2022 19:35:26 +0300
+
+unbound (1.16.0-1) unstable; urgency=medium
+
+  * update to the new upstream release.
+    Highlight this time is basic support for EDE (RFC8914)
+  * removed patches applied upstream
+  * updated paths for python modules (usr/lib/python3.M/site-packages/)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 02 Jun 2022 18:28:14 +0300
+
 unbound (1.15.0-11) unstable; urgency=medium
 
   [ Simon Deziel ]
