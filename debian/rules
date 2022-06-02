@@ -48,6 +48,7 @@ clean \
 unbound-config: b/unbound/config.h
 b/unbound/config.h:
 	PYTHON_VERSION="$(shell py3versions -vd)" \
+	PYTHON_SITE_PKG=/usr/lib/python3/dist-packages \
 	    dh_auto_configure -Bb/unbound -- \
 		--with-pythonmodule \
 		--with-pyunbound \
