@@ -596,10 +596,10 @@ dns_copy_msg(struct dns_msg* from, struct regional* region)
 void 
 iter_dns_store(struct module_env* env, struct query_info* msgqinf,
 	struct reply_info* msgrep, int is_referral, time_t leeway, int pside,
-	struct regional* region, uint16_t flags)
+	struct regional* region, uint16_t flags, time_t qstarttime)
 {
 	if(!dns_cache_store(env, msgqinf, msgrep, is_referral, leeway,
-		pside, region, flags))
+		pside, region, flags, qstarttime))
 		log_err("out of memory: cannot store data in cache");
 }
 
@@ -1333,7 +1333,8 @@ int iter_dp_cangodown(struct query_info* qinfo, struct delegpt* dp)
 }
 
 int
-iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
+iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf,
+	uint8_t** retdpname, size_t* retdpnamelen)
 {
 	struct iter_hints_stub *stub;
 	struct delegpt *dp;
@@ -1362,6 +1363,10 @@ iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
 			dname_str(stub->dp->name, dpname);
 			verbose(VERB_ALGO, "stub for %s %s has no_cache", qname, dpname);
 		}
+		if(retdpname) {
+			*retdpname = stub->dp->name;
+			*retdpnamelen = stub->dp->namelen;
+		}
 		return (stub->dp->no_cache);
 	}
 
@@ -1374,7 +1379,15 @@ iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
 			dname_str(dp->name, dpname);
 			verbose(VERB_ALGO, "forward for %s %s has no_cache", qname, dpname);
 		}
+		if(retdpname) {
+			*retdpname = dp->name;
+			*retdpnamelen = dp->namelen;
+		}
 		return (dp->no_cache);
+	}
+	if(retdpname) {
+		*retdpname = NULL;
+		*retdpnamelen = 0;
 	}
 	return 0;
 }
