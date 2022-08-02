@@ -2,3 +2,5 @@
 openssl3.patch
 python3.10.patch
 python3.10-2.patch
+CVE-2022-3069x-pre1.patch
+CVE-2022-3069x.patch
