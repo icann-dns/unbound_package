@@ -1,3 +1,29 @@
+unbound (1.6.7-1ubuntu2.5) bionic-security; urgency=medium
+
+  * SECURITY UPDATE: Ghost domain names issues
+    - debian/patches/CVE-2022-3069x-pre1.patch: fix that cachedb could
+      return a partial CNAME chain in cachedb/cachedb.c,
+      iterator/iterator.c, services/cache/dns.c, services/cache/dns.h.
+    - debian/patches/CVE-2022-3069x-pre2.patch: backport a version of the
+      iter_stub_fwd_no_cache function in iterator/iter_utils.c,
+      iterator/iter_utils.h.
+    - debian/patches/CVE-2022-3069x-pre3.patch: fix that nxdomain synthesis
+      does not happen above the stub or forward definition in
+      cachedb/cachedb.c, iterator/iter_utils.c, iterator/iter_utils.h,
+      iterator/iterator.c, services/cache/dns.c, services/cache/dns.h.
+    - debian/patches/CVE-2022-3069x.patch: fix the novel ghost domain
+      issues in cachedb/cachedb.c, daemon/cachedump.c, daemon/worker.c,
+      dns64/dns64.c, ipsecmod/ipsecmod.c, iterator/iter_utils.c,
+      iterator/iter_utils.h, iterator/iterator.c, pythonmod/interface.i,
+      pythonmod/pythonmod_utils.c, services/cache/dns.c,
+      services/cache/dns.h, services/mesh.c,
+      testdata/iter_prefetch_change.rpl, util/module.h,
+      validator/validator.c.
+    - CVE-2022-30698
+    - CVE-2022-30699
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Thu, 04 Aug 2022 07:56:04 -0400
+
 unbound (1.6.7-1ubuntu2.4) bionic-security; urgency=medium
 
   * SECURITY UPDATE: configuration injection via MITM
