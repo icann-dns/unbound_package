@@ -1078,8 +1078,8 @@ static int
 processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 	struct iter_env* ie, int id)
 {
-	uint8_t* delname;
-	size_t delnamelen;
+	uint8_t* delname, *dpname=NULL;
+	size_t delnamelen, dpnamelen=0;
 	struct dns_msg* msg = NULL;
 
 	log_query_info(VERB_DETAIL, "resolving", &qstate->qinfo);
@@ -1138,7 +1138,8 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		msg = dns_cache_lookup(qstate->env, iq->qchase.qname, 
 			iq->qchase.qname_len, iq->qchase.qtype, 
 			iq->qchase.qclass, qstate->query_flags,
-			qstate->region, qstate->env->scratch, 0);
+			qstate->region, qstate->env->scratch, 0, dpname,
+			dpnamelen);
 		if(!msg && qstate->env->neg_cache) {
 			/* lookup in negative cache; may result in
 			 * NOERROR/NODATA or NXDOMAIN answers that need validation */
@@ -2212,7 +2213,8 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 				iq->qinfo_out.qname, iq->qinfo_out.qname_len, 
 				iq->qinfo_out.qtype, iq->qinfo_out.qclass, 
 				qstate->query_flags, qstate->region, 
-				qstate->env->scratch, 0);
+				qstate->env->scratch, 0, iq->dp->name,
+				iq->dp->namelen);
 			if(msg && FLAGS_GET_RCODE(msg->rep->flags) ==
 				LDNS_RCODE_NOERROR)
 				/* no need to send query if it is already 

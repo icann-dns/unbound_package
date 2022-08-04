@@ -1170,7 +1170,8 @@ int iter_dp_cangodown(struct query_info* qinfo, struct delegpt* dp)
 }
 
 int
-iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
+iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf,
+	uint8_t** retdpname, size_t* retdpnamelen)
 {
 	struct iter_hints_stub *stub;
 	struct delegpt *dp;
@@ -1192,12 +1193,24 @@ iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
 
 	/* check stub */
 	if (stub != NULL && stub->dp != NULL) {
+		if(retdpname) {
+			*retdpname = stub->dp->name;
+			*retdpnamelen = stub->dp->namelen;
+		}
 		return 0;
 	}
 
 	/* Check for forward. */
 	if (dp) {
+		if(retdpname) {
+			*retdpname = dp->name;
+			*retdpnamelen = dp->namelen;
+		}
 		return 0;
+	}
+	if(retdpname) {
+		*retdpname = NULL;
+		*retdpnamelen = 0;
 	}
 	return 0;
 }
