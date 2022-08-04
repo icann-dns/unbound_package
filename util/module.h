@@ -610,6 +610,12 @@ struct module_qstate {
 	int no_cache_store;
 	/** whether to refetch a fresh answer on finishing this state*/
 	int need_refetch;
+	/** time when query was started. This is when the qstate is created.
+	 * This is used so that type NS data cannot be overwritten by them
+	 * expiring while the lookup is in progress, using data fetched from
+	 * those servers. By comparing expiry time with qstarttime for type NS.
+	 */
+	time_t qstarttime;
 
 	/**
 	 * Attributes of clients that share the qstate that may affect IP-based
