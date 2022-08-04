@@ -1168,3 +1168,36 @@ int iter_dp_cangodown(struct query_info* qinfo, struct delegpt* dp)
 		return 0;
 	return 1;
 }
+
+int
+iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf)
+{
+	struct iter_hints_stub *stub;
+	struct delegpt *dp;
+
+	/* Check for stub. */
+	stub = hints_lookup_stub(qstate->env->hints, qinf->qname,
+	    qinf->qclass, NULL);
+	dp = forwards_lookup(qstate->env->fwds, qinf->qname, qinf->qclass);
+
+	/* see if forward or stub is more pertinent */
+	if(stub && stub->dp && dp) {
+		if(dname_strict_subdomain(dp->name, dp->namelabs,
+			stub->dp->name, stub->dp->namelabs)) {
+			stub = NULL; /* ignore stub, forward is lower */
+		} else {
+			dp = NULL; /* ignore forward, stub is lower */
+		}
+	}
+
+	/* check stub */
+	if (stub != NULL && stub->dp != NULL) {
+		return 0;
+	}
+
+	/* Check for forward. */
+	if (dp) {
+		return 0;
+	}
+	return 0;
+}
