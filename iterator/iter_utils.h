@@ -125,6 +125,7 @@ struct dns_msg* dns_copy_msg(struct dns_msg* from, struct regional* regional);
  * 	can be prefetch-updates.
  * @param region: to copy modified (cache is better) rrs back to.
  * @param flags: with BIT_CD for dns64 AAAA translated queries.
+ * @param qstarttime: time of query start.
  * @return void, because we are not interested in alloc errors,
  * 	the iterator and validator can operate on the results in their
  * 	scratch space (the qstate.region) and are not dependent on the cache.
@@ -133,7 +134,7 @@ struct dns_msg* dns_copy_msg(struct dns_msg* from, struct regional* regional);
  */
 void iter_dns_store(struct module_env* env, struct query_info* qinf,
 	struct reply_info* rep, int is_referral, time_t leeway, int pside,
-	struct regional* region, uint16_t flags);
+	struct regional* region, uint16_t flags, time_t qstarttime);
 
 /**
  * Select randomly with n/m probability.
@@ -364,5 +365,19 @@ int iter_ds_toolow(struct dns_msg* msg, struct delegpt* dp);
  * the current response seems to be the one and only, best possible, response.
  */
 int iter_dp_cangodown(struct query_info* qinfo, struct delegpt* dp);
+
+/** 
+ * Lookup if no_cache is set in stub or fwd.
+ * @param qstate: query state with env with hints and fwds.
+ * @param qinf: query name to lookup for.
+ * @param retdpname: returns NULL or the deepest enclosing name of fwd or stub.
+ * 	This is the name under which the closest lookup is going to happen.
+ * 	Used for NXDOMAIN checks, above that it is an nxdomain from a
+ * 	different server and zone. You can pass NULL to not get it.
+ * @param retdpnamelen: returns the length of the dpname.
+ * @return true if no_cache is set in stub or fwd.
+ */
+int iter_stub_fwd_no_cache(struct module_qstate *qstate,
+	struct query_info *qinf, uint8_t** retdpname, size_t* retdpnamelen);
 
 #endif /* ITERATOR_ITER_UTILS_H */

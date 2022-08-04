@@ -329,7 +329,7 @@ error_response_cache(struct module_qstate* qstate, int id, int rcode)
 		err.security = sec_status_indeterminate;
 		verbose(VERB_ALGO, "store error response in message cache");
 		iter_dns_store(qstate->env, &qstate->qinfo, &err, 0, 0, 0, NULL,
-			qstate->query_flags);
+			qstate->query_flags, qstate->qstarttime);
 	}
 	return error_response(qstate, id, rcode);
 }
@@ -1078,8 +1078,8 @@ static int
 processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 	struct iter_env* ie, int id)
 {
-	uint8_t* delname;
-	size_t delnamelen;
+	uint8_t* delname, *dpname=NULL;
+	size_t delnamelen, dpnamelen=0;
 	struct dns_msg* msg = NULL;
 
 	log_query_info(VERB_DETAIL, "resolving", &qstate->qinfo);
@@ -1138,7 +1138,8 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		msg = dns_cache_lookup(qstate->env, iq->qchase.qname, 
 			iq->qchase.qname_len, iq->qchase.qtype, 
 			iq->qchase.qclass, qstate->query_flags,
-			qstate->region, qstate->env->scratch);
+			qstate->region, qstate->env->scratch, 0, dpname,
+			dpnamelen);
 		if(!msg && qstate->env->neg_cache) {
 			/* lookup in negative cache; may result in
 			 * NOERROR/NODATA or NXDOMAIN answers that need validation */
@@ -1252,7 +1253,8 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		     iq->dp = dns_cache_find_delegation(qstate->env, delname, 
 			delnamelen, iq->qchase.qtype, iq->qchase.qclass, 
 			qstate->region, &iq->deleg_msg,
-			*qstate->env->now+qstate->prefetch_leeway);
+			*qstate->env->now+qstate->prefetch_leeway, 1,
+			dpname, dpnamelen);
 		else iq->dp = NULL;
 
 		/* If the cache has returned nothing, then we have a 
@@ -1519,7 +1521,8 @@ generate_parentside_target_query(struct module_qstate* qstate,
 			subiq->dp = dns_cache_find_delegation(qstate->env, 
 				name, namelen, qtype, qclass, subq->region,
 				&subiq->deleg_msg,
-				*qstate->env->now+subq->prefetch_leeway); 
+				*qstate->env->now+subq->prefetch_leeway,
+				1, NULL, 0);
 			/* if no dp, then it's from root, refetch unneeded */
 			if(subiq->dp) { 
 				subiq->dnssec_expected = iter_indicates_dnssec(
@@ -2212,7 +2215,8 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 				iq->qinfo_out.qname, iq->qinfo_out.qname_len, 
 				iq->qinfo_out.qtype, iq->qinfo_out.qclass, 
 				qstate->query_flags, qstate->region, 
-				qstate->env->scratch);
+				qstate->env->scratch, 0, iq->dp->name,
+				iq->dp->namelen);
 			if(msg && FLAGS_GET_RCODE(msg->rep->flags) ==
 				LDNS_RCODE_NOERROR)
 				/* no need to send query if it is already 
@@ -2453,7 +2457,8 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &iq->response->qinfo,
 				iq->response->rep, 0, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS,
-				qstate->region, qstate->query_flags);
+				qstate->region, qstate->query_flags,
+				qstate->qstarttime);
 		/* close down outstanding requests to be discarded */
 		outbound_list_clear(&iq->outlist);
 		iq->num_current_queries = 0;
@@ -2542,7 +2547,8 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			/* Store the referral under the current query */
 			/* no prefetch-leeway, since its not the answer */
 			iter_dns_store(qstate->env, &iq->response->qinfo,
-				iq->response->rep, 1, 0, 0, NULL, 0);
+				iq->response->rep, 1, 0, 0, NULL, 0,
+				qstate->qstarttime);
 			if(iq->store_parent_NS)
 				iter_store_parentside_NS(qstate->env, 
 					iq->response->rep);
@@ -2647,7 +2653,7 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &iq->response->qinfo,
 				iq->response->rep, 1, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS, NULL,
-				qstate->query_flags);
+				qstate->query_flags, qstate->qstarttime);
 		/* set the current request's qname to the new value. */
 		iq->qchase.qname = sname;
 		iq->qchase.qname_len = snamelen;
@@ -3184,7 +3190,8 @@ processFinished(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &qstate->qinfo, 
 				iq->response->rep, 0, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS,
-				qstate->region, qstate->query_flags);
+				qstate->region, qstate->query_flags,
+				qstate->qstarttime);
 		}
 	}
 	qstate->return_rcode = LDNS_RCODE_NOERROR;

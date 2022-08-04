@@ -675,7 +675,8 @@ load_msg(SSL* ssl, sldns_buffer* buf, struct worker* worker)
 	if(!go_on) 
 		return 1; /* skip this one, not all references satisfied */
 
-	if(!dns_cache_store(&worker->env, &qinf, &rep, 0, 0, 0, NULL, flags)) {
+	if(!dns_cache_store(&worker->env, &qinf, &rep, 0, 0, 0, NULL, flags,
+		*worker->env.now)) {
 		log_warn("error out of memory");
 		return 0;
 	}
@@ -846,7 +847,7 @@ int print_deleg_lookup(SSL* ssl, struct worker* worker, uint8_t* nm,
 	while(1) {
 		dp = dns_cache_find_delegation(&worker->env, nm, nmlen, 
 			qinfo.qtype, qinfo.qclass, region, &msg, 
-			*worker->env.now);
+			*worker->env.now, 0, NULL, 0);
 		if(!dp) {
 			return ssl_printf(ssl, "no delegation from "
 				"cache; goes to configured roots\n");

@@ -503,10 +503,10 @@ dns_copy_msg(struct dns_msg* from, struct regional* region)
 void 
 iter_dns_store(struct module_env* env, struct query_info* msgqinf,
 	struct reply_info* msgrep, int is_referral, time_t leeway, int pside,
-	struct regional* region, uint16_t flags)
+	struct regional* region, uint16_t flags, time_t qstarttime)
 {
 	if(!dns_cache_store(env, msgqinf, msgrep, is_referral, leeway,
-		pside, region, flags))
+		pside, region, flags, qstarttime))
 		log_err("out of memory: cannot store data in cache");
 }
 
@@ -1167,4 +1167,50 @@ int iter_dp_cangodown(struct query_info* qinfo, struct delegpt* dp)
 	if(dname_count_labels(qinfo->qname) == dp->namelabs+1)
 		return 0;
 	return 1;
+}
+
+int
+iter_stub_fwd_no_cache(struct module_qstate *qstate, struct query_info *qinf,
+	uint8_t** retdpname, size_t* retdpnamelen)
+{
+	struct iter_hints_stub *stub;
+	struct delegpt *dp;
+
+	/* Check for stub. */
+	stub = hints_lookup_stub(qstate->env->hints, qinf->qname,
+	    qinf->qclass, NULL);
+	dp = forwards_lookup(qstate->env->fwds, qinf->qname, qinf->qclass);
+
+	/* see if forward or stub is more pertinent */
+	if(stub && stub->dp && dp) {
+		if(dname_strict_subdomain(dp->name, dp->namelabs,
+			stub->dp->name, stub->dp->namelabs)) {
+			stub = NULL; /* ignore stub, forward is lower */
+		} else {
+			dp = NULL; /* ignore forward, stub is lower */
+		}
+	}
+
+	/* check stub */
+	if (stub != NULL && stub->dp != NULL) {
+		if(retdpname) {
+			*retdpname = stub->dp->name;
+			*retdpnamelen = stub->dp->namelen;
+		}
+		return 0;
+	}
+
+	/* Check for forward. */
+	if (dp) {
+		if(retdpname) {
+			*retdpname = dp->name;
+			*retdpnamelen = dp->namelen;
+		}
+		return 0;
+	}
+	if(retdpname) {
+		*retdpname = NULL;
+		*retdpnamelen = 0;
+	}
+	return 0;
 }
