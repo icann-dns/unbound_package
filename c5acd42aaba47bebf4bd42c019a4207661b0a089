@@ -1,0 +1,5 @@
+  * new upstream minor release with many bugfixes and 2 features.
+    Closes: #1016493, CVE-2022-30698, CVE-2022-30699
+  * d/unbound.docs: install doc/Changelog file
+  * d/copyright: mark debian/patches/* as GPL-2 (#1013957)
+    (not closing the bug since it is more than d/patches/)
