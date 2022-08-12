@@ -1,3 +1,13 @@
+unbound (1.16.2-1) unstable; urgency=medium
+
+  * new upstream minor release with many bugfixes and 2 features.
+    Closes: #1016493, CVE-2022-30698, CVE-2022-30699
+  * d/unbound.docs: install doc/Changelog file
+  * d/copyright: mark debian/patches/* as GPL-2 (#1013957)
+    (not closing the bug since it is more than d/patches/)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 12 Aug 2022 12:57:33 +0300
+
 unbound (1.16.0-2) unstable; urgency=medium
 
   * revert the python path change in previous upload, and set python
