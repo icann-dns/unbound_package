@@ -48,8 +48,14 @@ echo -- unbound.log:
 cat unbound.log
 ' 0
 
+# If apparmor is available, run with unconfined profile
+aaexec=
+if command -v aa-exec >/dev/null; then
+  aaexec="aa-exec -p unconfined"
+fi
+
 doit "Attempting to start daemon" \
-	unbound -c unbound.conf
+	${aaexec} unbound -c unbound.conf
 sleep 1
 if [ -f unbound.pid ]; then
   read pid < unbound.pid || :
