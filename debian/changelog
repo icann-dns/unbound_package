@@ -1,3 +1,15 @@
+unbound (1.13.1-1ubuntu5.2) jammy; urgency=medium
+
+  * Resolve interfaces using existing interface names with unbound-checkconf
+    (LP: #1988055):
+    - d/p/fix-checkconf-interface-name-error.patch: Resolve known interface
+      names correctly when using unbound-checkconf
+    - d/p/resolve-control-interface-names.patch: Resolve interface names on
+      control-interface so unbound-checkconf can work correctly when checking
+      names of known interfaces
+
+ -- Lena Voytek <lena.voytek@canonical.com>  Wed, 07 Sep 2022 10:52:50 -0700
+
 unbound (1.13.1-1ubuntu5.1) jammy-security; urgency=medium
 
   * SECURITY UPDATE: Ghost domain names issues
