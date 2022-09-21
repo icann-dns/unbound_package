@@ -1,3 +1,10 @@
+unbound (1.16.3-1) unstable; urgency=medium
+
+  * new upstream minor release with the following change:
+   - Patch for CVE-2022-3204 Non-Responsive Delegation Attack
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 21 Sep 2022 13:21:43 +0300
+
 unbound (1.16.2-1) unstable; urgency=medium
 
   * new upstream minor release with many bugfixes and 2 features.
