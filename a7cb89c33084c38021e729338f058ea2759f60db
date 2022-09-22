@@ -1,0 +1,2 @@
+  * new upstream minor release with the following change:
+   - Patch for CVE-2022-3204 Non-Responsive Delegation Attack
