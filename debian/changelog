@@ -1,3 +1,13 @@
+unbound (1.16.2-1ubuntu0.1) kinetic-security; urgency=medium
+
+  * SECURITY UPDATE: Non-Responsive Delegation Attack
+    - debian/patches/CVE-2022-3204.patch: limit number of lookups in
+      iterator/iter_delegpt.*, iterator/iter_utils.*, iterator/iterator.c,
+      services/cache/dns.c, services/mesh.*.
+    - CVE-2022-3204
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 15 Nov 2022 14:59:47 -0500
+
 unbound (1.16.2-1build1) kinetic; urgency=medium
 
   * No-change rebuild against libevent-2.1-7a (LP: #1990941)
