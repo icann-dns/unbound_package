@@ -1,3 +1,13 @@
+unbound (1.6.7-1ubuntu2.6) bionic-security; urgency=medium
+
+  * SECURITY UPDATE: Non-Responsive Delegation Attack
+    - debian/patches/CVE-2022-3204.patch: limit number of lookups in
+      iterator/iter_delegpt.*, iterator/iter_utils.*, iterator/iterator.c,
+      services/cache/dns.c, services/mesh.*.
+    - CVE-2022-3204
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 15 Nov 2022 15:07:17 -0500
+
 unbound (1.6.7-1ubuntu2.5) bionic-security; urgency=medium
 
   * SECURITY UPDATE: Ghost domain names issues
