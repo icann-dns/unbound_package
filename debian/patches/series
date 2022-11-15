@@ -6,3 +6,4 @@ CVE-2022-3069x-pre1.patch
 CVE-2022-3069x.patch
 resolve-control-interface-names.patch
 fix-checkconf-interface-name-error.patch
+CVE-2022-3204.patch
