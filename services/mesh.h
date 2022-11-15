@@ -633,4 +633,15 @@ void mesh_list_insert(struct mesh_state* m, struct mesh_state** fp,
 void mesh_list_remove(struct mesh_state* m, struct mesh_state** fp,
 	struct mesh_state** lp);
 
+/**
+ * See if the mesh has space for more queries. You can allocate queries
+ * anyway, but this checks for the allocated space.
+ * @param mesh: mesh area.
+ * @return true if the query list is full.
+ * 	It checks the number of all queries, not just number of reply states,
+ * 	that have a client address. So that spawned queries count too,
+ * 	that were created by the iterator, or other modules.
+ */
+int mesh_jostle_exceeded(struct mesh_area* mesh);
+
 #endif /* SERVICES_MESH_H */

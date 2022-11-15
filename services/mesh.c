@@ -1583,3 +1583,10 @@ void mesh_list_remove(struct mesh_state* m, struct mesh_state** fp,
 		m->prev->next = m->next;
 	else	*fp = m->next;
 }
+
+int mesh_jostle_exceeded(struct mesh_area* mesh)
+{
+	if(mesh->all.count < mesh->max_reply_states)
+		return 0;
+	return 1;
+}
