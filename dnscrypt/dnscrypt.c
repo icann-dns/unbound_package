@@ -693,6 +693,11 @@ dnsc_load_local_data(struct dnsc_env* dnscenv, struct config_file *cfg)
     for(i=0; i<dnscenv->signed_certs_count; i++) {
         const char *ttl_class_type = " 86400 IN TXT \"";
         struct SignedCert *cert = dnscenv->signed_certs + i;
+	if((unsigned)strlen(dnscenv->provider_name) >= (unsigned)0xffff0000) {
+		/* guard against integer overflow in rrlen calculation */
+		verbose(VERB_OPS, "cert #%" PRIu32 " is too long", serial);
+		continue
+	}
         uint16_t rrlen = strlen(dnscenv->provider_name) +
                          strlen(ttl_class_type) +
                          4 * sizeof(struct SignedCert) + // worst case scenario
