@@ -1,3 +1,13 @@
+unbound (1.13.1-1ubuntu5.3) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: Non-Responsive Delegation Attack
+    - debian/patches/CVE-2022-3204.patch: limit number of lookups in
+      iterator/iter_delegpt.*, iterator/iter_utils.*, iterator/iterator.c,
+      services/cache/dns.c, services/mesh.*.
+    - CVE-2022-3204
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 15 Nov 2022 15:03:03 -0500
+
 unbound (1.13.1-1ubuntu5.2) jammy; urgency=medium
 
   * Resolve interfaces using existing interface names with unbound-checkconf
