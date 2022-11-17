@@ -1,0 +1,5 @@
+  * SECURITY UPDATE: Non-Responsive Delegation Attack
+    - debian/patches/CVE-2022-3204.patch: limit number of lookups in
+      iterator/iter_delegpt.*, iterator/iter_utils.*, iterator/iterator.c,
+      services/cache/dns.c, services/mesh.*.
+    - CVE-2022-3204
