@@ -1,1 +1,1 @@
-unbound source: source-contains-prebuilt-windows-binary dnscrypt/testdata/keys1/public.key
+unbound source: very-long-line-length-in-source-file * [test*]
