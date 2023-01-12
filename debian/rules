@@ -21,13 +21,13 @@ CONFIGURE_ARGS = \
 # this is used by unbound-host and unbound-anchor
 CONFIGURE_ARGS += --with-rootkey-file=/usr/share/dns/root.key
 
-ifneq ($(DEB_HOST_ARCH), amd64)
+ifneq (${DEB_HOST_ARCH}, amd64)
 # Link-Time Optimization https://wiki.debian.org/ToolChain/LTO
 # can be disabled here but enabled globally in DEB_BUILD_MAINT_OPTIONS
 CONFIGURE_ARGS += --disable-flto
 endif
 
-ifneq ($(DEB_HOST_ARCH_OS), linux)
+ifneq (${DEB_HOST_ARCH_OS}, linux)
 # both kfreebsd and hurd have -lbsd (#853751)
 CONFIGURE_ARGS += --with-libbsd
 endif
@@ -35,6 +35,11 @@ endif
 ifneq (${DEB_HOST_ARCH_OS}, kfreebsd)
 # tfo-server does not work on kfreebsd due to no TCP_FASTOPEN
 CONFIGURE_ARGS += --enable-tfo-server
+endif
+
+ifneq (${DEB_BUILD_ARCH},${DEB_HOST_ARCH})
+# #1024422
+export _PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata__${DEB_HOST_MULTIARCH}
 endif
 
 build-arch build-indep build \
