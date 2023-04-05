@@ -147,7 +147,7 @@ struct dns_msg* dns_copy_msg(struct dns_msg* from, struct regional* regional);
  */
 void iter_dns_store(struct module_env* env, struct query_info* qinf,
 	struct reply_info* rep, int is_referral, time_t leeway, int pside,
-	struct regional* region, uint16_t flags);
+	struct regional* region, uint16_t flags, time_t qstarttime);
 
 /**
  * Select randomly with n/m probability.
