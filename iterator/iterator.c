@@ -370,7 +370,7 @@ error_response_cache(struct module_qstate* qstate, int id, int rcode)
 		err.security = sec_status_indeterminate;
 		verbose(VERB_ALGO, "store error response in message cache");
 		iter_dns_store(qstate->env, &qstate->qinfo, &err, 0, 0, 0, NULL,
-			qstate->query_flags);
+			qstate->query_flags, qstate->qstarttime);
 	}
 	return error_response(qstate, id, rcode);
 }
@@ -1152,6 +1152,15 @@ generate_dnskey_prefetch(struct module_qstate* qstate,
 		(qstate->query_flags&BIT_RD) && !(qstate->query_flags&BIT_CD)){
 		return;
 	}
+	/* we do not generate this prefetch when the query list is full,
+	 * the query is fetched, if needed, when the validator wants it.
+	 * At that time the validator waits for it, after spawning it.
+	 * This means there is one state that uses cpu and a socket, the
+	 * spawned while this one waits, and not several at the same time,
+	 * if we had created the lookup here. And this helps to keep
+	 * the total load down, but the query still succeeds to resolve. */
+	if(mesh_jostle_exceeded(qstate->env->mesh))
+		return;
 
 	/* if the DNSKEY is in the cache this lookup will stop quickly */
 	log_nametypeclass(VERB_ALGO, "schedule dnskey prefetch", 
@@ -1422,7 +1431,8 @@ processInitRequest(struct module_qstate* qstate, struct iter_qstate* iq,
 		     iq->dp = dns_cache_find_delegation(qstate->env, delname, 
 			delnamelen, iq->qchase.qtype, iq->qchase.qclass, 
 			qstate->region, &iq->deleg_msg,
-			*qstate->env->now+qstate->prefetch_leeway);
+			*qstate->env->now+qstate->prefetch_leeway, 1,
+			NULL, 0);
 		else iq->dp = NULL;
 
 		/* If the cache has returned nothing, then we have a 
@@ -1744,7 +1754,8 @@ generate_parentside_target_query(struct module_qstate* qstate,
 			subiq->dp = dns_cache_find_delegation(qstate->env, 
 				name, namelen, qtype, qclass, subq->region,
 				&subiq->deleg_msg,
-				*qstate->env->now+subq->prefetch_leeway); 
+				*qstate->env->now+subq->prefetch_leeway,
+				1, NULL, 0);
 			/* if no dp, then it's from root, refetch unneeded */
 			if(subiq->dp) { 
 				subiq->dnssec_expected = iter_indicates_dnssec(
@@ -1866,6 +1877,14 @@ query_for_targets(struct module_qstate* qstate, struct iter_qstate* iq,
 				return 0;
 			}
 			query_count++;
+			/* If the mesh query list is full, exit the loop here.
+			 * This makes the routine spawn one query at a time,
+			 * and this means there is no query state load
+			 * increase, because the spawned state uses cpu and a
+			 * socket while this state waits for that spawned
+			 * state. Next time we can look up further targets */
+			if(mesh_jostle_exceeded(qstate->env->mesh))
+				break;
 		}
 		/* Send the A request. */
 		if(ie->supports_ipv4 && !ns->got4) {
@@ -1878,6 +1897,9 @@ query_for_targets(struct module_qstate* qstate, struct iter_qstate* iq,
 				return 0;
 			}
 			query_count++;
+			/* If the mesh query list is full, exit the loop. */
+			if(mesh_jostle_exceeded(qstate->env->mesh))
+				break;
 		}
 
 		/* mark this target as in progress. */
@@ -2035,6 +2057,15 @@ processLastResort(struct module_qstate* qstate, struct iter_qstate* iq,
 			}
 			ns->done_pside6 = 1;
 			query_count++;
+			if(mesh_jostle_exceeded(qstate->env->mesh)) {
+				/* Wait for the lookup; do not spawn multiple
+				 * lookups at a time. */
+				verbose(VERB_ALGO, "try parent-side glue lookup");
+				iq->num_target_queries += query_count;
+				target_count_increase(iq, query_count);
+				qstate->ext_state[id] = module_wait_subquery;
+				return 0;
+			}
 		}
 		if(ie->supports_ipv4 && !ns->done_pside4) {
 			/* Send the A request. */
@@ -2401,7 +2432,12 @@ processQueryTargets(struct module_qstate* qstate, struct iter_qstate* iq,
 	if(iq->depth < ie->max_dependency_depth
 		&& iq->num_target_queries == 0
 		&& (!iq->target_count || iq->target_count[2]==0)
-		&& iq->sent_count < TARGET_FETCH_STOP) {
+		&& iq->sent_count < TARGET_FETCH_STOP
+		/* if the mesh query list is full, then do not waste cpu
+		 * and sockets to fetch promiscuous targets. They can be
+		 * looked up when needed. */
+		&& !mesh_jostle_exceeded(qstate->env->mesh)
+		) {
 		tf_policy = ie->target_fetch_policy[iq->depth];
 	}
 
@@ -2789,7 +2825,8 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &iq->response->qinfo,
 				iq->response->rep, 0, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS,
-				qstate->region, qstate->query_flags);
+				qstate->region, qstate->query_flags,
+				qstate->qstarttime);
 		/* close down outstanding requests to be discarded */
 		outbound_list_clear(&iq->outlist);
 		iq->num_current_queries = 0;
@@ -2886,7 +2923,8 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			/* Store the referral under the current query */
 			/* no prefetch-leeway, since its not the answer */
 			iter_dns_store(qstate->env, &iq->response->qinfo,
-				iq->response->rep, 1, 0, 0, NULL, 0);
+				iq->response->rep, 1, 0, 0, NULL, 0,
+				qstate->qstarttime);
 			if(iq->store_parent_NS)
 				iter_store_parentside_NS(qstate->env, 
 					iq->response->rep);
@@ -2997,7 +3035,7 @@ processQueryResponse(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &iq->response->qinfo,
 				iq->response->rep, 1, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS, NULL,
-				qstate->query_flags);
+				qstate->query_flags, qstate->qstarttime);
 		/* set the current request's qname to the new value. */
 		iq->qchase.qname = sname;
 		iq->qchase.qname_len = snamelen;
@@ -3566,7 +3604,8 @@ processFinished(struct module_qstate* qstate, struct iter_qstate* iq,
 			iter_dns_store(qstate->env, &qstate->qinfo, 
 				iq->response->rep, 0, qstate->prefetch_leeway,
 				iq->dp&&iq->dp->has_parent_side_NS,
-				qstate->region, qstate->query_flags);
+				qstate->region, qstate->query_flags,
+				qstate->qstarttime);
 		}
 	}
 	qstate->return_rcode = LDNS_RCODE_NOERROR;
