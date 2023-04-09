@@ -1,0 +1,2 @@
+  * unbound-helper: return 0 explicitly in a few places
+    (Closes: #1019140)
