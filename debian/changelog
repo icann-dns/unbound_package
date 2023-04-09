@@ -1,3 +1,10 @@
+unbound (1.17.1-2) unstable; urgency=medium
+
+  * unbound-helper: return 0 explicitly in a few places
+    (Closes: #1019140)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 09 Apr 2023 15:59:14 +0300
+
 unbound (1.17.1-1) unstable; urgency=medium
 
   [ Michael Tokarev ]

@@ -24,7 +24,7 @@ if [ -f /etc/default/unbound ]; then
 fi
 
 do_resolvconf_start() {
-    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return
+    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return 0
 
     unbound-checkconf $CHROOT_DIR/$UNBOUND_CONF -o interface | {
         default=yes
@@ -44,13 +44,13 @@ do_resolvconf_start() {
 }
 
 do_resolvconf_stop() {
-    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return
+    [ false != "$RESOLVCONF" -a -x /sbin/resolvconf ] || return 0
 
     /sbin/resolvconf -d lo.unbound
 }
 
 do_chroot_setup() {
-    [ -n "$CHROOT_DIR" -a -d "$CHROOT_DIR" ] || return
+    [ -n "$CHROOT_DIR" -a -d "$CHROOT_DIR" ] || return 0
     if [ "$CHROOT_DIR" != "$UNBOUND_BASE_DIR" ]; then
         # we probably should not do the force-recreate but just a refresh
         rm -rf   "$CHROOT_DIR/$UNBOUND_BASE_DIR"
