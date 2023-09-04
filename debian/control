@@ -82,7 +82,6 @@ Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
 Depends:
  adduser,
- lsb-base (>= 3.0-6),
  ${misc:Depends},
  ${shlibs:Depends},
 Recommends:

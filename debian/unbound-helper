@@ -86,9 +86,10 @@ do_root_trust_anchor_update() {
        [ "$DNS_ROOT_KEY_FILE" -nt "$ROOT_TRUST_ANCHOR_FILE" ]; then
 
         echo "Updating $ROOT_TRUST_ANCHOR_FILE from $DNS_ROOT_KEY_FILE"
-        # Copy to temp first and do mv only when done to ensure the file is in
-        # good condition.  Can use install(1) here to set correct owner but need
-        # mv anyway, and doing both as root in an untrusted dir seems risky.
+        # Copy to temp first and do mv only when done to ensure
+        # the file is in # good condition.  Can use install(1) here
+        # to set correct owner but need mv anyway, and doing either
+        # as root in an untrusted dir seems risky.
         setpriv --reuid=unbound --regid=unbound --clear-groups \
           sh -c "\
             cp --remove-destination --preserve \
