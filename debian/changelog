@@ -1,3 +1,10 @@
+unbound (1.18.0-1) unstable; urgency=medium
+
+  * new upstream release
+    Closes: #1038243
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 04 Sep 2023 09:41:58 +0300
+
 unbound (1.17.1-2) unstable; urgency=medium
 
   * unbound-helper: return 0 explicitly in a few places
