@@ -4,6 +4,8 @@
 SHELL = /bin/sh -e
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# we build in a sub-subdir so strip that from file paths too
+export DEB_CFLAGS_MAINT_APPEND = -ffile-prefix-map=../../=
 
 # Fast version of dpkg/architecture.mk defining all vars in one go
 ifeq (${DEB_HOST_MULTIARCH},)
@@ -60,6 +62,7 @@ b/unbound/config.h:
 		--enable-subnet \
 		--enable-dnstap \
 		--enable-systemd \
+		--enable-cachedb --with-libhiredis \
 		--with-libnghttp2 \
 		--with-chroot-dir="" \
 		--with-dnstap-socket-path=/run/dnstap.sock \
@@ -69,12 +72,11 @@ b/unbound/build-stamp: b/unbound/config.h
 	${MAKE} -Cb/unbound
 	touch $@
 
-# second build: libunbound only, with nettle
+# second build: libunbound only
 libunbound-config: b/libunbound/config.h
 b/libunbound/config.h:
 	    dh_auto_configure -Bb/libunbound -- \
 		--with-libunbound-only \
-		--with-nettle \
 		--without-pythonmodule \
 		--without-pyunbound \
 		--enable-event-api \
