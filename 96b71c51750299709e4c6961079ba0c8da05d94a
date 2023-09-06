@@ -1,0 +1,7 @@
+   * d/resolvconf-forwards: remove -e (Closes: #1035800), shorten sed expr
+   * d/changelog: mention #1013957 in previous changelog entry
+   * d/control, d/rules: switch from libnettle back to libssl once it is
+     GPL-compatible (#828699 is of no concern anymore).  This fixes libunbound
+     init failure.  Also Closes: #1007260
+   * d/control, d/rules: build daemon with --enable-cachedb --with-libhiredis,
+     build-depend on libhiredis-dev (Closes: #1014456)
