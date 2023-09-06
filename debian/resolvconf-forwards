@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh
 #
 # This hook is the part of resolvconf+unbound integration which makes
 # unbound to use the upstream nameservers provided by the local network
@@ -45,9 +45,9 @@ if [ -f /etc/default/unbound ]; then
    esac
 fi
 
-resolvconfs=$(/lib/resolvconf/list-records)
+resolvconfs=$(/lib/resolvconf/list-records) || exit 1
 
-fwds=$(sed -rne 's/^[[:space:]]*nameserver[[:space:]]+//p' $resolvconfs /dev/null |
+fwds=$(sed -rn 's/^\s*nameserver\s+//p' $resolvconfs /dev/null |
        egrep -v '^(127\.|::1)')
 
 unbound-control -q forward ${fwds:-off}
