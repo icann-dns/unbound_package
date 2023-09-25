@@ -1,0 +1,68 @@
+From: George Thessalonikefs <george@nlnetlabs.nl>
+Date: Fri, 17 Mar 2023 14:39:37 +0100
+Subject: Fix #812, fix #846, by using the SSL_OP_IGNORE_UNEXPECTED_EOF option
+ to ignore the unexpected eof while reading in openssl >= 3.
+Origin: upstream, https://github.com/NLnetLabs/unbound/commit/d7e776114114c16816570e48ab3a27eedc401a0e
+Forwarded: not needed
+Bug: https://github.com/NLnetLabs/unbound/issues/812
+Bug-Debian: https://bugs.debian.org/1038243
+
+---
+ doc/Changelog   |  4 ++++
+ util/net_help.c | 21 +++++++++++++++++++++
+ 2 files changed, 25 insertions(+)
+
+#diff --git a/doc/Changelog b/doc/Changelog
+#index 62d2b4c84..25b63ce76 100644
+#--- a/doc/Changelog
+#+++ b/doc/Changelog
+#@@ -1,3 +1,7 @@
+#+17 March 2023: George
+#+	- Fix #812, fix #846, by using the SSL_OP_IGNORE_UNEXPECTED_EOF option
+#+	  to ignore the unexpected eof while reading in openssl >= 3.
+#+
+# 16 March 2023: Wouter
+# 	- Fix ssl.h include brackets, instead of quotes.
+# 
+diff --git a/util/net_help.c b/util/net_help.c
+index 54fad6986..de2d771bd 100644
+--- a/util/net_help.c
++++ b/util/net_help.c
+@@ -1005,6 +1005,16 @@ listen_sslctx_setup(void* ctxt)
+ 			log_crypto_err("could not set cipher list with SSL_CTX_set_cipher_list");
+ 	}
+ #endif
++#if defined(SSL_OP_IGNORE_UNEXPECTED_EOF)
++	/* ignore errors when peers do not send the mandatory close_notify
++	 * alert on shutdown.
++	 * Relevant for openssl >= 3 */
++	if((SSL_CTX_set_options(ctx, SSL_OP_IGNORE_UNEXPECTED_EOF) &
++		SSL_OP_IGNORE_UNEXPECTED_EOF) != SSL_OP_IGNORE_UNEXPECTED_EOF) {
++		log_crypto_err("could not set SSL_OP_IGNORE_UNEXPECTED_EOF");
++		return 0;
++	}
++#endif
+ 
+ 	if((SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE) &
+ 		SSL_OP_CIPHER_SERVER_PREFERENCE) !=
+@@ -1233,6 +1243,17 @@ void* connect_sslctx_create(char* key, char* pem, char* verifypem, int wincert)
+ 		SSL_CTX_free(ctx);
+ 		return 0;
+ 	}
++#endif
++#if defined(SSL_OP_IGNORE_UNEXPECTED_EOF)
++	/* ignore errors when peers do not send the mandatory close_notify
++	 * alert on shutdown.
++	 * Relevant for openssl >= 3 */
++	if((SSL_CTX_set_options(ctx, SSL_OP_IGNORE_UNEXPECTED_EOF) &
++		SSL_OP_IGNORE_UNEXPECTED_EOF) != SSL_OP_IGNORE_UNEXPECTED_EOF) {
++		log_crypto_err("could not set SSL_OP_IGNORE_UNEXPECTED_EOF");
++		SSL_CTX_free(ctx);
++		return 0;
++	}
+ #endif
+ 	if(key && key[0]) {
+ 		if(!SSL_CTX_use_certificate_chain_file(ctx, pem)) {
+-- 
+2.39.2
+
