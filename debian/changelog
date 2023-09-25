@@ -1,3 +1,11 @@
+unbound (1.17.1-2+deb12u1) bookworm; urgency=medium
+
+  * fix-812-fix-846-by-using-the-SSL_OP_IGNORE_UNEXPECTE.patch from upstream
+    to fix error log flooding when using DNS over TLS with openssl 3.0.
+    Closes: #1038243
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 25 Sep 2023 18:45:40 +0300
+
 unbound (1.17.1-2) unstable; urgency=medium
 
   * unbound-helper: return 0 explicitly in a few places
