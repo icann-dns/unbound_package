@@ -1,7 +1,8 @@
 Source: unbound
 Section: net
 Priority: optional
-Maintainer: unbound packagers <unbound@packages.debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: unbound packagers <unbound@packages.debian.org>
 Uploaders:
  Robert Edmonds <edmonds@debian.org>,
  Michael Tokarev <mjt@tls.msk.ru>,
@@ -16,7 +17,7 @@ Build-Depends:
  libbsd-dev (>= 0.8.1~) [!linux-any],
  libevent-dev,
  libexpat1-dev,
- libhiredis-dev <!pkg.unbound.libonly>,
+ libhiredis-dev [!i386] <!pkg.unbound.libonly>,
  libnghttp2-dev <!pkg.unbound.libonly>,
  libprotobuf-c-dev <!pkg.unbound.libonly>,
  libssl-dev,

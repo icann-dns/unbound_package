@@ -7,6 +7,8 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 # we build in a sub-subdir so strip that from file paths too
 export DEB_CFLAGS_MAINT_APPEND = -ffile-prefix-map=../../=
 
+export DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
 # Fast version of dpkg/architecture.mk defining all vars in one go
 ifeq (${DEB_HOST_MULTIARCH},)
    $(foreach d, $(shell dpkg-architecture | sed 's/=/?=/'), $(eval export $d))
@@ -19,6 +21,10 @@ CONFIGURE_ARGS = \
 	--with-pidfile=/run/unbound.pid \
 	--with-libevent \
 	--enable-tfo-client \
+
+ifneq ($(DEB_HOST_ARCH), i386)
+	redis=--with-libhiredis
+endif
 
 # this is used by unbound-host and unbound-anchor
 CONFIGURE_ARGS += --with-rootkey-file=/usr/share/dns/root.key
@@ -62,7 +68,8 @@ b/unbound/config.h:
 		--enable-subnet \
 		--enable-dnstap \
 		--enable-systemd \
-		--enable-cachedb --with-libhiredis \
+		--enable-cachedb \
+		$(redis) \
 		--with-libnghttp2 \
 		--with-chroot-dir="" \
 		--with-dnstap-socket-path=/run/dnstap.sock \

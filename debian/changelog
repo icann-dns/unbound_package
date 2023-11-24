@@ -1,3 +1,12 @@
+unbound (1.18.0-2ubuntu1) noble; urgency=medium
+
+  * Don't build with hiredis on i386.  hiredis and redis are not built on
+    i386 and require bootstrapping due to circular build-dependencies;
+    simpler to just disable this in the i386 unbound server binary (that no
+    one will ever use).
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Fri, 24 Nov 2023 10:36:50 -0800
+
 unbound (1.18.0-2) unstable; urgency=medium
 
    * d/resolvconf-forwards: remove -e (Closes: #1035800), shorten sed expr
