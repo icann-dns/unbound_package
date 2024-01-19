@@ -1,3 +1,9 @@
+unbound (1.18.0-2ubuntu2) noble; urgency=medium
+
+  * No-change rebuild with Python 3.12 as default
+
+ -- Graham Inggs <ginggs@ubuntu.com>  Fri, 19 Jan 2024 21:03:32 +0000
+
 unbound (1.18.0-2ubuntu1) noble; urgency=medium
 
   * Don't build with hiredis on i386.  hiredis and redis are not built on
