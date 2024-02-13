@@ -1,3 +1,13 @@
+unbound (1.17.1-2+deb12u2) bookworm-security; urgency=high
+
+  * Non-maintainer upload by the Security Team.
+  * Address DNSSEC protocol vulnerabilities (Closes: #1063845)
+    - Fix CVE-2023-50387, DNSSEC verification complexity can be exploited to
+      exhaust CPU resources and stall DNS resolvers.
+    - Fix CVE-2023-50868, NSEC3 closest encloser proof can exhaust CPU.
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 13 Feb 2024 21:00:13 +0100
+
 unbound (1.17.1-2+deb12u1) bookworm; urgency=medium
 
   * fix-812-fix-846-by-using-the-SSL_OP_IGNORE_UNEXPECTE.patch from upstream
