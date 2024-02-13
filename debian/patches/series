@@ -2,3 +2,4 @@ unbound-control-setup-check-openssl.patch
 do-not-chown-control-socket.patch
 do-not-look-at-pidfile.patch
 fix-812-fix-846-by-using-the-SSL_OP_IGNORE_UNEXPECTE.patch
+CVE-2023-50387_CVE-2023-50868_1.16.1-1.17.1.patch
