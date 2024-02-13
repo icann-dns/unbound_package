@@ -1,3 +1,17 @@
+unbound (1.19.1-1) unstable; urgency=medium
+
+  * new upstream bugfix release (1.19.1):
+   o Fix CVE-2023-50387, DNSSEC verification complexity can be exploited
+     to exhaust CPU resources and stall DNS resolvers
+   o Fix CVE-2023-50868, NSEC3 closest encloser proof can exhaust CPU
+  * new upstream release (1.19.0)
+  * d/control: Build-Depends: pkg-config => pkgconf
+  * d/unbound.lintian-overrides: remove
+    package-supports-alternative-init-but-no-init.d-script
+  * d/unbound.lintian-overrides: adjust for /lib=>/usr/lib move
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 13 Feb 2024 22:40:40 +0300
+
 unbound (1.18.0-2) unstable; urgency=medium
 
    * d/resolvconf-forwards: remove -e (Closes: #1035800), shorten sed expr

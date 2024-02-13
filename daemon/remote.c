@@ -522,12 +522,13 @@ ssl_print_text(RES* res, const char* text)
 	if(res->ssl) {
 		ERR_clear_error();
 		if((r=SSL_write(res->ssl, text, (int)strlen(text))) <= 0) {
-			if(SSL_get_error(res->ssl, r) == SSL_ERROR_ZERO_RETURN) {
+			int r2;
+			if((r2=SSL_get_error(res->ssl, r)) == SSL_ERROR_ZERO_RETURN) {
 				verbose(VERB_QUERY, "warning, in SSL_write, peer "
 					"closed connection");
 				return 0;
 			}
-			log_crypto_err("could not SSL_write");
+			log_crypto_err_io("could not SSL_write", r2);
 			return 0;
 		}
 	} else {
@@ -578,11 +579,12 @@ ssl_read_line(RES* res, char* buf, size_t max)
 		if(res->ssl) {
 			ERR_clear_error();
 			if((r=SSL_read(res->ssl, buf+len, 1)) <= 0) {
-				if(SSL_get_error(res->ssl, r) == SSL_ERROR_ZERO_RETURN) {
+				int r2;
+				if((r2=SSL_get_error(res->ssl, r)) == SSL_ERROR_ZERO_RETURN) {
 					buf[len] = 0;
 					return 1;
 				}
-				log_crypto_err("could not SSL_read");
+				log_crypto_err_io("could not SSL_read", r2);
 				return 0;
 			}
 		} else {
@@ -595,7 +597,7 @@ ssl_read_line(RES* res, char* buf, size_t max)
 					}
 					if(errno == EINTR || errno == EAGAIN)
 						continue;
-					log_err("could not recv: %s",
+					if(rr < 0) log_err("could not recv: %s",
 						sock_strerror(errno));
 					return 0;
 				}
@@ -1222,8 +1224,8 @@ do_zones_add(RES* ssl, struct local_zones* zones)
 	char buf[2048];
 	int num = 0;
 	while(ssl_read_line(ssl, buf, sizeof(buf))) {
-		if(buf[0] == 0x04 && buf[1] == 0)
-			break; /* end of transmission */
+		if(buf[0] == 0 || (buf[0] == 0x04 && buf[1] == 0))
+			break; /* zero byte line or end of transmission */
 		if(!perform_zone_add(ssl, zones, buf)) {
 			if(!ssl_printf(ssl, "error for input line: %s\n", buf))
 				return;
@@ -1271,8 +1273,8 @@ do_zones_remove(RES* ssl, struct local_zones* zones)
 	char buf[2048];
 	int num = 0;
 	while(ssl_read_line(ssl, buf, sizeof(buf))) {
-		if(buf[0] == 0x04 && buf[1] == 0)
-			break; /* end of transmission */
+		if(buf[0] == 0 || (buf[0] == 0x04 && buf[1] == 0))
+			break; /* zero byte line or end of transmission */
 		if(!perform_zone_remove(ssl, zones, buf)) {
 			if(!ssl_printf(ssl, "error for input line: %s\n", buf))
 				return;
@@ -1335,8 +1337,8 @@ do_datas_add(RES* ssl, struct local_zones* zones)
 	char buf[2048];
 	int num = 0, line = 0;
 	while(ssl_read_line(ssl, buf, sizeof(buf))) {
-		if(buf[0] == 0x04 && buf[1] == 0)
-			break; /* end of transmission */
+		if(buf[0] == 0 || (buf[0] == 0x04 && buf[1] == 0))
+			break; /* zero byte line or end of transmission */
 		line++;
 		if(perform_data_add(ssl, zones, buf, line))
 			num++;
@@ -1375,8 +1377,8 @@ do_datas_remove(RES* ssl, struct local_zones* zones)
 	char buf[2048];
 	int num = 0;
 	while(ssl_read_line(ssl, buf, sizeof(buf))) {
-		if(buf[0] == 0x04 && buf[1] == 0)
-			break; /* end of transmission */
+		if(buf[0] == 0 || (buf[0] == 0x04 && buf[1] == 0))
+			break; /* zero byte line or end of transmission */
 		if(!perform_data_remove(ssl, zones, buf)) {
 			if(!ssl_printf(ssl, "error for input line: %s\n", buf))
 				return;
@@ -3221,9 +3223,10 @@ handle_req(struct daemon_remote* rc, struct rc_state* s, RES* res)
 	if(res->ssl) {
 		ERR_clear_error();
 		if((r=SSL_read(res->ssl, magic, (int)sizeof(magic)-1)) <= 0) {
-			if(SSL_get_error(res->ssl, r) == SSL_ERROR_ZERO_RETURN)
+			int r2;
+			if((r2=SSL_get_error(res->ssl, r)) == SSL_ERROR_ZERO_RETURN)
 				return;
-			log_crypto_err("could not SSL_read");
+			log_crypto_err_io("could not SSL_read", r2);
 			return;
 		}
 	} else {
@@ -3290,7 +3293,7 @@ remote_handshake_later(struct daemon_remote* rc, struct rc_state* s,
 			log_err("remote control connection closed prematurely");
 		log_addr(VERB_OPS, "failed connection from",
 			&s->c->repinfo.remote_addr, s->c->repinfo.remote_addrlen);
-		log_crypto_err("remote control failed ssl");
+		log_crypto_err_io("remote control failed ssl", r2);
 		clean_point(rc, s);
 	}
 	return 0;

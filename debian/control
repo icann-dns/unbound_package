@@ -22,7 +22,7 @@ Build-Depends:
  libssl-dev,
  libsystemd-dev <!pkg.unbound.libonly>,
  libtool,
- pkg-config,
+ pkgconf,
  protobuf-c-compiler <!pkg.unbound.libonly>,
 # autodep8 bug #904999:
  python3-dev:any <!pkg.unbound.libonly>,
