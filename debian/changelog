@@ -1,3 +1,13 @@
+unbound (1.19.1-1ubuntu1) noble; urgency=medium
+
+  * Merge with Debian unstable (LP: #2055042). Remaining changes:
+    - Don't build with hiredis on i386.  hiredis and redis are not built
+      on i386 and require bootstrapping due to circular
+      build-dependencies; simpler to just disable this in the i386
+      unbound server binary (that no one will ever use).
+
+ -- Andreas Hasenack <andreas@canonical.com>  Mon, 26 Feb 2024 10:03:33 -0300
+
 unbound (1.19.1-1) unstable; urgency=medium
 
   * new upstream bugfix release (1.19.1):
@@ -11,6 +21,21 @@ unbound (1.19.1-1) unstable; urgency=medium
   * d/unbound.lintian-overrides: adjust for /lib=>/usr/lib move
 
  -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 13 Feb 2024 22:40:40 +0300
+
+unbound (1.18.0-2ubuntu2) noble; urgency=medium
+
+  * No-change rebuild with Python 3.12 as default
+
+ -- Graham Inggs <ginggs@ubuntu.com>  Fri, 19 Jan 2024 21:03:32 +0000
+
+unbound (1.18.0-2ubuntu1) noble; urgency=medium
+
+  * Don't build with hiredis on i386.  hiredis and redis are not built on
+    i386 and require bootstrapping due to circular build-dependencies;
+    simpler to just disable this in the i386 unbound server binary (that no
+    one will ever use).
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Fri, 24 Nov 2023 10:36:50 -0800
 
 unbound (1.18.0-2) unstable; urgency=medium
 
