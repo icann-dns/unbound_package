@@ -1,3 +1,14 @@
+unbound (1.17.1-2ubuntu0.1) mantic-security; urgency=medium
+
+  * SECURITY UPDATE: Denial of service issues via DNSSEC responses
+    - debian/patches/CVE-2023-50387_CVE-2023-50868_1.16.1-1.17.1.patch:
+      patch obtained from Debian's 1.17.1-2+deb12u2 package, thanks to
+      Salvatore Bonaccorso.
+    - CVE-2023-50387
+    - CVE-2023-50868
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 27 Feb 2024 16:48:33 -0500
+
 unbound (1.17.1-2) unstable; urgency=medium
 
   * unbound-helper: return 0 explicitly in a few places
