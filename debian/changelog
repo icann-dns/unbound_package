@@ -1,3 +1,14 @@
+unbound (1.9.4-2ubuntu1.5) focal-security; urgency=medium
+
+  * SECURITY UPDATE: Denial of service issues via DNSSEC responses
+    - debian/patches/CVE-2023-50387-and-CVE-2023-50868.patch:
+      patch obtained from Debian's 1.9.0-2+deb10u4 package, thanks to
+      Markus Koschany.
+    - CVE-2023-50387
+    - CVE-2023-50868
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 27 Feb 2024 16:55:01 -0500
+
 unbound (1.9.4-2ubuntu1.4) focal-security; urgency=medium
 
   * SECURITY UPDATE: Non-Responsive Delegation Attack
