@@ -1,3 +1,14 @@
+unbound (1.13.1-1ubuntu5.4) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: Denial of service issues via DNSSEC responses
+    - debian/patches/CVE-2023-50387_CVE-2023-50868_1.12.0-1.13.1.patch:
+      patch obtained from Debian's 1.13.1-1+deb11u2 package, thanks to
+      Salvatore Bonaccorso.
+    - CVE-2023-50387
+    - CVE-2023-50868
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 27 Feb 2024 16:53:18 -0500
+
 unbound (1.13.1-1ubuntu5.3) jammy-security; urgency=medium
 
   * SECURITY UPDATE: Non-Responsive Delegation Attack
