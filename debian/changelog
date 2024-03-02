@@ -1,3 +1,9 @@
+unbound (1.19.1-1ubuntu2) noble; urgency=medium
+
+  * No-change rebuild for python3.12 t64.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 02 Mar 2024 21:15:53 +0100
+
 unbound (1.19.1-1ubuntu1) noble; urgency=medium
 
   * Merge with Debian unstable (LP: #2055042). Remaining changes:
