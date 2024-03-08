@@ -1,0 +1,5 @@
+  * new upstream bugfix release. Closes: CVE-2024-1931,
+    denial of service when trimming EDE text on positive replies
+  * d/changelog: add the forgotten Closes for
+    #1063845, #1051817, #1051818, #1056631 to the previous
+    changelog entry
