@@ -1,3 +1,9 @@
+unbound (1.19.2-1ubuntu2) noble; urgency=medium
+
+  * No-change rebuild against libevent-2.1-7t64
+
+ -- Simon Chopin <schopin@ubuntu.com>  Fri, 29 Mar 2024 17:26:09 +0100
+
 unbound (1.19.2-1ubuntu1) noble; urgency=medium
 
   * Merge with Debian unstable (LP: #2056552). Remaining changes:
