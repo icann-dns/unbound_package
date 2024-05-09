@@ -1,0 +1,7 @@
+  * new upstream release with some new features and many bugfixes
+    Closes: CVE-2024-33655 (DNSBomb issue)
+  * remove do-not-look-at-pidfile.patch now once upstream
+    stopped chowning the pidfile
+  * +spelling-overriden.patch
+  * d/rules: enable -j in MAKEFLAGS when parallel is in DEB_BUILD_OPTIONS
+  * d/control: Standards-Version: 4.6.0=>4.6.2
