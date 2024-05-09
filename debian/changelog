@@ -1,3 +1,15 @@
+unbound (1.20.0-1) unstable; urgency=medium
+
+  * new upstream release with some new features and many bugfixes
+    Closes: CVE-2024-33655 (DNSBomb issue)
+  * remove do-not-look-at-pidfile.patch now once upstream
+    stopped chowning the pidfile
+  * +spelling-overriden.patch
+  * d/rules: enable -j in MAKEFLAGS when parallel is in DEB_BUILD_OPTIONS
+  * d/control: Standards-Version: 4.6.0=>4.6.2
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 09 May 2024 14:47:04 +0300
+
 unbound (1.19.2-1) unstable; urgency=medium
 
   * new upstream bugfix release. Closes: CVE-2024-1931,

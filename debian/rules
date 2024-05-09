@@ -12,6 +12,9 @@ ifeq (${DEB_HOST_MULTIARCH},)
    $(foreach d, $(shell dpkg-architecture | sed 's/=/?=/'), $(eval export $d))
 endif
 
+# DEB_BUILD_OPTIONS=parallel=N
+MAKEFLAGS += $(subst parallel=,-j,$(filter parallel=%,${DEB_BUILD_OPTIONS}))
+
 libonly := $(filter pkg.unbound.libonly,${DEB_BUILD_PROFILES})
 
 CONFIGURE_ARGS = \

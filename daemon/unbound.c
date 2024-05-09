@@ -318,12 +318,56 @@ apply_settings(struct daemon* daemon, struct config_file* cfg,
 	log_ident_set_or_default(cfg->log_identity);
 }
 
+#ifdef HAVE_KILL
+/** Read existing pid from pidfile. 
+ * @param file: file name of pid file.
+ * @return: the pid from the file or -1 if none.
+ */
+static pid_t
+readpid (const char* file)
+{
+	int fd;
+	pid_t pid;
+	char pidbuf[32];
+	char* t;
+	ssize_t l;
+
+	if ((fd = open(file, O_RDONLY)) == -1) {
+		if(errno != ENOENT)
+			log_err("Could not read pidfile %s: %s",
+				file, strerror(errno));
+		return -1;
+	}
+
+	if (((l = read(fd, pidbuf, sizeof(pidbuf)))) == -1) {
+		if(errno != ENOENT)
+			log_err("Could not read pidfile %s: %s",
+				file, strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+
+	/* Empty pidfile means no pidfile... */
+	if (l == 0) {
+		return -1;
+	}
+
+	pidbuf[sizeof(pidbuf)-1] = 0;
+	pid = (pid_t)strtol(pidbuf, &t, 10);
+	
+	if (*t && *t != '\n') {
+		return -1;
+	}
+	return pid;
+}
+
 /** write pid to file. 
  * @param pidfile: file name of pid file.
  * @param pid: pid to write to file.
- * @return false on failure
  */
-static int
+static void
 writepid (const char* pidfile, pid_t pid)
 {
 	int fd;
@@ -338,7 +382,7 @@ writepid (const char* pidfile, pid_t pid)
 		, 0644)) == -1) {
 		log_err("cannot open pidfile %s: %s", 
 			pidfile, strerror(errno));
-		return 0;
+		return;
 	}
 	while(count < strlen(pidbuf)) {
 		ssize_t r = write(fd, pidbuf+count, strlen(pidbuf)-count);
@@ -348,18 +392,39 @@ writepid (const char* pidfile, pid_t pid)
 			log_err("cannot write to pidfile %s: %s",
 				pidfile, strerror(errno));
 			close(fd);
-			return 0;
+			return;
 		} else if(r == 0) {
 			log_err("cannot write any bytes to pidfile %s: "
 				"write returns 0 bytes written", pidfile);
 			close(fd);
-			return 0;
+			return;
 		}
 		count += r;
 	}
 	close(fd);
-	return 1;
 }
+
+/**
+ * check old pid file.
+ * @param pidfile: the file name of the pid file.
+ * @param inchroot: if pidfile is inchroot and we can thus expect to
+ *	be able to delete it.
+ */
+static void
+checkoldpid(char* pidfile, int inchroot)
+{
+	pid_t old;
+	if((old = readpid(pidfile)) != -1) {
+		/* see if it is still alive */
+		if(kill(old, 0) == 0 || errno == EPERM)
+			log_warn("unbound is already running as pid %u.", 
+				(unsigned)old);
+		else	if(inchroot)
+			log_warn("did not exit gracefully last time (%u)", 
+				(unsigned)old);
+	}
+}
+#endif /* HAVE_KILL */
 
 /** detach from command line */
 static void
@@ -403,6 +468,9 @@ static void
 perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	const char** cfgfile, int need_pidfile)
 {
+#ifdef HAVE_KILL
+	int pidinchroot;
+#endif
 #ifdef HAVE_GETPWNAM
 	struct passwd *pwd = NULL;
 
@@ -459,12 +527,14 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 	 * So, using a logfile, the user does not see errors unless -d is
 	 * given to unbound on the commandline. */
 
-	/* daemonize because pid is needed by the writepid func */
-	if(!debug_mode && cfg->do_daemonize) {
-		detach();
-	}
+#ifdef HAVE_KILL
+	/* true if pidfile is inside chrootdir, or nochroot */
+	pidinchroot = need_pidfile && (!(cfg->chrootdir && cfg->chrootdir[0]) ||
+				(cfg->chrootdir && cfg->chrootdir[0] &&
+				strncmp(cfg->pidfile, cfg->chrootdir,
+				strlen(cfg->chrootdir))==0));
 
-	/* write new pidfile (while still root, so can be outside chroot) */
+	/* check old pid file before forking */
 	if(cfg->pidfile && cfg->pidfile[0] && need_pidfile) {
 		/* calculate position of pidfile */
 		if(cfg->pidfile[0] == '/')
@@ -473,8 +543,32 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 				cfg, 1);
 		if(!daemon->pidfile)
 			fatal_exit("pidfile alloc: out of memory");
+		/* Check old pid if there is no username configured.
+		 * With a username, the assumption is that the privilege
+		 * drop makes a pidfile not removed when the server stopped
+		 * last time. The server does not chown the pidfile for it,
+		 * because that creates privilege escape problems, with the
+		 * pidfile writable by unprivileged users, but used by
+		 * privileged users. */
+		if(cfg->username && cfg->username[0])
+			checkoldpid(daemon->pidfile, pidinchroot);
+	}
+#endif
+
+	/* daemonize because pid is needed by the writepid func */
+	if(!debug_mode && cfg->do_daemonize) {
+		detach();
+	}
+
+	/* write new pidfile (while still root, so can be outside chroot) */
+#ifdef HAVE_KILL
+	if(cfg->pidfile && cfg->pidfile[0] && need_pidfile) {
 		writepid(daemon->pidfile, getpid());
 	}
+#else
+	(void)daemon;
+	(void)need_pidfile;
+#endif /* HAVE_KILL */
 
 	/* Set user context */
 #ifdef HAVE_GETPWNAM
@@ -591,7 +685,7 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
  * @param cmdline_verbose: verbosity resulting from commandline -v.
  *    These increase verbosity as specified in the config file.
  * @param debug_mode: if set, do not daemonize.
- * @param need_pidfile: if false, no pidfile is created.
+ * @param need_pidfile: if false, no pidfile is checked or created.
  */
 static void 
 run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode, int need_pidfile)
@@ -647,7 +741,11 @@ run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode, int need_pi
 	if(daemon->pidfile) {
 		int fd;
 		/* truncate pidfile */
-		fd = open(daemon->pidfile, O_WRONLY | O_TRUNC, 0644);
+		fd = open(daemon->pidfile, O_WRONLY | O_TRUNC
+#ifdef O_NOFOLLOW
+			| O_NOFOLLOW
+#endif
+			, 0644);
 		if(fd != -1)
 			close(fd);
 		/* delete pidfile */
