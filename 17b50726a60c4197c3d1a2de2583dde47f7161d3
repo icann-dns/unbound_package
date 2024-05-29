@@ -1,0 +1,7 @@
+  * SECURITY UPDATE: Unbound could be used to take part in a DoS attack
+    - debian/patches/CVE-2024-33655.patch: fix for the DNSBomb
+      vulnerability in doc/example.conf.in, doc/unbound.conf.5.in,
+      services/cache/infra.c, services/cache/infra.h, services/mesh.c,
+      testdata/*, util/config_file.c, util/config_file.h,
+      util/configlexer.lex, util/configparser.y.
+    - CVE-2024-33655
