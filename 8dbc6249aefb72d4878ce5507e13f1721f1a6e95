@@ -1,0 +1,5 @@
+  * Non-maintainer upload by the Security Team.
+  * Address DNSSEC protocol vulnerabilities (Closes: #1063845)
+    - Fix CVE-2023-50387, DNSSEC verification complexity can be exploited to
+      exhaust CPU resources and stall DNS resolvers.
+    - Fix CVE-2023-50868, NSEC3 closest encloser proof can exhaust CPU.
