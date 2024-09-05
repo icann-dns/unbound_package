@@ -935,7 +935,8 @@ ub_ctx_set_fwd(struct ub_ctx* ctx, const char* addr)
 	if(!addr) {
 		/* disable fwd mode - the root stub should be first. */
 		if(ctx->env->cfg->forwards &&
-			strcmp(ctx->env->cfg->forwards->name, ".") == 0) {
+			(ctx->env->cfg->forwards->name &&
+			strcmp(ctx->env->cfg->forwards->name, ".") == 0)) {
 			s = ctx->env->cfg->forwards;
 			ctx->env->cfg->forwards = s->next;
 			s->next = NULL;
@@ -955,7 +956,8 @@ ub_ctx_set_fwd(struct ub_ctx* ctx, const char* addr)
 	/* it parses, add root stub in front of list */
 	lock_basic_lock(&ctx->cfglock);
 	if(!ctx->env->cfg->forwards ||
-		strcmp(ctx->env->cfg->forwards->name, ".") != 0) {
+		(ctx->env->cfg->forwards->name &&
+		strcmp(ctx->env->cfg->forwards->name, ".") != 0)) {
 		s = calloc(1, sizeof(*s));
 		if(!s) {
 			lock_basic_unlock(&ctx->cfglock);
@@ -973,6 +975,7 @@ ub_ctx_set_fwd(struct ub_ctx* ctx, const char* addr)
 		ctx->env->cfg->forwards = s;
 	} else {
 		log_assert(ctx->env->cfg->forwards);
+		log_assert(ctx->env->cfg->forwards->name);
 		s = ctx->env->cfg->forwards;
 	}
 	dupl = strdup(addr);
