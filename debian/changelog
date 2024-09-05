@@ -1,3 +1,22 @@
+unbound (1.9.4-2ubuntu1.8) focal-security; urgency=medium
+
+  * SECURITY UPDATE: null pointer dereference
+    - debian/patches/CVE-2024-43167-1.patch: fix null pointer
+      dereference issue in function ub_ctx_set_fwd of file
+      libunbound/libunbound.c
+    - debian/patches/CVE-2024-43167-2.patch: fix to print a parse
+      error when config is read with no name for a forward-zone, stub-
+      zone or view.
+    - CVE-2024-43167
+  * SECURITY UPDATE: heap buffer overflow
+    - debian/patches/CVE-2024-43168-1.patch: fix heap-buffer-overflow
+      issue in function cfg_mark_ports of file util/config_file.c
+    - debian/patches/CVE-2024-43168-2.patch: adjust error text and 
+      disallow negative ports in other parts of cfg_mark_ports.
+    - CVE-2024-43168
+
+ -- Bruce Cable <bruce.cable@canonical.com>  Thu, 05 Sep 2024 16:30:26 +1000
+
 unbound (1.9.4-2ubuntu1.6) focal-security; urgency=medium
 
   * SECURITY UPDATE: Unbound could be used to take part in a DoS attack
