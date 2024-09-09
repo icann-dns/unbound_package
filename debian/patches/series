@@ -1,3 +1,5 @@
 unbound-control-setup-check-openssl.patch
 do-not-chown-control-socket.patch
 spelling-overriden.patch
+CVE-2024-43167-1.patch
+CVE-2024-43167-2.patch
