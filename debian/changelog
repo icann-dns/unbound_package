@@ -1,3 +1,16 @@
+unbound (1.20.0-1ubuntu2) oracular; urgency=medium
+
+  * SECURITY UPDATE: null pointer dereference
+    - debian/patches/CVE-2024-43167-1.patch: fix null pointer
+      dereference issue in function ub_ctx_set_fwd of file
+      libunbound/libunbound.c
+    - debian/patches/CVE-2024-43167-2.patch: fix to print a parse
+      error when config is read with no name for a forward-zone, stub-
+      zone or view.
+    - CVE-2024-43167
+
+ -- Bruce Cable <bruce.cable@canonical.com>  Mon, 09 Sep 2024 10:48:56 +1000
+
 unbound (1.20.0-1ubuntu1) oracular; urgency=medium
 
   * Merge with Debian unstable (LP: #2064475). Remaining changes:
