@@ -1,3 +1,11 @@
+unbound (1.21.1-1) unstable; urgency=medium
+
+  * new upstream release 1.21.1
+    Closes: #1078647, CVE-2024-43167 (NULL ptr deref in ub_ctx_set_fwd)
+    Closes: #1083282, CVE-2024-8508 (Unbounded name compression)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 04 Oct 2024 17:48:04 +0300
+
 unbound (1.20.0-1) unstable; urgency=medium
 
   * new upstream release with some new features and many bugfixes
