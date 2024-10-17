@@ -1,3 +1,12 @@
+unbound (1.20.0-1ubuntu2.1) oracular-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large RRsets compression
+    - debian/patches/CVE-2024-8508.patch: limit name compression
+      calculations per packet to avoid CPU lockup in util/data/msgencode.c
+    - CVE-2024-8508
+
+ -- Vyom Yadav <vyom.yadav@canonical.com>  Thu, 17 Oct 2024 11:09:49 +0530
+
 unbound (1.20.0-1ubuntu2) oracular; urgency=medium
 
   * SECURITY UPDATE: null pointer dereference
