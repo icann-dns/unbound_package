@@ -1,3 +1,13 @@
+unbound (1.9.4-2ubuntu1.9) focal-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large RRsets compression
+    - debian/patches/CVE-2024-8508.patch: limit name compression
+      calculations per packet to avoid CPU lockup in util/data/msgencode.c
+    - CVE-2024-8508
+  * debian/source/options: Remove 'single-debian-patch' option
+
+ -- Vyom Yadav <vyom.yadav@canonical.com>  Thu, 17 Oct 2024 13:58:08 +0530
+
 unbound (1.9.4-2ubuntu1.8) focal-security; urgency=medium
 
   * SECURITY UPDATE: null pointer dereference
