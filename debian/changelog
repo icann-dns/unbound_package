@@ -1,3 +1,12 @@
+unbound (1.19.2-1ubuntu3.3) noble-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large RRsets compression
+    - debian/patches/CVE-2024-8508.patch: limit name compression
+      calculations per packet to avoid CPU lockup in util/data/msgencode.c
+    - CVE-2024-8508
+
+ -- Vyom Yadav <vyom.yadav@canonical.com>  Thu, 17 Oct 2024 11:23:42 +0530
+
 unbound (1.19.2-1ubuntu3.2) noble-security; urgency=medium
 
   * SECURITY UPDATE: null pointer dereference
