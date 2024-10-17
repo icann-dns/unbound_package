@@ -3,3 +3,4 @@ do-not-chown-control-socket.patch
 spelling-overriden.patch
 CVE-2024-43167-1.patch
 CVE-2024-43167-2.patch
+CVE-2024-8508.patch
