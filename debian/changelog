@@ -1,3 +1,12 @@
+unbound (1.13.1-1ubuntu5.8) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via large RRsets compression
+    - debian/patches/CVE-2024-8508.patch: limit name compression
+      calculations per packet to avoid CPU lockup in util/data/msgencode.c
+    - CVE-2024-8508
+
+ -- Vyom Yadav <vyom.yadav@canonical.com>  Thu, 17 Oct 2024 11:28:18 +0530
+
 unbound (1.13.1-1ubuntu5.7) jammy-security; urgency=medium
 
   * SECURITY UPDATE: null pointer dereference
