@@ -260,7 +260,7 @@ add_open(const char* ip, int nr, struct listen_port** list, int noproto_is_err,
 		/* This looks like a local socket */
 		fd = create_local_accept_sock(ip, &noproto, cfg->use_systemd);
 		/*
-		 * Change socket ownership and permissions so users other
+		 * Change socket group ownership and permissions so users other
 		 * than root can access it provided they are in the same
 		 * group as the user we run as.
 		 */
@@ -268,11 +268,10 @@ add_open(const char* ip, int nr, struct listen_port** list, int noproto_is_err,
 #ifdef HAVE_CHOWN
 			chmod(ip, (mode_t)(S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP));
 			if (cfg->username && cfg->username[0] &&
-				cfg_uid != (uid_t)-1) {
-				if(chown(ip, cfg_uid, cfg_gid) == -1)
-					verbose(VERB_QUERY, "cannot chown %u.%u %s: %s",
-					  (unsigned)cfg_uid, (unsigned)cfg_gid,
-					  ip, strerror(errno));
+				cfg_gid != (gid_t)-1) {
+				if(chown(ip, -1, cfg_gid) == -1)
+					verbose(VERB_QUERY, "cannot chgrp %u %s: %s",
+					  (unsigned)cfg_gid, ip, strerror(errno));
 			}
 #else
 			(void)cfg;
