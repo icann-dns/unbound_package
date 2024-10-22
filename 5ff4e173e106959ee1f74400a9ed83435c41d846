@@ -1,0 +1,5 @@
+  * SECURITY UPDATE: denial of service via large RRsets compression
+    - debian/patches/CVE-2024-8508.patch: limit name compression
+      calculations per packet to avoid CPU lockup in util/data/msgencode.c
+    - CVE-2024-8508
+  * debian/source/options: Remove 'single-debian-patch' option
