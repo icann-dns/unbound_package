@@ -1,3 +1,9 @@
+unbound (1.20.0-1ubuntu2.2) plucky; urgency=medium
+
+  * No-change rebuild for Python 3.13 as the default.
+
+ -- Matthias Klose <doko@ubuntu.com>  Fri, 03 Jan 2025 12:01:59 +0100
+
 unbound (1.20.0-1ubuntu2.1) oracular-security; urgency=medium
 
   * SECURITY UPDATE: denial of service via large RRsets compression
