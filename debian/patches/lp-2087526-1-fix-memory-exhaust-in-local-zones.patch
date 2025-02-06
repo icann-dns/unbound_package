@@ -1,0 +1,51 @@
+Description: fix error: "memory exhausted" when defining more than 9994 local_zones
+Author: "W.C.A. Wijngaards" <wouter@nlnetlabs.nl>
+Origin: upstream, https://github.com/NLnetLabs/unbound/commit/db1167c8b38daf2a4352ba3e4e6d54740e999d29
+Bug: https://github.com/NLnetLabs/unbound/issues/1127
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/oracular/+source/unbound/+bug/2087526
+Last-Update: 2025-02-06
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/util/configparser.y
++++ b/util/configparser.y
+@@ -207,7 +207,7 @@
+ toplevelvars: /* empty */ | toplevelvars toplevelvar ;
+ toplevelvar: serverstart contents_server | stubstart contents_stub |
+ 	forwardstart contents_forward | pythonstart contents_py |
+-	rcstart contents_rc | dtstart contents_dt | viewstart contents_view |
++	rcstart contents_rc | dtstart contents_dt | view_clause |
+ 	dnscstart contents_dnsc | cachedbstart contents_cachedb |
+ 	ipsetstart contents_ipset | authstart contents_auth |
+ 	rpzstart contents_rpz | dynlibstart contents_dl |
+@@ -389,6 +389,14 @@
+ content_forward: forward_name | forward_host | forward_addr | forward_first |
+ 	forward_no_cache | forward_ssl_upstream | forward_tcp_upstream
+ 	;
++view_clause: viewstart contents_view
++	{
++		/* view end */
++		if(cfg_parser->cfg->views &&
++			!cfg_parser->cfg->views->name)
++			yyerror("view without name");
++	}
++	;
+ viewstart: VAR_VIEW
+ 	{
+ 		struct config_view* s;
+@@ -403,14 +411,8 @@
+ 		}
+ 	}
+ 	;
+-contents_view: content_view contents_view
+-	|
+-	{
+-		/* view end */
+-		if(cfg_parser->cfg->views &&
+-			!cfg_parser->cfg->views->name)
+-			yyerror("view without name");
+-	};
++contents_view: contents_view content_view
++	| ;
+ content_view: view_name | view_local_zone | view_local_data | view_first |
+ 		view_response_ip | view_response_ip_data | view_local_data_ptr
+ 	;
