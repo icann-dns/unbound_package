@@ -1,3 +1,11 @@
+unbound (1.20.0-1ubuntu2.3) oracular; urgency=medium
+
+  * debian/patches/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
+    fix error: "memory exhausted" when defining more than 9994
+    local_zones. (LP: #2087526).
+
+ -- John Chittum <john.chittum@canonical.com>  Thu, 06 Feb 2025 15:01:30 -0500
+
 unbound (1.20.0-1ubuntu2.1) oracular-security; urgency=medium
 
   * SECURITY UPDATE: denial of service via large RRsets compression
