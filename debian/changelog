@@ -1,3 +1,11 @@
+unbound (1.13.1-1ubuntu5.9) jammy; urgency=medium
+
+  * d/p/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
+    fix error: "memory exhausted" when defining more than 9994
+    local_zones. (LP: #2087526).
+
+ -- John Chittum <john.chittum@canonical.com>  Mon, 10 Feb 2025 12:57:20 -0500
+
 unbound (1.13.1-1ubuntu5.8) jammy-security; urgency=medium
 
   * SECURITY UPDATE: denial of service via large RRsets compression
