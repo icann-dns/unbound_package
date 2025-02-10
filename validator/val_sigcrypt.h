@@ -241,6 +241,7 @@ uint16_t dnskey_get_flags(struct ub_packed_rrset_key* k, size_t idx);
  * @param reason: if bogus, a string returned, fixed or alloced in scratch.
  * @param section: section of packet where this rrset comes from.
  * @param qstate: qstate with region.
+ * @param verified: if not NULL the number of RRSIG validations is returned.
  * @return SECURE if one key in the set verifies one rrsig.
  *	UNCHECKED on allocation errors, unsupported algorithms, malformed data,
  *	and BOGUS on verification failures (no keys match any signatures).
@@ -248,7 +249,7 @@ uint16_t dnskey_get_flags(struct ub_packed_rrset_key* k, size_t idx);
 enum sec_status dnskeyset_verify_rrset(struct module_env* env, 
 	struct val_env* ve, struct ub_packed_rrset_key* rrset, 
 	struct ub_packed_rrset_key* dnskey, uint8_t* sigalg, char** reason,
-	sldns_pkt_section section, struct module_qstate* qstate);
+	sldns_pkt_section section, struct module_qstate* qstate, int* verified);
 
 /** 
  * verify rrset against one specific dnskey (from rrset) 
@@ -281,6 +282,7 @@ enum sec_status dnskey_verify_rrset(struct module_env* env,
  * @param reason: if bogus, a string returned, fixed or alloced in scratch.
  * @param section: section of packet where this rrset comes from.
  * @param qstate: qstate with region.
+ * @param numverified: if not NULL the number of RRSIG validations is returned.
  * @return secure if any key signs *this* signature. bogus if no key signs it,
  *	or unchecked on error.
  */
@@ -288,7 +290,7 @@ enum sec_status dnskeyset_verify_rrset_sig(struct module_env* env,
 	struct val_env* ve, time_t now, struct ub_packed_rrset_key* rrset, 
 	struct ub_packed_rrset_key* dnskey, size_t sig_idx, 
 	struct rbtree_type** sortree, char** reason, sldns_pkt_section section,
-	struct module_qstate* qstate);
+	struct module_qstate* qstate, int* numverified);
 
 /** 
  * verify rrset, with specific dnskey(from set), for a specific rrsig 

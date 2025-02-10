@@ -78,6 +78,9 @@
 #include <openssl/engine.h>
 #endif
 
+/** Maximum number of RRSIG validations for an RRset. */
+#define MAX_VALIDATE_RRSIGS 8
+
 /** return number of rrs in an rrset */
 static size_t
 rrset_get_count(struct ub_packed_rrset_key* rrset)
@@ -486,7 +489,7 @@ enum sec_status
 dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
 	uint8_t* sigalg, char** reason, sldns_pkt_section section, 
-	struct module_qstate* qstate)
+	struct module_qstate* qstate, int* verified)
 {
 	enum sec_status sec;
 	size_t i, num;
@@ -494,6 +497,7 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	/* make sure that for all DNSKEY algorithms there are valid sigs */
 	struct algo_needs needs;
 	int alg;
+	*verified = 0;
 
 	num = rrset_get_sigcount(rrset);
 	if(num == 0) {
@@ -513,7 +517,7 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	}
 	for(i=0; i<num; i++) {
 		sec = dnskeyset_verify_rrset_sig(env, ve, *env->now, rrset, 
-			dnskey, i, &sortree, reason, section, qstate);
+			dnskey, i, &sortree, reason, section, qstate, verified);
 		/* see which algorithm has been fixed up */
 		if(sec == sec_status_secure) {
 			if(!sigalg)
@@ -524,6 +528,11 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 		} else if(sigalg && sec == sec_status_bogus) {
 			algo_needs_set_bogus(&needs,
 				(uint8_t)rrset_get_sig_algo(rrset, i));
+		}
+		if(*verified > MAX_VALIDATE_RRSIGS) {
+			verbose(VERB_QUERY, "rrset failed to verify, too many RRSIG validations");
+			*reason = "too many RRSIG validations";
+			return sec_status_bogus;
 		}
 	}
 	if(sigalg && (alg=algo_needs_missing(&needs)) != 0) {
@@ -563,6 +572,7 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 	int buf_canon = 0;
 	uint16_t tag = dnskey_calc_keytag(dnskey, dnskey_idx);
 	int algo = dnskey_get_algo(dnskey, dnskey_idx);
+	int numverified = 0;
 
 	num = rrset_get_sigcount(rrset);
 	if(num == 0) {
@@ -584,6 +594,12 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 		if(sec == sec_status_secure)
 			return sec;
 		numchecked ++;
+		numverified ++;
+		if(numverified > MAX_VALIDATE_RRSIGS) {
+			verbose(VERB_QUERY, "rrset failed to verify, too many RRSIG validations");
+			*reason = "too many RRSIG validations";
+			return sec_status_bogus;
+		}
 	}
 	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
 	if(!numchecked) *reason = "signature missing";
@@ -595,7 +611,7 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 	time_t now, struct ub_packed_rrset_key* rrset, 
 	struct ub_packed_rrset_key* dnskey, size_t sig_idx, 
 	struct rbtree_type** sortree, char** reason, sldns_pkt_section section,
-	struct module_qstate* qstate)
+	struct module_qstate* qstate, int* numverified)
 {
 	/* find matching keys and check them */
 	enum sec_status sec = sec_status_bogus;
@@ -616,6 +632,7 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 			tag != dnskey_calc_keytag(dnskey, i))
 			continue;
 		numchecked ++;
+		(*numverified)++;
 
 		/* see if key verifies */
 		sec = dnskey_verify_rrset_sig(env->scratch, 
@@ -623,6 +640,11 @@ dnskeyset_verify_rrset_sig(struct module_env* env, struct val_env* ve,
 			sig_idx, sortree, &buf_canon, reason, section, qstate);
 		if(sec == sec_status_secure)
 			return sec;
+		if(*numverified > MAX_VALIDATE_RRSIGS) {
+			*reason = "too many RRSIG validations";
+			verbose(VERB_ALGO, "verify sig: too many RRSIG validations");
+			return sec_status_bogus;
+		}
 	}
 	if(numchecked == 0) {
 		*reason = "signatures from unknown keys";
