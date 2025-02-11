@@ -1497,6 +1497,10 @@ cfg_mark_ports(const char* str, int allow, int* avail, int num)
 	char* mid = strchr(str, '-');
 	if(!mid) {
 		int port = atoi(str);
+		if(port < 0) {
+			log_err("Prevent out-of-bounds access to array avail");
+			return 0;
+		}
 		if(port == 0 && strcmp(str, "0") != 0) {
 			log_err("cannot parse port number '%s'", str);
 			return 0;
