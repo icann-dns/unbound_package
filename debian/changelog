@@ -1,4 +1,4 @@
-unbound (1.20.0-1ubuntu2.2) oracular; urgency=medium
+unbound (1.20.0-1ubuntu2.3) oracular; urgency=medium
 
   * debian/patches/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
     fix error: "memory exhausted" when defining more than 9994
