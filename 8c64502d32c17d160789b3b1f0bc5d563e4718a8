@@ -1,0 +1,3 @@
+  * debian/patches/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
+    fix error: "memory exhausted" when defining more than 9994
+    local_zones. (LP: #2087526).
