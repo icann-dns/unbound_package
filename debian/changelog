@@ -1,3 +1,10 @@
+unbound (1.13.1-1ubuntu5.10) jammy; urgency=medium
+
+  * d/p/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
+    fix error: fix contents_view ordering in patch (LP: #2087526)
+
+ -- John Chittum <john.chittum@canonical.com>  Wed, 19 Mar 2025 10:04:46 -0500
+
 unbound (1.13.1-1ubuntu5.9) jammy; urgency=medium
 
   * d/p/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
