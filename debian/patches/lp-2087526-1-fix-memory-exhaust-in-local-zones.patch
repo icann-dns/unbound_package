@@ -32,10 +32,11 @@ This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
  viewstart: VAR_VIEW
  	{
  		struct config_view* s;
-@@ -333,13 +341,7 @@
+@@ -332,14 +340,8 @@
+ 			yyerror("out of memory");
  	}
  	;
- contents_view: content_view contents_view 
+-contents_view: content_view contents_view 
 -	|
 -	{
 -		/* view end */
@@ -43,6 +44,7 @@ This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
 -			!cfg_parser->cfg->views->name)
 -			yyerror("view without name");
 -	};
++contents_view: contents_view content_view
 +	|;
  content_view: view_name | view_local_zone | view_local_data | view_first |
  		view_response_ip | view_response_ip_data | view_local_data_ptr

@@ -340,7 +340,7 @@ viewstart: VAR_VIEW
 			yyerror("out of memory");
 	}
 	;
-contents_view: content_view contents_view 
+contents_view: contents_view content_view
 	|;
 content_view: view_name | view_local_zone | view_local_data | view_first |
 		view_response_ip | view_response_ip_data | view_local_data_ptr

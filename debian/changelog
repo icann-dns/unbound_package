@@ -1,3 +1,10 @@
+unbound (1.9.4-2ubuntu1.11) focal; urgency=medium
+
+  * d/p/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
+    fix error: fix contents_view ordering in patch (LP: #2087526)
+
+ -- John Chittum <john.chittum@canonical.com>  Wed, 20 Mar 2025 09:22:39 -0500
+
 unbound (1.9.4-2ubuntu1.10) focal; urgency=medium
 
   * debian/patches/lp-2087526-1-fix-memory-exhaust-in-local-zones.patch:
