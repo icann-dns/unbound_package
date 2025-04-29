@@ -7,7 +7,7 @@ Uploaders:
  Robert Edmonds <edmonds@debian.org>,
  Michael Tokarev <mjt@tls.msk.ru>,
 Build-Depends:
- debhelper-compat (= 13),
+ debhelper (>= 12),
  autoconf,
  bison,
  dh-apparmor <!pkg.unbound.libonly>,
