@@ -1,1 +1,1 @@
-usr/lib/${DEB_HOST_MULTIARCH}/libunbound.so.8*
+usr/lib/x86_64-linux-gnu/libunbound.so.8*

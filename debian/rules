@@ -134,4 +134,4 @@ override_dh_compress:
 
 override_dh_auto_clean:
 	rm -rf b/
-	rm .github/workflows/release.yml
+	rm -f .github/workflows/release.yml
